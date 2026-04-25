@@ -1,0 +1,64 @@
+Think like a strength and conditioning expert, and evaluate this program. Context is provided.
+M = Monday, T = Tuesday, W = Wednesday, etc., only
+If no day is listed, movement occurs every session
+sessions upper, lower, upper, lower, upper, lower
+named U1L1, U2L2, U3L3
+intensity goals: 1 heavy, 2 light, 3 moderate
+goals: general strength development across vertical, horizontal push and pull (4 movements), hinge, squat
+Training maxes
+overhead press 150#
+push press 175#
+bench press 225#
+barbell row 200#x5
+pullups - 3 unassisted 
+bodyweight 245#
+height 5'8"
+age 30
+back squat - 335#
+front squat - 185# (unconfirmed)
+bulgarian split squat - unknown - new movement
+stiff legged deadlift - unknown
+deadlift - 435#
+
+UPPER
+(M, F) push press 135*2*5
+overhead press, 105*3*6
+pullups, 4*2*Assisted 
+
+Bench Press (M) 175*3*5
+wide grip bench press (W) 115*3*8
+bench press (pause) (F) 165*3*5
+
+Pec flyes 3*12*12.5s
+
+Pendlay Row (M) 3*6*170
+Deficit barbell row (W) 135*3*6
+barbell row (F) 3*6*150
+
+JM Press 45*3*10
+Hammer Curls 3*10*20s
+Wide Grip Upright rows 3*10*60
+
+(M/F) Farmer's Carry 2x driveway down and back
+
+Rear delf Flyes, 4*15*10s
+planks, 3*30 sec
+Ab rollouts 4*3
+
+Lower: 
+back squat (T)235*3*5
+Front Squat (Th) 135*3*6?
+Back Squat (3 second pause) (Sa) 205*3*6
+
+Deadlift (T) 3*6*325
+stiff legged deadlift (Th) 275*2*6
+deficit deadlift (Sa) 300*3*6
+
+bulgarian split squat, 20s*2*8/leg
+good mornings 60*3*8
+
+Intervals 8*30/90 (30 sprint, 90 slow) (T)
+low intesity steady state (LISS) (10 minutes) (Th)
+LISS (20 minutes) (Sa)
+
+What other information do you need?
