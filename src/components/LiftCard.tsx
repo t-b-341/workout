@@ -1,12 +1,20 @@
 'use client';
 
-import { useState } from 'react';
-import { useLastSessionsForLift, useLifts, useSetsForSession } from '@/lib/hooks';
+import { useMemo, useState } from 'react';
+import {
+  useAllSessions,
+  useAllSets,
+  useLastSessionsForLift,
+  useLifts,
+  useSetsForSession,
+} from '@/lib/hooks';
 import { localDelete, localUpsert } from '@/lib/sync';
 import type { CardioLog, CardioType, Lift, Prescription, SessionLog, SetLog, SetStatus } from '@/lib/types';
 import { WeightStepper, RepStepper } from './WeightStepper';
 import { fmtDate } from '@/lib/time';
 import { platesPerSide } from '@/lib/plates';
+import { detectPR, est1RM } from '@/lib/stats';
+import { RestTimer } from './RestTimer';
 
 type Props = {
   prescription: Prescription;
@@ -32,6 +40,8 @@ export function LiftCard({ prescription, lift, session }: Props) {
   const sets = useSetsForSession(session.id);
   const history = useLastSessionsForLift(prescription.liftId, 3);
   const lifts = useLifts();
+  const allSets = useAllSets();
+  const allSessions = useAllSessions();
   const [openSubs, setOpenSubs] = useState<number | null>(null);
   const [reasonDraft, setReasonDraft] = useState('');
   const [substituteId, setSubstituteId] = useState<string>('');
@@ -48,6 +58,24 @@ export function LiftCard({ prescription, lift, session }: Props) {
     : 'reps';
 
   const isCardio = lift.equipment === 'cardio';
+
+  // Most recent loggedAt for THIS lift in THIS session — feeds the rest timer
+  // shown above the next un-logged set row.
+  const mostRecentLogTs = useMemo(() => {
+    return liftSets
+      .map((s) => s.loggedAt)
+      .filter((x): x is string => !!x)
+      .sort()
+      .pop();
+  }, [liftSets]);
+
+  // PR check: at log time we want to know whether the just-saved set beat
+  // the all-time best at that rep count, EXCLUDING the saved row itself.
+  function prFor(set: SetLog | undefined) {
+    if (!set || !allSets || !allSessions) return null;
+    const prior = allSets.filter((s) => s.id !== set.id);
+    return detectPR(set, set.liftId, prior, allSessions);
+  }
 
   function getSet(setIndex: number, side?: 'L' | 'R'): SetLog | undefined {
     return liftSets.find((s) => s.setIndex === setIndex && s.side === side);
@@ -77,8 +105,14 @@ export function LiftCard({ prescription, lift, session }: Props) {
       substituteLiftId: args.substituteLiftId,
       reason: args.reason,
       side: args.side,
+      loggedAt: new Date().toISOString(),
     };
     await localUpsert('set_logs', row);
+
+    // Stamp session start on first interaction.
+    if (!session.startedAt) {
+      await localUpsert('session_logs', { ...session, startedAt: row.loggedAt });
+    }
 
     // Cardio lifts mirror to cardio_logs so the weekly 150-min rollup sees them.
     if (isCardio) {
@@ -97,6 +131,20 @@ export function LiftCard({ prescription, lift, session }: Props) {
         await localDelete('cardio_logs', cardioId);
       }
     }
+  }
+
+  // Identify whether the next unlogged set should show a rest timer (based
+  // on the most recent loggedAt for this lift).
+  let nextUnloggedKey: string | null = null;
+  for (const idx of indexes) {
+    for (const side of sides) {
+      const key = `${idx}-${side ?? 'X'}`;
+      if (!getSet(idx, side)) {
+        nextUnloggedKey = key;
+        break;
+      }
+    }
+    if (nextUnloggedKey) break;
   }
 
   return (
@@ -143,102 +191,124 @@ export function LiftCard({ prescription, lift, session }: Props) {
           sides.map((side) => {
             const existing = getSet(idx, side);
             const isDone = !!existing && existing.status !== 'skipped';
+            const key = `${idx}-${side ?? 'X'}`;
+            const isNextUnlogged = key === nextUnloggedKey;
+            const pr = prFor(existing);
             return (
-              <div
-                key={`${idx}-${side ?? 'X'}`}
-                className={`rounded-xl border ${existing ? 'border-zinc-700 bg-zinc-950' : 'border-zinc-800 bg-zinc-900'} p-3`}
-              >
-                <div className="flex items-center justify-between mb-2">
-                  <div className="text-sm text-zinc-300 font-medium">
-                    Set {idx + 1}{side ? ` · ${side}` : ''}
-                  </div>
-                  {existing && (
-                    <span className={`text-xs px-2 py-0.5 rounded-full text-white ${STATUS_COLOR[existing.status]}`}>
-                      {STATUS_LABEL[existing.status]}
-                    </span>
-                  )}
-                </div>
-
-                <SetRow
-                  prescription={prescription}
-                  lift={lift}
-                  isCardio={isCardio}
-                  repUnitLabel={repUnitLabel}
-                  initialWeight={existing?.weight ?? prescription.weight}
-                  initialReps={existing?.reps ?? prescription.repMin}
-                  onSave={(weight, reps, status) =>
-                    logSet({ setIndex: idx, side, weight, reps, status })
-                  }
-                  done={isDone}
-                />
-
-                <div className="flex gap-2 mt-2 text-xs">
-                  <button
-                    onClick={() => setOpenSubs(openSubs === idx ? null : idx)}
-                    className="text-zinc-400 underline underline-offset-2"
-                  >
-                    {openSubs === idx ? 'Cancel' : 'Modify…'}
-                  </button>
-                </div>
-
-                {openSubs === idx && (
-                  <div className="mt-3 space-y-2 border-t border-zinc-800 pt-3">
-                    <div className="flex flex-wrap gap-2">
-                      <button
-                        onClick={async () => {
-                          await logSet({ setIndex: idx, side, weight: 0, reps: 0, status: 'skipped', reason: reasonDraft || undefined });
-                          setOpenSubs(null);
-                          setReasonDraft('');
-                        }}
-                        className="px-3 h-9 rounded-lg bg-zinc-700 text-sm"
-                      >Skip set</button>
-                      <button
-                        onClick={async () => {
-                          await logSet({ setIndex: idx, side, weight: existing?.weight ?? prescription.weight, reps: existing?.reps ?? 0, status: 'reduced', reason: reasonDraft || undefined });
-                          setOpenSubs(null);
-                          setReasonDraft('');
-                        }}
-                        className="px-3 h-9 rounded-lg bg-amber-700 text-sm"
-                      >Mark reduced</button>
-                      <select
-                        value={substituteId}
-                        onChange={(e) => setSubstituteId(e.target.value)}
-                        className="px-2 h-9 rounded-lg bg-zinc-800 text-sm flex-1 min-w-[140px]"
-                      >
-                        <option value="">Substitute lift…</option>
-                        {(lifts ?? []).filter((l) => l.id !== lift.id).map((l) => (
-                          <option key={l.id} value={l.id}>{l.name}</option>
-                        ))}
-                      </select>
-                      <button
-                        disabled={!substituteId}
-                        onClick={async () => {
-                          await logSet({
-                            setIndex: idx, side,
-                            weight: existing?.weight ?? prescription.weight,
-                            reps: existing?.reps ?? 0,
-                            status: 'substituted',
-                            substituteLiftId: substituteId,
-                            reason: reasonDraft || undefined,
-                          });
-                          setOpenSubs(null);
-                          setSubstituteId('');
-                          setReasonDraft('');
-                        }}
-                        className="px-3 h-9 rounded-lg bg-indigo-700 text-sm disabled:opacity-50"
-                      >Apply sub</button>
-                    </div>
-                    <input
-                      placeholder="Reason (optional) — e.g., knee bothered me"
-                      value={reasonDraft}
-                      onChange={(e) => setReasonDraft(e.target.value)}
-                      className="w-full h-10 px-3 rounded-lg bg-zinc-800 text-sm"
-                    />
-                    {existing?.reason && (
-                      <div className="text-xs text-zinc-500">Current reason: {existing.reason}</div>
-                    )}
+              <div key={key} className="space-y-1">
+                {isNextUnlogged && mostRecentLogTs && (
+                  <div className="px-1">
+                    <RestTimer since={mostRecentLogTs} />
                   </div>
                 )}
+                <div
+                  className={`rounded-xl border ${existing ? 'border-zinc-700 bg-zinc-950' : 'border-zinc-800 bg-zinc-900'} p-3`}
+                >
+                  <div className="flex items-center justify-between mb-2 gap-2 flex-wrap">
+                    <div className="text-sm text-zinc-300 font-medium">
+                      Set {idx + 1}{side ? ` · ${side}` : ''}
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      {pr?.repPR && (
+                        <span className="text-[10px] uppercase tracking-wider px-2 py-0.5 rounded-full bg-amber-500 text-zinc-950 font-semibold">
+                          PR{pr.previousAtReps != null ? ` · was ${pr.previousAtReps}` : ''}
+                        </span>
+                      )}
+                      {pr?.e1rmPR && !pr?.repPR && existing && (
+                        <span className="text-[10px] uppercase tracking-wider px-2 py-0.5 rounded-full bg-amber-700 text-amber-100 font-semibold">
+                          e1RM PR · {Math.round(est1RM(existing.weight, existing.reps))}
+                        </span>
+                      )}
+                      {existing && (
+                        <span className={`text-xs px-2 py-0.5 rounded-full text-white ${STATUS_COLOR[existing.status]}`}>
+                          {STATUS_LABEL[existing.status]}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  <SetRow
+                    prescription={prescription}
+                    lift={lift}
+                    isCardio={isCardio}
+                    repUnitLabel={repUnitLabel}
+                    initialWeight={existing?.weight ?? prescription.weight}
+                    initialReps={existing?.reps ?? prescription.repMin}
+                    onSave={(weight, reps, status) =>
+                      logSet({ setIndex: idx, side, weight, reps, status })
+                    }
+                    done={isDone}
+                  />
+
+                  <div className="flex gap-2 mt-2 text-xs">
+                    <button
+                      onClick={() => setOpenSubs(openSubs === idx ? null : idx)}
+                      className="text-zinc-400 underline underline-offset-2"
+                    >
+                      {openSubs === idx ? 'Cancel' : 'Modify…'}
+                    </button>
+                  </div>
+
+                  {openSubs === idx && (
+                    <div className="mt-3 space-y-2 border-t border-zinc-800 pt-3">
+                      <div className="flex flex-wrap gap-2">
+                        <button
+                          onClick={async () => {
+                            await logSet({ setIndex: idx, side, weight: 0, reps: 0, status: 'skipped', reason: reasonDraft || undefined });
+                            setOpenSubs(null);
+                            setReasonDraft('');
+                          }}
+                          className="px-3 h-9 rounded-lg bg-zinc-700 text-sm"
+                        >Skip set</button>
+                        <button
+                          onClick={async () => {
+                            await logSet({ setIndex: idx, side, weight: existing?.weight ?? prescription.weight, reps: existing?.reps ?? 0, status: 'reduced', reason: reasonDraft || undefined });
+                            setOpenSubs(null);
+                            setReasonDraft('');
+                          }}
+                          className="px-3 h-9 rounded-lg bg-amber-700 text-sm"
+                        >Mark reduced</button>
+                        <select
+                          aria-label="Substitute lift"
+                          value={substituteId}
+                          onChange={(e) => setSubstituteId(e.target.value)}
+                          className="px-2 h-9 rounded-lg bg-zinc-800 text-sm flex-1 min-w-[140px]"
+                        >
+                          <option value="">Substitute lift…</option>
+                          {(lifts ?? []).filter((l) => l.id !== lift.id).map((l) => (
+                            <option key={l.id} value={l.id}>{l.name}</option>
+                          ))}
+                        </select>
+                        <button
+                          disabled={!substituteId}
+                          onClick={async () => {
+                            await logSet({
+                              setIndex: idx, side,
+                              weight: existing?.weight ?? prescription.weight,
+                              reps: existing?.reps ?? 0,
+                              status: 'substituted',
+                              substituteLiftId: substituteId,
+                              reason: reasonDraft || undefined,
+                            });
+                            setOpenSubs(null);
+                            setSubstituteId('');
+                            setReasonDraft('');
+                          }}
+                          className="px-3 h-9 rounded-lg bg-indigo-700 text-sm disabled:opacity-50"
+                        >Apply sub</button>
+                      </div>
+                      <input
+                        placeholder="Reason (optional) — e.g., knee bothered me"
+                        value={reasonDraft}
+                        onChange={(e) => setReasonDraft(e.target.value)}
+                        className="w-full h-10 px-3 rounded-lg bg-zinc-800 text-sm"
+                      />
+                      {existing?.reason && (
+                        <div className="text-xs text-zinc-500">Current reason: {existing.reason}</div>
+                      )}
+                    </div>
+                  )}
+                </div>
               </div>
             );
           }),

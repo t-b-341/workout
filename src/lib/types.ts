@@ -11,6 +11,36 @@ export type Equipment =
 export type LoadUnit = 'lb' | 'kg' | 'bodyweight' | 'none';
 export type RepUnit = 'reps' | 'seconds' | 'lengths' | 'minutes';
 
+export type MuscleGroup =
+  | 'chest'
+  | 'front-delt'
+  | 'side-delt'
+  | 'rear-delt'
+  | 'triceps'
+  | 'biceps'
+  | 'forearms'
+  | 'lats'
+  | 'traps'
+  | 'mid-back'
+  | 'low-back'
+  | 'glutes'
+  | 'quads'
+  | 'hamstrings'
+  | 'adductors'
+  | 'calves'
+  | 'core';
+
+export type MovementPattern =
+  | 'vert-push'
+  | 'horiz-push'
+  | 'vert-pull'
+  | 'horiz-pull'
+  | 'hinge'
+  | 'squat'
+  | 'carry'
+  | 'core'
+  | 'cardio';
+
 export type Lift = {
   id: string;
   name: string;
@@ -21,6 +51,10 @@ export type Lift = {
   increment: number;
   /** Notes shown on the lift card (tempo, cues, etc). */
   notes?: string;
+  /** Primary + secondary muscles trained. Empty for cardio. */
+  muscleGroups?: MuscleGroup[];
+  /** Primary movement pattern for coverage charts. */
+  pattern?: MovementPattern;
 };
 
 export type TemplateId = 'U1' | 'U2' | 'U3' | 'L1' | 'L2' | 'L3';
@@ -69,6 +103,8 @@ export type SetLog = {
   reason?: string;
   /** For per-side lifts. */
   side?: 'L' | 'R';
+  /** ISO timestamp the set was logged (for rest timer + session duration). */
+  loggedAt?: string;
 };
 
 export type SessionMode = 'standard' | 'light' | 'skip';
@@ -84,6 +120,8 @@ export type SessionLog = {
   reason?: string;
   watchFlags: WatchFlag[];
   notes?: string;
+  /** ISO timestamp set on first interaction. */
+  startedAt?: string;
   completedAt?: string;
 };
 
@@ -113,4 +151,21 @@ export type BodyweightLog = {
   /** ISO week string e.g. "2026-W17". */
   isoWeek: string;
   bodyweight: number;
+};
+
+export type ReadinessLog = {
+  id: string;
+  sessionLogId: string;
+  /** ISO date YYYY-MM-DD. */
+  date: string;
+  /** Hours of sleep last night. */
+  sleepHours: number;
+  /** 1 = none, 5 = severe. */
+  soreness: number;
+  /** 1 = dead, 5 = fired up. */
+  motivation: number;
+  /** Optional bodyweight logged alongside readiness. */
+  bodyweight?: number;
+  /** ISO timestamp (for ordering in case of multiple). */
+  createdAt: string;
 };

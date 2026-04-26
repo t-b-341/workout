@@ -4,7 +4,15 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { getDb } from './db';
 import { CARDIO_WEEKLY_TARGET_MIN } from './seed';
 import { isoWeekString, weekRange, todayIso } from './time';
-import type { CardioLog, Prescription, SessionLog, SetLog, TemplateId } from './types';
+import type {
+  BodyweightLog,
+  CardioLog,
+  Prescription,
+  ReadinessLog,
+  SessionLog,
+  SetLog,
+  TemplateId,
+} from './types';
 
 export function usePrescriptions(templateId?: TemplateId): Prescription[] | undefined {
   return useLiveQuery(async () => {
@@ -81,5 +89,43 @@ export function useThisWeekBodyweight() {
     const wk = isoWeekString();
     const matches = await getDb().bodyweight_logs.where('isoWeek').equals(wk).toArray();
     return matches[0];
+  }, []);
+}
+
+export function useReadinessForSession(sessionId?: string): ReadinessLog | undefined {
+  return useLiveQuery(async () => {
+    if (!sessionId) return undefined;
+    const matches = await getDb().readiness_logs
+      .where('sessionLogId').equals(sessionId).toArray();
+    return matches.sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))[0];
+  }, [sessionId]);
+}
+
+export function useAllBodyweight(): BodyweightLog[] | undefined {
+  return useLiveQuery(async () => {
+    const all = await getDb().bodyweight_logs.toArray();
+    return all.sort((a, b) => (a.date < b.date ? -1 : 1));
+  }, []);
+}
+
+export function useAllSets(): SetLog[] | undefined {
+  return useLiveQuery(() => getDb().set_logs.toArray(), []);
+}
+
+export function useAllSessions(): SessionLog[] | undefined {
+  return useLiveQuery(async () => {
+    const all = await getDb().session_logs.toArray();
+    return all.sort((a, b) => (a.date < b.date ? 1 : -1));
+  }, []);
+}
+
+export function useAllCardio(): CardioLog[] | undefined {
+  return useLiveQuery(() => getDb().cardio_logs.toArray(), []);
+}
+
+export function useAllReadiness(): ReadinessLog[] | undefined {
+  return useLiveQuery(async () => {
+    const all = await getDb().readiness_logs.toArray();
+    return all.sort((a, b) => (a.date < b.date ? 1 : -1));
   }, []);
 }

@@ -51,7 +51,11 @@
 - **Sunday:** Rest
 - **Heavy/Light/Moderate** is defined by movement stress and volume, not %1RM
 - **Deload:** every 4 weeks (halve accessory sets, mains at ~60%)
-- **Progression rule:** to be formalized after first deload; planned approach — *if top-set RPE ≤ 7, add minimum increment next session; if RPE ≥ 9 or reps missed, hold; two holds → deload that lift 10%*
+- **Progression rule:** double-progression — when every working set hits the
+  top of the rep range, add the smallest increment next session; if any set
+  comes up short, hold the load. Light / skip / deload sessions never
+  advance. (RPE-based progression is intentionally deferred — see
+  `docs/future-features.md`.)
 
 ## Notation
 
@@ -165,14 +169,13 @@
 
 ## Tracking During Block 1 (4 weeks)
 
-- Top-set RPE on each main lift, every session
-- Weekly bodyweight average (not daily)
-- Subjective recovery: sleep quality, session energy, joint feel (shoulders, wrists, low back)
+- Weekly bodyweight average (not daily) — captured by the readiness check on Tuesdays (L1)
+- Subjective recovery at session start: sleep, soreness, motivation (drives a
+  light/skip recommendation when something is in the red)
+- Joint feel — flagged ad hoc on a session via watch flags (shoulders, elbows, low back)
 
 ## Future Considerations (Post-Deload)
 
-- Formalize progression rule (RPE-based, above)
-- Confirm Front Squat TM, establish SLDL/paused DL/BSS working weights
 - Farmer's carry load progression (distance → time → added belt load)
 - Good mornings — progress toward meaningful hinge stimulus (~40–50% of DL TM)
 - Ab rollouts — progress to 3 × 8 clean reps, then deficit or banded

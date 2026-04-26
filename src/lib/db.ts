@@ -6,6 +6,7 @@ import type {
   CardioLog,
   Lift,
   Prescription,
+  ReadinessLog,
   SessionLog,
   SessionTemplate,
   SetLog,
@@ -13,7 +14,13 @@ import type {
 
 export type DirtyRow = {
   id: string;
-  table: 'prescriptions' | 'session_logs' | 'set_logs' | 'cardio_logs' | 'bodyweight_logs';
+  table:
+    | 'prescriptions'
+    | 'session_logs'
+    | 'set_logs'
+    | 'cardio_logs'
+    | 'bodyweight_logs'
+    | 'readiness_logs';
   rowId: string;
   op: 'upsert' | 'delete';
   /** Server time when last enqueued (for ordering). */
@@ -28,11 +35,14 @@ export class WorkoutDB extends Dexie {
   set_logs!: Table<SetLog, string>;
   cardio_logs!: Table<CardioLog, string>;
   bodyweight_logs!: Table<BodyweightLog, string>;
+  readiness_logs!: Table<ReadinessLog, string>;
   dirty!: Table<DirtyRow, string>;
   meta!: Table<{ key: string; value: unknown }, string>;
 
   constructor() {
     super('workout');
+
+    // v1 — original schema. NEVER edit a previously released version block.
     this.version(1).stores({
       lifts: 'id, name',
       templates: 'id, dayOfWeek',
@@ -44,8 +54,26 @@ export class WorkoutDB extends Dexie {
       dirty: 'id, table, rowId, enqueuedAt',
       meta: 'key',
     });
+
+    // v2 — add readiness_logs table. Adding non-indexed fields (startedAt on
+    // session_logs, loggedAt on set_logs, muscleGroups/pattern on lifts) does
+    // not require a Dexie version bump — Dexie stores arbitrary JSON.
+    this.version(2).stores({
+      lifts: 'id, name',
+      templates: 'id, dayOfWeek',
+      prescriptions: 'id, templateId, liftId, [templateId+order]',
+      session_logs: 'id, date, templateId',
+      set_logs: 'id, sessionLogId, liftId, [sessionLogId+liftId+setIndex]',
+      cardio_logs: 'id, date, sessionLogId',
+      bodyweight_logs: 'id, date, isoWeek',
+      readiness_logs: 'id, sessionLogId, date',
+      dirty: 'id, table, rowId, enqueuedAt',
+      meta: 'key',
+    });
   }
 }
+
+export const SCHEMA_VERSION = 2;
 
 let _db: WorkoutDB | null = null;
 export function getDb(): WorkoutDB {

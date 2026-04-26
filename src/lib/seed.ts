@@ -2,48 +2,76 @@ import type { Lift, Prescription, SessionTemplate } from './types';
 
 export const LIFTS: Lift[] = [
   // Upper - barbell
-  { id: 'pp', name: 'Push Press', equipment: 'barbell', loadUnit: 'lb', repUnit: 'reps', increment: 5 },
-  { id: 'ohp', name: 'OHP (dead-stop)', equipment: 'barbell', loadUnit: 'lb', repUnit: 'reps', increment: 5, notes: 'Dead-stop' },
-  { id: 'bp', name: 'Bench Press', equipment: 'barbell', loadUnit: 'lb', repUnit: 'reps', increment: 5 },
-  { id: 'bp_paused', name: 'Bench Press (paused)', equipment: 'barbell', loadUnit: 'lb', repUnit: 'reps', increment: 5, notes: 'Paused at chest' },
-  { id: 'wgbp', name: 'Wide-Grip Bench Press', equipment: 'barbell', loadUnit: 'lb', repUnit: 'reps', increment: 5 },
-  { id: 'pendlay_row', name: 'Pendlay Row', equipment: 'barbell', loadUnit: 'lb', repUnit: 'reps', increment: 5 },
-  { id: 'bbr', name: 'Barbell Row', equipment: 'barbell', loadUnit: 'lb', repUnit: 'reps', increment: 5 },
-  { id: 'deficit_bbr', name: 'Deficit Barbell Row', equipment: 'barbell', loadUnit: 'lb', repUnit: 'reps', increment: 5 },
-  { id: 'jm_press', name: 'JM Press', equipment: 'barbell', loadUnit: 'lb', repUnit: 'reps', increment: 5 },
+  { id: 'pp', name: 'Push Press', equipment: 'barbell', loadUnit: 'lb', repUnit: 'reps', increment: 5,
+    pattern: 'vert-push', muscleGroups: ['front-delt', 'side-delt', 'triceps', 'core'] },
+  { id: 'ohp', name: 'OHP (dead-stop)', equipment: 'barbell', loadUnit: 'lb', repUnit: 'reps', increment: 5, notes: 'Dead-stop',
+    pattern: 'vert-push', muscleGroups: ['front-delt', 'side-delt', 'triceps'] },
+  { id: 'bp', name: 'Bench Press', equipment: 'barbell', loadUnit: 'lb', repUnit: 'reps', increment: 5,
+    pattern: 'horiz-push', muscleGroups: ['chest', 'front-delt', 'triceps'] },
+  { id: 'bp_paused', name: 'Bench Press (paused)', equipment: 'barbell', loadUnit: 'lb', repUnit: 'reps', increment: 5, notes: 'Paused at chest',
+    pattern: 'horiz-push', muscleGroups: ['chest', 'front-delt', 'triceps'] },
+  { id: 'wgbp', name: 'Wide-Grip Bench Press', equipment: 'barbell', loadUnit: 'lb', repUnit: 'reps', increment: 5,
+    pattern: 'horiz-push', muscleGroups: ['chest', 'front-delt', 'triceps'] },
+  { id: 'pendlay_row', name: 'Pendlay Row', equipment: 'barbell', loadUnit: 'lb', repUnit: 'reps', increment: 5,
+    pattern: 'horiz-pull', muscleGroups: ['lats', 'mid-back', 'rear-delt', 'biceps'] },
+  { id: 'bbr', name: 'Barbell Row', equipment: 'barbell', loadUnit: 'lb', repUnit: 'reps', increment: 5,
+    pattern: 'horiz-pull', muscleGroups: ['lats', 'mid-back', 'rear-delt', 'biceps'] },
+  { id: 'deficit_bbr', name: 'Deficit Barbell Row', equipment: 'barbell', loadUnit: 'lb', repUnit: 'reps', increment: 5,
+    pattern: 'horiz-pull', muscleGroups: ['lats', 'mid-back', 'rear-delt', 'biceps'] },
+  { id: 'jm_press', name: 'JM Press', equipment: 'barbell', loadUnit: 'lb', repUnit: 'reps', increment: 5,
+    pattern: 'horiz-push', muscleGroups: ['triceps', 'chest', 'front-delt'] },
 
   // Upper - dumbbell
-  { id: 'seated_db_press', name: 'Seated DB Shoulder Press', equipment: 'dumbbell', loadUnit: 'lb', repUnit: 'reps', increment: 2.5 },
-  { id: 'pec_flyes', name: 'Pec Flyes', equipment: 'dumbbell', loadUnit: 'lb', repUnit: 'reps', increment: 2.5 },
-  { id: 'rdf', name: 'Rear Delt Flyes', equipment: 'dumbbell', loadUnit: 'lb', repUnit: 'reps', increment: 2.5 },
-  { id: 'hammer_curls', name: 'Hammer Curls', equipment: 'dumbbell', loadUnit: 'lb', repUnit: 'reps', increment: 2.5 },
+  { id: 'seated_db_press', name: 'Seated DB Shoulder Press', equipment: 'dumbbell', loadUnit: 'lb', repUnit: 'reps', increment: 2.5,
+    pattern: 'vert-push', muscleGroups: ['front-delt', 'side-delt', 'triceps'] },
+  { id: 'pec_flyes', name: 'Pec Flyes', equipment: 'dumbbell', loadUnit: 'lb', repUnit: 'reps', increment: 2.5,
+    pattern: 'horiz-push', muscleGroups: ['chest', 'front-delt'] },
+  { id: 'rdf', name: 'Rear Delt Flyes', equipment: 'dumbbell', loadUnit: 'lb', repUnit: 'reps', increment: 2.5,
+    pattern: 'horiz-pull', muscleGroups: ['rear-delt', 'traps'] },
+  { id: 'hammer_curls', name: 'Hammer Curls', equipment: 'dumbbell', loadUnit: 'lb', repUnit: 'reps', increment: 2.5,
+    pattern: 'horiz-pull', muscleGroups: ['biceps', 'forearms'] },
 
   // Upper - bodyweight pullup variants (P1)
-  { id: 'p1_eccentric', name: 'P1 Weighted Eccentric', equipment: 'bodyweight', loadUnit: 'lb', repUnit: 'reps', increment: 2.5, notes: '5 sec eccentric, weighted (added load)' },
-  { id: 'p1_assisted', name: 'P1 Assisted', equipment: 'bodyweight', loadUnit: 'lb', repUnit: 'reps', increment: 2.5, notes: 'Assisted; weight = assistance lb (negative load)' },
-  { id: 'p1_bw', name: 'P1 (Bodyweight)', equipment: 'bodyweight', loadUnit: 'bodyweight', repUnit: 'reps', increment: 2.5, notes: 'Unassisted; tracked as added load (0 = bodyweight)' },
+  { id: 'p1_eccentric', name: 'P1 Weighted Eccentric', equipment: 'bodyweight', loadUnit: 'lb', repUnit: 'reps', increment: 2.5, notes: '5 sec eccentric, weighted (added load)',
+    pattern: 'vert-pull', muscleGroups: ['lats', 'biceps', 'mid-back'] },
+  { id: 'p1_assisted', name: 'P1 Assisted', equipment: 'bodyweight', loadUnit: 'lb', repUnit: 'reps', increment: 2.5, notes: 'Assisted; weight = assistance lb (negative load)',
+    pattern: 'vert-pull', muscleGroups: ['lats', 'biceps', 'mid-back'] },
+  { id: 'p1_bw', name: 'P1 (Bodyweight)', equipment: 'bodyweight', loadUnit: 'bodyweight', repUnit: 'reps', increment: 2.5, notes: 'Unassisted; tracked as added load (0 = bodyweight)',
+    pattern: 'vert-pull', muscleGroups: ['lats', 'biceps', 'mid-back'] },
 
   // Upper - carry
-  { id: 'fc', name: "Farmer's Carry (strapped)", equipment: 'carry', loadUnit: 'lb', repUnit: 'lengths', increment: 2.5, notes: 'Per-DB load × lengths (down + back = 2)' },
+  { id: 'fc', name: "Farmer's Carry (strapped)", equipment: 'carry', loadUnit: 'lb', repUnit: 'lengths', increment: 2.5, notes: 'Per-DB load × lengths (down + back = 2)',
+    pattern: 'carry', muscleGroups: ['traps', 'forearms', 'core', 'glutes'] },
 
   // Lower - barbell
-  { id: 'back_squat', name: 'Back Squat', equipment: 'barbell', loadUnit: 'lb', repUnit: 'reps', increment: 5 },
-  { id: 'back_squat_paused', name: 'Back Squat (paused)', equipment: 'barbell', loadUnit: 'lb', repUnit: 'reps', increment: 5, notes: '3 sec pause' },
-  { id: 'breathing_back_squat', name: 'Breathing Back Squat', equipment: 'barbell', loadUnit: 'lb', repUnit: 'reps', increment: 5, notes: 'Bar on back, breathe between reps' },
-  { id: 'dl', name: 'Deadlift', equipment: 'barbell', loadUnit: 'lb', repUnit: 'reps', increment: 5 },
-  { id: 'ddl', name: 'Deficit Deadlift', equipment: 'barbell', loadUnit: 'lb', repUnit: 'reps', increment: 5 },
-  { id: 'rdl', name: 'RDL', equipment: 'barbell', loadUnit: 'lb', repUnit: 'reps', increment: 5 },
+  { id: 'back_squat', name: 'Back Squat', equipment: 'barbell', loadUnit: 'lb', repUnit: 'reps', increment: 5,
+    pattern: 'squat', muscleGroups: ['quads', 'glutes', 'low-back', 'core'] },
+  { id: 'back_squat_paused', name: 'Back Squat (paused)', equipment: 'barbell', loadUnit: 'lb', repUnit: 'reps', increment: 5, notes: '3 sec pause',
+    pattern: 'squat', muscleGroups: ['quads', 'glutes', 'low-back', 'core'] },
+  { id: 'breathing_back_squat', name: 'Breathing Back Squat', equipment: 'barbell', loadUnit: 'lb', repUnit: 'reps', increment: 5, notes: 'Bar on back, breathe between reps',
+    pattern: 'squat', muscleGroups: ['quads', 'glutes', 'low-back', 'core'] },
+  { id: 'dl', name: 'Deadlift', equipment: 'barbell', loadUnit: 'lb', repUnit: 'reps', increment: 5,
+    pattern: 'hinge', muscleGroups: ['hamstrings', 'glutes', 'low-back', 'traps', 'lats'] },
+  { id: 'ddl', name: 'Deficit Deadlift', equipment: 'barbell', loadUnit: 'lb', repUnit: 'reps', increment: 5,
+    pattern: 'hinge', muscleGroups: ['hamstrings', 'glutes', 'low-back', 'traps', 'lats'] },
+  { id: 'rdl', name: 'RDL', equipment: 'barbell', loadUnit: 'lb', repUnit: 'reps', increment: 5,
+    pattern: 'hinge', muscleGroups: ['hamstrings', 'glutes', 'low-back'] },
 
   // Lower - dumbbell
-  { id: 'bss', name: 'Bulgarian Split Squat', equipment: 'dumbbell', loadUnit: 'lb', repUnit: 'reps', increment: 2.5 },
+  { id: 'bss', name: 'Bulgarian Split Squat', equipment: 'dumbbell', loadUnit: 'lb', repUnit: 'reps', increment: 2.5,
+    pattern: 'squat', muscleGroups: ['quads', 'glutes', 'hamstrings'] },
 
   // Core / time-based
-  { id: 'planks', name: 'Planks', equipment: 'time', loadUnit: 'none', repUnit: 'seconds', increment: 5, notes: '+5 sec/wk per set' },
-  { id: 'ab_rollouts', name: 'Ab Rollouts', equipment: 'bodyweight', loadUnit: 'none', repUnit: 'reps', increment: 1, notes: 'Full ROM; progress reps per set' },
+  { id: 'planks', name: 'Planks', equipment: 'time', loadUnit: 'none', repUnit: 'seconds', increment: 5, notes: '+5 sec/wk per set',
+    pattern: 'core', muscleGroups: ['core'] },
+  { id: 'ab_rollouts', name: 'Ab Rollouts', equipment: 'bodyweight', loadUnit: 'none', repUnit: 'reps', increment: 1, notes: 'Full ROM; progress reps per set',
+    pattern: 'core', muscleGroups: ['core', 'lats'] },
 
   // Cardio
-  { id: 'liss', name: 'LISS', equipment: 'cardio', loadUnit: 'none', repUnit: 'minutes', increment: 1, notes: 'Walk @ 2.0 mph / 3.0% grade' },
-  { id: 'echo_intervals', name: 'Echo Bike Intervals', equipment: 'cardio', loadUnit: 'none', repUnit: 'minutes', increment: 1, notes: '8 × 30s sprint / 90s slow; HR target 170 on sprints' },
+  { id: 'liss', name: 'LISS', equipment: 'cardio', loadUnit: 'none', repUnit: 'minutes', increment: 1, notes: 'Walk @ 2.0 mph / 3.0% grade',
+    pattern: 'cardio', muscleGroups: [] },
+  { id: 'echo_intervals', name: 'Echo Bike Intervals', equipment: 'cardio', loadUnit: 'none', repUnit: 'minutes', increment: 1, notes: '8 × 30s sprint / 90s slow; HR target 170 on sprints',
+    pattern: 'cardio', muscleGroups: [] },
 ];
 
 export const TEMPLATES: SessionTemplate[] = [
@@ -136,3 +164,37 @@ export const DB_INCREMENTS: number[] = (() => {
 })();
 
 export const CARDIO_WEEKLY_TARGET_MIN = 150;
+
+/** Display order for movement-pattern coverage charts. */
+export const PATTERNS: Array<import('./types').MovementPattern> = [
+  'vert-push',
+  'horiz-push',
+  'vert-pull',
+  'horiz-pull',
+  'hinge',
+  'squat',
+  'carry',
+  'core',
+  'cardio',
+];
+
+/** Display order for muscle-group bar charts. */
+export const MUSCLE_GROUPS: Array<import('./types').MuscleGroup> = [
+  'chest',
+  'front-delt',
+  'side-delt',
+  'rear-delt',
+  'lats',
+  'mid-back',
+  'traps',
+  'biceps',
+  'triceps',
+  'forearms',
+  'low-back',
+  'core',
+  'glutes',
+  'quads',
+  'hamstrings',
+  'adductors',
+  'calves',
+];

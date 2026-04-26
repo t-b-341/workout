@@ -2,18 +2,23 @@
 
 type Props = {
   values: number[];
+  /** Optional second series rendered as a dashed line over the same axes. */
+  overlay?: number[];
   width?: number;
   height?: number;
   stroke?: string;
+  overlayStroke?: string;
   fill?: string;
   showDots?: boolean;
 };
 
 export function Sparkline({
   values,
+  overlay,
   width = 280,
   height = 60,
   stroke = '#f59e0b',
+  overlayStroke = '#a1a1aa',
   fill = 'rgba(245, 158, 11, 0.12)',
   showDots = true,
 }: Props) {
@@ -28,25 +33,40 @@ export function Sparkline({
       </div>
     );
   }
-  const min = Math.min(...values);
-  const max = Math.max(...values);
+  const allValues = overlay ? [...values, ...overlay] : values;
+  const min = Math.min(...allValues);
+  const max = Math.max(...allValues);
   const range = max - min || 1;
   const padX = 4;
   const padY = 6;
   const w = width - padX * 2;
   const h = height - padY * 2;
-  const x = (i: number) => padX + (i / (values.length - 1)) * w;
+  const x = (i: number, len: number) => padX + (i / Math.max(1, len - 1)) * w;
   const y = (v: number) => padY + h - ((v - min) / range) * h;
 
-  const pts = values.map((v, i) => `${x(i).toFixed(2)},${y(v).toFixed(2)}`).join(' ');
+  const pts = values.map((v, i) => `${x(i, values.length).toFixed(2)},${y(v).toFixed(2)}`).join(' ');
   const area = `${padX},${height - padY} ${pts} ${(padX + w).toFixed(2)},${height - padY}`;
+  const overlayPts = overlay
+    ? overlay.map((v, i) => `${x(i, overlay.length).toFixed(2)},${y(v).toFixed(2)}`).join(' ')
+    : null;
 
   return (
     <svg viewBox={`0 0 ${width} ${height}`} width="100%" height={height} role="img">
       <polygon points={area} fill={fill} />
       <polyline points={pts} fill="none" stroke={stroke} strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" />
+      {overlayPts && (
+        <polyline
+          points={overlayPts}
+          fill="none"
+          stroke={overlayStroke}
+          strokeWidth={1.5}
+          strokeDasharray="4 3"
+          strokeLinejoin="round"
+          strokeLinecap="round"
+        />
+      )}
       {showDots && values.map((v, i) => (
-        <circle key={i} cx={x(i)} cy={y(v)} r={2.5} fill={stroke} />
+        <circle key={i} cx={x(i, values.length)} cy={y(v)} r={2.5} fill={stroke} />
       ))}
     </svg>
   );

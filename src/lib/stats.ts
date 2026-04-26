@@ -1,5 +1,15 @@
 import { getISOWeek, getISOWeekYear, parseISO } from 'date-fns';
-import type { CardioLog, Lift, SessionLog, SetLog, WatchFlag } from './types';
+import type {
+  BodyweightLog,
+  CardioLog,
+  Lift,
+  MovementPattern,
+  MuscleGroup,
+  ReadinessLog,
+  SessionLog,
+  SetLog,
+  WatchFlag,
+} from './types';
 
 /** Epley estimated 1RM. */
 export function est1RM(weight: number, reps: number): number {
@@ -173,4 +183,302 @@ export function buildWeeklySummaries(
   }
 
   return Array.from(weekMap.values()).sort((a, b) => (a.week < b.week ? 1 : -1));
+}
+
+// ---------- PRs ----------
+
+export type PRBucket = {
+  reps: number;
+  weight: number;
+  date: string;
+  sessionLogId: string;
+};
+
+export type LiftPRs = {
+  liftId: string;
+  /** All-time best per rep value (only completed sets, weight > 0). */
+  bestByReps: PRBucket[];
+  /** Best estimated 1RM. */
+  bestE1RM: { value: number; date: string; weight: number; reps: number } | null;
+};
+
+/** Best weight at each rep value (1, 2, ...) for a given lift. */
+export function liftPRs(liftId: string, sets: SetLog[], sessions: SessionLog[]): LiftPRs {
+  const sessionDate = new Map(sessions.map((s) => [s.id, s.date]));
+  const bestPerReps = new Map<number, PRBucket>();
+  let bestE1RM: LiftPRs['bestE1RM'] = null;
+  for (const s of sets) {
+    if (s.liftId !== liftId) continue;
+    if (s.status !== 'completed') continue;
+    if (s.weight <= 0) continue;
+    const date = sessionDate.get(s.sessionLogId);
+    if (!date) continue;
+    const cur = bestPerReps.get(s.reps);
+    if (!cur || s.weight > cur.weight) {
+      bestPerReps.set(s.reps, {
+        reps: s.reps,
+        weight: s.weight,
+        date,
+        sessionLogId: s.sessionLogId,
+      });
+    }
+    const e = est1RM(s.weight, s.reps);
+    if (!bestE1RM || e > bestE1RM.value) {
+      bestE1RM = { value: e, date, weight: s.weight, reps: s.reps };
+    }
+  }
+  return {
+    liftId,
+    bestByReps: Array.from(bestPerReps.values()).sort((a, b) => a.reps - b.reps),
+    bestE1RM,
+  };
+}
+
+/** Detect whether a freshly-logged set establishes a new PR. Compare to the
+ *  PR table built from `priorSets` (which must NOT include the new one). */
+export function detectPR(
+  set: SetLog,
+  liftId: string,
+  priorSets: SetLog[],
+  sessions: SessionLog[],
+): { repPR: boolean; e1rmPR: boolean; previousAtReps?: number } | null {
+  if (set.liftId !== liftId) return null;
+  if (set.status !== 'completed') return null;
+  if (set.weight <= 0) return null;
+
+  const prs = liftPRs(liftId, priorSets, sessions);
+  const previousAtReps = prs.bestByReps.find((b) => b.reps === set.reps)?.weight;
+  const repPR = previousAtReps == null ? true : set.weight > previousAtReps;
+  const e1rmNow = est1RM(set.weight, set.reps);
+  const e1rmPR = !prs.bestE1RM || e1rmNow > prs.bestE1RM.value;
+
+  if (!repPR && !e1rmPR) return null;
+  return { repPR, e1rmPR, previousAtReps };
+}
+
+/** Chronological list of PRs across all lifts (one entry per (liftId, reps)
+ *  PR event in time order). */
+export type PRFeedItem = {
+  date: string;
+  liftId: string;
+  liftName: string;
+  reps: number;
+  weight: number;
+  /** Weight that was beaten (if any). */
+  previousWeight?: number;
+};
+
+export function prFeed(sets: SetLog[], sessions: SessionLog[], lifts: Lift[]): PRFeedItem[] {
+  const liftMap = new Map(lifts.map((l) => [l.id, l]));
+  const sessionDate = new Map(sessions.map((s) => [s.id, s.date]));
+
+  // Order sets by date, then setIndex, so we observe PRs in chronological order.
+  const ordered = [...sets].sort((a, b) => {
+    const da = sessionDate.get(a.sessionLogId) ?? '';
+    const db = sessionDate.get(b.sessionLogId) ?? '';
+    if (da !== db) return da < db ? -1 : 1;
+    return a.setIndex - b.setIndex;
+  });
+
+  const bestPerLiftReps = new Map<string, number>(); // key = liftId|reps
+  const out: PRFeedItem[] = [];
+  for (const s of ordered) {
+    if (s.status !== 'completed' || s.weight <= 0) continue;
+    const lift = liftMap.get(s.liftId);
+    if (!lift || lift.equipment === 'cardio' || lift.equipment === 'time') continue;
+    const date = sessionDate.get(s.sessionLogId);
+    if (!date) continue;
+    const key = `${s.liftId}|${s.reps}`;
+    const prev = bestPerLiftReps.get(key);
+    if (prev == null || s.weight > prev) {
+      out.push({
+        date,
+        liftId: s.liftId,
+        liftName: lift.name,
+        reps: s.reps,
+        weight: s.weight,
+        previousWeight: prev,
+      });
+      bestPerLiftReps.set(key, s.weight);
+    }
+  }
+  return out.reverse(); // most recent first
+}
+
+// ---------- Muscle group / pattern coverage ----------
+
+export type WeeklyVolumeByGroup = {
+  week: string;
+  weekStart: string;
+  /** sum of (weight × reps) on completed sets, attributed to each muscle
+   *  group the lift trains. (Same set can contribute to multiple groups —
+   *  this is "stimulating sets / pseudo-volume," not unique work.) */
+  volumeByGroup: Partial<Record<MuscleGroup, number>>;
+  /** number of completed working sets per group. */
+  setsByGroup: Partial<Record<MuscleGroup, number>>;
+};
+
+export function buildWeeklyMuscleVolume(
+  sessions: SessionLog[],
+  sets: SetLog[],
+  lifts: Lift[],
+): WeeklyVolumeByGroup[] {
+  const liftMap = new Map(lifts.map((l) => [l.id, l]));
+  const sessionDate = new Map(sessions.map((s) => [s.id, s.date]));
+  const byWeek = new Map<string, WeeklyVolumeByGroup>();
+
+  for (const s of sets) {
+    if (s.status !== 'completed') continue;
+    const date = sessionDate.get(s.sessionLogId);
+    if (!date) continue;
+    const lift = liftMap.get(s.liftId);
+    if (!lift) continue;
+    const groups = lift.muscleGroups ?? [];
+    if (groups.length === 0) continue;
+    const wk = isoWeekOf(date);
+
+    let bucket = byWeek.get(wk);
+    if (!bucket) {
+      bucket = {
+        week: wk,
+        weekStart: startOfWeekIso(wk),
+        volumeByGroup: {},
+        setsByGroup: {},
+      };
+      byWeek.set(wk, bucket);
+    }
+
+    const vol = s.weight > 0 ? s.weight * s.reps : 0;
+    for (const g of groups) {
+      bucket.volumeByGroup[g] = (bucket.volumeByGroup[g] ?? 0) + vol;
+      bucket.setsByGroup[g] = (bucket.setsByGroup[g] ?? 0) + 1;
+    }
+  }
+
+  return Array.from(byWeek.values()).sort((a, b) => (a.week < b.week ? 1 : -1));
+}
+
+export type WeeklyPatternCoverage = {
+  week: string;
+  weekStart: string;
+  /** Number of completed working sets per pattern. */
+  setsByPattern: Partial<Record<MovementPattern, number>>;
+  total: number;
+};
+
+export function buildWeeklyPatternCoverage(
+  sessions: SessionLog[],
+  sets: SetLog[],
+  lifts: Lift[],
+): WeeklyPatternCoverage[] {
+  const liftMap = new Map(lifts.map((l) => [l.id, l]));
+  const sessionDate = new Map(sessions.map((s) => [s.id, s.date]));
+  const byWeek = new Map<string, WeeklyPatternCoverage>();
+
+  for (const s of sets) {
+    if (s.status !== 'completed') continue;
+    const date = sessionDate.get(s.sessionLogId);
+    if (!date) continue;
+    const lift = liftMap.get(s.liftId);
+    if (!lift?.pattern) continue;
+    const wk = isoWeekOf(date);
+
+    let bucket = byWeek.get(wk);
+    if (!bucket) {
+      bucket = { week: wk, weekStart: startOfWeekIso(wk), setsByPattern: {}, total: 0 };
+      byWeek.set(wk, bucket);
+    }
+    bucket.setsByPattern[lift.pattern] = (bucket.setsByPattern[lift.pattern] ?? 0) + 1;
+    bucket.total += 1;
+  }
+
+  return Array.from(byWeek.values()).sort((a, b) => (a.week < b.week ? 1 : -1));
+}
+
+// ---------- Bodyweight ----------
+
+export type BodyweightPoint = {
+  date: string;
+  isoWeek: string;
+  bodyweight: number;
+  /** 4-week trailing average (inclusive of this point). */
+  rolling4w: number;
+};
+
+export function bodyweightSeries(logs: BodyweightLog[]): BodyweightPoint[] {
+  const sorted = [...logs].sort((a, b) => (a.date < b.date ? -1 : 1));
+  const out: BodyweightPoint[] = [];
+  for (let i = 0; i < sorted.length; i++) {
+    const window = sorted.slice(Math.max(0, i - 3), i + 1);
+    const avg = window.reduce((s, x) => s + x.bodyweight, 0) / window.length;
+    out.push({
+      date: sorted[i].date,
+      isoWeek: sorted[i].isoWeek,
+      bodyweight: sorted[i].bodyweight,
+      rolling4w: avg,
+    });
+  }
+  return out;
+}
+
+// ---------- Readiness ----------
+
+export type WeeklyReadiness = {
+  week: string;
+  weekStart: string;
+  avgSleep: number;
+  avgSoreness: number;
+  avgMotivation: number;
+  count: number;
+};
+
+export function buildWeeklyReadiness(readiness: ReadinessLog[]): WeeklyReadiness[] {
+  const byWeek = new Map<string, ReadinessLog[]>();
+  for (const r of readiness) {
+    if (!r.date) continue;
+    const wk = isoWeekOf(r.date);
+    const arr = byWeek.get(wk) ?? [];
+    arr.push(r);
+    byWeek.set(wk, arr);
+  }
+  const out: WeeklyReadiness[] = [];
+  for (const [week, rows] of byWeek) {
+    const n = rows.length;
+    out.push({
+      week,
+      weekStart: startOfWeekIso(week),
+      avgSleep: rows.reduce((s, r) => s + r.sleepHours, 0) / n,
+      avgSoreness: rows.reduce((s, r) => s + r.soreness, 0) / n,
+      avgMotivation: rows.reduce((s, r) => s + r.motivation, 0) / n,
+      count: n,
+    });
+  }
+  return out.sort((a, b) => (a.week < b.week ? 1 : -1));
+}
+
+// ---------- Session duration ----------
+
+export function sessionDurationMs(session: SessionLog, sets: SetLog[]): number | null {
+  if (!session.startedAt) return null;
+  const end = session.completedAt
+    ? Date.parse(session.completedAt)
+    : Math.max(
+        Date.parse(session.startedAt),
+        ...sets
+          .filter((s) => s.sessionLogId === session.id && s.loggedAt)
+          .map((s) => Date.parse(s.loggedAt!)),
+      );
+  const start = Date.parse(session.startedAt);
+  if (Number.isNaN(start) || Number.isNaN(end)) return null;
+  return Math.max(0, end - start);
+}
+
+export function fmtDurationShort(ms: number): string {
+  const totalSec = Math.floor(ms / 1000);
+  const h = Math.floor(totalSec / 3600);
+  const m = Math.floor((totalSec % 3600) / 60);
+  const s = totalSec % 60;
+  if (h > 0) return `${h}h ${m.toString().padStart(2, '0')}m`;
+  if (m > 0) return `${m}m ${s.toString().padStart(2, '0')}s`;
+  return `${s}s`;
 }
