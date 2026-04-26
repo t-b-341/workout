@@ -83,6 +83,39 @@ export const TEMPLATES: SessionTemplate[] = [
   { id: 'U3', name: 'Friday — Upper (Moderate)',  dayOfWeek: 5, group: 'upper', intensity: 'moderate' },
 ];
 
+/**
+ * Default template for "today" on the Today tab / Program picker.
+ *
+ * `SessionTemplate.dayOfWeek` is ISO-style **1 = Monday … 6 = Saturday**
+ * (no Sunday session in this split). `Date.getDay()` is **0 = Sunday …
+ * 6 = Saturday**, so we must not compare them directly.
+ *
+ * - Mon–Sat: the template whose `dayOfWeek` matches today.
+ * - Sunday: the **next** training day is Monday → template with the
+ *   smallest `dayOfWeek` (U1).
+ */
+export function defaultTemplateForLocalDate(
+  templates: SessionTemplate[],
+  at: Date = new Date(),
+): SessionTemplate {
+  if (templates.length === 0) {
+    return {
+      id: 'U1',
+      name: 'Monday — Upper (Heavy)',
+      dayOfWeek: 1,
+      group: 'upper',
+      intensity: 'heavy',
+    };
+  }
+  const byDow = [...templates].sort((a, b) => a.dayOfWeek - b.dayOfWeek);
+  const js = at.getDay();
+  if (js >= 1 && js <= 6) {
+    const hit = byDow.find((t) => t.dayOfWeek === js);
+    if (hit) return hit;
+  }
+  return byDow[0]!;
+}
+
 const p = (
   templateId: Prescription['templateId'],
   liftId: string,

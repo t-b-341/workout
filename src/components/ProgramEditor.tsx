@@ -5,10 +5,10 @@ import { useAllSessions, useAllSets, useLifts, usePrescriptions, useTemplates } 
 import { localUpsert, flushDirty, pullAll } from '@/lib/sync';
 import type { Prescription, SessionLog, SessionTemplate, SetLog, TemplateId } from '@/lib/types';
 import { getDb } from '@/lib/db';
+import { defaultTemplateForLocalDate } from '@/lib/seed';
 import { fmtDate, todayIso } from '@/lib/time';
 import { isoWeekOf, startOfWeekIso } from '@/lib/stats';
 import {
-  defaultMesoConfig,
   mesocyclePosition,
   saveMesoConfig,
   useMesoConfig,
@@ -16,10 +16,24 @@ import {
   type MesocyclePosition,
 } from '@/lib/mesocycle';
 
+/** Editable meso fields while the form is open — numbers as strings so the
+ *  user can clear the field and type a new value (controlled `number` +
+ *  `parseInt(v || '1')` forces empty back to 1 and blocks editing). */
+type MesocycleFormDraft = {
+  startDate: string;
+  accumulation: string;
+  deload: string;
+};
+
 export function ProgramEditor() {
   const templates = useTemplates();
   const lifts = useLifts();
-  const [activeId, setActiveId] = useState<TemplateId>('U1');
+  const defaultTemplateId = useMemo(
+    () => (templates?.length ? defaultTemplateForLocalDate(templates).id : 'U1'),
+    [templates],
+  );
+  const [templateOverride, setTemplateOverride] = useState<TemplateId | null>(null);
+  const activeId = templateOverride ?? defaultTemplateId;
   const prescriptions = usePrescriptions(activeId);
   const [exporting, setExporting] = useState(false);
 
@@ -80,7 +94,7 @@ export function ProgramEditor() {
         {templates.map((t) => (
           <button
             key={t.id}
-            onClick={() => setActiveId(t.id)}
+            onClick={() => setTemplateOverride(t.id)}
             className={`h-10 px-3 rounded-lg text-sm ${activeId === t.id ? 'bg-amber-500 text-zinc-950 font-medium' : 'bg-zinc-800'}`}
           >{t.id} · {t.name.split('—')[0].trim()}</button>
         ))}
@@ -355,7 +369,7 @@ function addWeeksToIsoWeek(weekLabel: string, n: number): string {
 function MesocycleSettings() {
   const cfg = useMesoConfig();
   const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState<MesocycleConfig | null>(null);
+  const [draft, setDraft] = useState<MesocycleFormDraft | null>(null);
 
   if (!cfg) return null;
 
@@ -364,16 +378,31 @@ function MesocycleSettings() {
   const startMonday = startOfWeekIso(isoWeekOf(cfg.startDate));
 
   function startEdit() {
-    setDraft(cfg ?? defaultMesoConfig());
+    if (!cfg) return;
+    setDraft({
+      startDate: cfg.startDate,
+      accumulation: String(cfg.accumulation),
+      deload: String(cfg.deload),
+    });
     setEditing(true);
   }
   async function save() {
     if (!draft) return;
+    const accParsed = parseInt(draft.accumulation.trim(), 10);
+    const delParsed = parseInt(draft.deload.trim(), 10);
+    const accumulation = Math.max(
+      1,
+      Math.min(12, Number.isFinite(accParsed) ? Math.floor(accParsed) : 1),
+    );
+    const deload = Math.max(
+      0,
+      Math.min(4, Number.isFinite(delParsed) ? Math.floor(delParsed) : 0),
+    );
     // Normalize: snap startDate to the Monday of its ISO week.
     const normalized: MesocycleConfig = {
       startDate: startOfWeekIso(isoWeekOf(draft.startDate)),
-      accumulation: Math.max(1, Math.floor(draft.accumulation)),
-      deload: Math.max(0, Math.floor(draft.deload)),
+      accumulation,
+      deload,
     };
     await saveMesoConfig(normalized);
     setEditing(false);
@@ -432,24 +461,24 @@ function MesocycleSettings() {
           <label className="flex flex-col gap-1 text-xs text-zinc-400">
             Accumulation weeks
             <input
-              type="number"
-              min={1}
-              max={12}
+              type="text"
+              inputMode="numeric"
+              pattern="[0-9]*"
               value={draft.accumulation}
-              onChange={(e) => setDraft({ ...draft, accumulation: parseInt(e.target.value || '1', 10) })}
-              className="h-10 px-2 rounded-lg bg-zinc-950 border border-zinc-800 text-sm"
+              onChange={(e) => setDraft({ ...draft, accumulation: e.target.value.replace(/\D/g, '') })}
+              className="h-10 px-2 rounded-lg bg-zinc-950 border border-zinc-800 text-sm font-mono"
               aria-label="Accumulation weeks per mesocycle"
             />
           </label>
           <label className="flex flex-col gap-1 text-xs text-zinc-400">
             Deload weeks
             <input
-              type="number"
-              min={0}
-              max={4}
+              type="text"
+              inputMode="numeric"
+              pattern="[0-9]*"
               value={draft.deload}
-              onChange={(e) => setDraft({ ...draft, deload: parseInt(e.target.value || '0', 10) })}
-              className="h-10 px-2 rounded-lg bg-zinc-950 border border-zinc-800 text-sm"
+              onChange={(e) => setDraft({ ...draft, deload: e.target.value.replace(/\D/g, '') })}
+              className="h-10 px-2 rounded-lg bg-zinc-950 border border-zinc-800 text-sm font-mono"
               aria-label="Deload weeks per mesocycle"
             />
           </label>

@@ -20,6 +20,7 @@ import { fmtDurationShort, sessionDurationMs } from '@/lib/stats';
 import { ReadinessForm } from './ReadinessForm';
 import { ReadinessSummary } from './ReadinessSummary';
 import { getDb } from '@/lib/db';
+import { defaultTemplateForLocalDate } from '@/lib/seed';
 
 export function TodayView() {
   const templates = useTemplates();
@@ -28,9 +29,8 @@ export function TodayView() {
   const [readinessSkipped, setReadinessSkipped] = useState(false);
 
   const suggested: SessionTemplate | undefined = useMemo(() => {
-    if (!templates) return undefined;
-    const today = new Date();
-    return templates.find((t) => t.dayOfWeek === today.getDay()) ?? templates[0];
+    if (!templates?.length) return undefined;
+    return defaultTemplateForLocalDate(templates);
   }, [templates]);
 
   const activeId = chosenTemplateId ?? suggested?.id ?? null;
