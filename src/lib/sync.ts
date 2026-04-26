@@ -46,6 +46,12 @@ function fromRemote<T>(row: Record<string, unknown>): T {
   const out: Record<string, unknown> = {};
   for (const [k, v] of Object.entries(row)) {
     if (k === 'user_id') continue;
+    // Postgres returns absent optional columns as `null`, but local writes
+    // store them as `undefined`. Storing `null` here breaks strict-equality
+    // checks like `setLog.side === undefined` (where the row was logged
+    // without a side, then synced). Drop nulls so optional fields stay
+    // `undefined` after a server round-trip.
+    if (v === null) continue;
     out[snakeToCamel(k)] = v;
   }
   // We carry updated_at through (as updatedAt) so consumers can do per-field

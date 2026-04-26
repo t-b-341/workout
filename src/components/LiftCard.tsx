@@ -78,7 +78,11 @@ export function LiftCard({ prescription, lift, session }: Props) {
   }
 
   function getSet(setIndex: number, side?: 'L' | 'R'): SetLog | undefined {
-    return liftSets.find((s) => s.setIndex === setIndex && s.side === side);
+    // Treat null and undefined as the same "no side" — older synced rows may
+    // have side: null from Postgres while local writes use undefined.
+    return liftSets.find(
+      (s) => s.setIndex === setIndex && (s.side ?? undefined) === side,
+    );
   }
 
   async function logSet(args: {

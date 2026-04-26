@@ -39,19 +39,28 @@ export function TodayView() {
   const prescriptions = usePrescriptions((activeId ?? undefined) as TemplateId | undefined);
   const readiness = useReadinessForSession(session?.id);
 
-  // Auto-create today's session row.
+  // Auto-create today's session row. We re-check Dexie inside the effect
+  // because `session` is briefly `undefined` while useLiveQuery resolves;
+  // a naive upsert would clobber an existing row's mode/deload/watchFlags/
+  // startedAt/completedAt every time the page reloaded.
   useEffect(() => {
     if (!activeId || session) return;
-    const id = `${todayIso()}-${activeId}`;
-    const row: SessionLog = {
-      id,
-      date: todayIso(),
-      templateId: activeId as TemplateId,
-      mode: 'standard',
-      deload: false,
-      watchFlags: [],
-    };
-    localUpsert('session_logs', row).catch(() => {});
+    let cancelled = false;
+    (async () => {
+      const id = `${todayIso()}-${activeId}`;
+      const existing = await getDb().session_logs.get(id);
+      if (cancelled || existing) return;
+      const row: SessionLog = {
+        id,
+        date: todayIso(),
+        templateId: activeId as TemplateId,
+        mode: 'standard',
+        deload: false,
+        watchFlags: [],
+      };
+      await localUpsert('session_logs', row);
+    })().catch(() => {});
+    return () => { cancelled = true; };
   }, [activeId, session]);
 
   if (!templates || !lifts || !activeTemplate) {

@@ -18,6 +18,9 @@ export function RestTimer({ since, label = 'rested' }: { since?: string; label?:
   const start = Date.parse(since);
   if (Number.isNaN(start)) return null;
   const elapsed = Math.max(0, Math.floor((now - start) / 1000));
+  // Cap at 30 min — past that the user isn't actually resting between sets
+  // (e.g. they reloaded the app hours later), so the timer becomes noise.
+  if (elapsed > 30 * 60) return null;
   const m = Math.floor(elapsed / 60);
   const s = elapsed % 60;
   const tone =
