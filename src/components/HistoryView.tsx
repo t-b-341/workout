@@ -10,6 +10,8 @@ import {
   useAllSets,
   useLifts,
 } from '@/lib/hooks';
+import { getDb } from '@/lib/db';
+import { localDelete, localUpsert } from '@/lib/sync';
 import { fmtDate } from '@/lib/time';
 import {
   bodyweightSeries,
@@ -120,10 +122,11 @@ function SessionsList({
           grouped.set(x.liftId, arr);
         }
         const r = readinessBySession.get(s.id);
+        const isEmpty = ss.length === 0 && !r;
         return (
           <div key={s.id} className="rounded-2xl bg-zinc-900 border border-zinc-800 p-4">
-            <div className="flex items-baseline justify-between">
-              <div>
+            <div className="flex items-baseline justify-between gap-2">
+              <div className="min-w-0">
                 <div className="text-sm font-medium">{fmtDate(s.date, 'EEE, MMM d')} · {s.templateId}</div>
                 <div className="text-xs text-zinc-500 mt-0.5">
                   {s.mode !== 'standard' && <span className="mr-2 text-amber-400">{s.mode}</span>}
@@ -134,6 +137,7 @@ function SessionsList({
                 </div>
                 {r && <ReadinessSummary readiness={r} dense />}
               </div>
+              <DeleteSessionButton session={s} setCount={ss.length} hasReadiness={!!r} isEmpty={isEmpty} />
             </div>
             <div className="mt-3 space-y-1">
               {Array.from(grouped.entries()).map(([liftId, ls]) => (
@@ -605,6 +609,72 @@ function BodyweightList({ logs }: { logs: BodyweightLog[] }) {
         ))}
       </div>
     </div>
+  );
+}
+
+function DeleteSessionButton({
+  session,
+  setCount,
+  hasReadiness,
+  isEmpty,
+}: {
+  session: SessionLog;
+  setCount: number;
+  hasReadiness: boolean;
+  isEmpty: boolean;
+}) {
+  const [busy, setBusy] = useState(false);
+
+  async function handleDelete() {
+    if (!isEmpty) {
+      const childParts = [
+        setCount > 0 ? `${setCount} set${setCount === 1 ? '' : 's'}` : null,
+        hasReadiness ? 'readiness check' : null,
+      ].filter(Boolean).join(' + ');
+      const ok = window.confirm(
+        `Delete ${fmtDate(session.date, 'EEE, MMM d')} · ${session.templateId}?\n` +
+        `This removes ${childParts} and cannot be undone.`,
+      );
+      if (!ok) return;
+    }
+    setBusy(true);
+    try {
+      const db = getDb();
+      // Mirror the server's ON DELETE CASCADE locally so Dexie doesn't keep
+      // orphan rows. set_logs and readiness_logs cascade, cardio_logs sets
+      // session_log_id to null on the server — we replicate that by clearing
+      // the field locally.
+      const childSets = await db.set_logs.where('sessionLogId').equals(session.id).toArray();
+      for (const x of childSets) {
+        await localDelete('set_logs', x.id, { skipDirty: true });
+      }
+      const childReadiness = await db.readiness_logs.where('sessionLogId').equals(session.id).toArray();
+      for (const x of childReadiness) {
+        await localDelete('readiness_logs', x.id, { skipDirty: true });
+      }
+      const childCardio = await db.cardio_logs.where('sessionLogId').equals(session.id).toArray();
+      for (const x of childCardio) {
+        await localUpsert('cardio_logs', { ...x, sessionLogId: undefined }, { skipDirty: true });
+      }
+      await localDelete('session_logs', session.id);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <button
+      onClick={handleDelete}
+      disabled={busy}
+      className={`shrink-0 text-xs px-2 h-7 rounded-md border ${
+        isEmpty
+          ? 'border-zinc-800 text-zinc-500 hover:text-zinc-300 hover:border-zinc-700'
+          : 'border-rose-900/60 text-rose-400 hover:bg-rose-950/30'
+      } disabled:opacity-50`}
+      aria-label={isEmpty ? 'Remove empty session' : 'Delete session'}
+    >
+      {busy ? '…' : isEmpty ? 'Remove' : 'Delete'}
+    </button>
   );
 }
 
