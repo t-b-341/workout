@@ -29,14 +29,20 @@ export type RecoveryPrefs = {
   };
 };
 
+/** Default macro targets; carbs rounded from remaining kcal after protein & fat. */
+const DEFAULT_CALORIES = 2910;
+const DEFAULT_PROTEIN_G = 185;
+const DEFAULT_FAT_G = 75;
+const DEFAULT_CARBS_G = 374;
+
 export const DEFAULT_RECOVERY_PREFS: RecoveryPrefs = {
   hydrationTargetMl: DEFAULT_HYDRATION_TARGET_ML,
   bottleRefillOz: 16,
   nutritionTargets: {
-    calories: 2600,
-    proteinG: 200,
-    carbsG: 260,
-    fatG: 75,
+    calories: DEFAULT_CALORIES,
+    proteinG: DEFAULT_PROTEIN_G,
+    carbsG: DEFAULT_CARBS_G,
+    fatG: DEFAULT_FAT_G,
   },
 };
 
