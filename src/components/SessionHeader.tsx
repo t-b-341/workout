@@ -4,6 +4,7 @@ import { useState } from 'react';
 import type { SessionLog, SessionMode, SessionTemplate, WatchFlag } from '@/lib/types';
 import { localUpsert } from '@/lib/sync';
 import { fmtDate } from '@/lib/time';
+import { effortLabel } from '@/lib/effort';
 
 const FLAGS: { id: WatchFlag; label: string }[] = [
   { id: 'erectors', label: 'Erectors' },
@@ -36,6 +37,9 @@ export function SessionHeader({
       ? session.watchFlags.filter((x) => x !== f)
       : [...session.watchFlags, f];
     await localUpsert('session_logs', { ...session, watchFlags: next });
+  }
+  async function setEffortScale(effortScale: -1 | 0 | 1) {
+    await localUpsert('session_logs', { ...session, effortScale });
   }
 
   const modeLabel = session.mode === 'standard' ? 'Standard' : session.mode === 'light' ? 'Light' : 'Skipped';
@@ -71,6 +75,9 @@ export function SessionHeader({
           onClick={toggleDeload}
           className={`h-9 px-3 rounded-lg text-sm ${session.deload ? 'bg-indigo-700' : 'bg-zinc-800'}`}
         >Deload: {session.deload ? 'On' : 'Off'}</button>
+        <span className="h-9 px-3 rounded-lg text-sm bg-zinc-800 inline-flex items-center">
+          Effort: {effortLabel(session.effortScale ?? 0)}
+        </span>
         {FLAGS.map((f) => {
           const on = session.watchFlags.includes(f.id);
           return (
@@ -105,6 +112,34 @@ export function SessionHeader({
           Light day active — main lifts shown at −20%. Progression won&apos;t advance even if you hit the top of the range.
         </div>
       )}
+      <div className="rounded-xl border border-zinc-800 bg-zinc-900 p-3 space-y-2">
+        <div className="text-xs text-zinc-400">
+          Effort scaling (no RPE needed): choose how hard today should feel.
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={() => setEffortScale(-1)}
+            className={`h-9 px-3 rounded-lg text-sm ${(session.effortScale ?? 0) === -1 ? 'bg-amber-700' : 'bg-zinc-800'}`}
+          >
+            Easier (−10% load, −1 set)
+          </button>
+          <button
+            type="button"
+            onClick={() => setEffortScale(0)}
+            className={`h-9 px-3 rounded-lg text-sm ${(session.effortScale ?? 0) === 0 ? 'bg-emerald-700' : 'bg-zinc-800'}`}
+          >
+            Normal
+          </button>
+          <button
+            type="button"
+            onClick={() => setEffortScale(1)}
+            className={`h-9 px-3 rounded-lg text-sm ${(session.effortScale ?? 0) === 1 ? 'bg-indigo-700' : 'bg-zinc-800'}`}
+          >
+            Harder (+5% load, +1 set)
+          </button>
+        </div>
+      </div>
       {session.deload && (
         <div className="text-xs text-indigo-400">
           Deload active — mains shown at 60%; halve accessory sets. No progression.

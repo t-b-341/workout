@@ -123,6 +123,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     { href: '/', label: 'Today' },
     { href: '/history', label: 'History' },
     { href: '/cardio', label: 'Cardio' },
+    { href: '/recovery', label: 'Recovery' },
     { href: '/program', label: 'Program' },
   ];
 
@@ -130,7 +131,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     <div className="min-h-dvh flex flex-col">
       <main className="flex-1 pb-24">{children}</main>
       <nav className="fixed bottom-0 inset-x-0 border-t border-zinc-800 bg-zinc-950/95 backdrop-blur supports-[padding:max(0px)]:pb-[max(env(safe-area-inset-bottom),0px)]">
-        <div className="grid grid-cols-4 mx-auto max-w-2xl">
+        <div className="grid grid-cols-5 mx-auto max-w-2xl">
           {tabs.map((t) => {
             const active =
               pathname === t.href ||

@@ -4,12 +4,15 @@ import Dexie, { type Table } from 'dexie';
 import type {
   BodyweightLog,
   CardioLog,
+  HydrationLog,
   Lift,
+  NutritionLog,
   Prescription,
   ReadinessLog,
   SessionLog,
   SessionTemplate,
   SetLog,
+  SleepLog,
 } from './types';
 
 export type DirtyRow = {
@@ -20,7 +23,10 @@ export type DirtyRow = {
     | 'set_logs'
     | 'cardio_logs'
     | 'bodyweight_logs'
-    | 'readiness_logs';
+    | 'readiness_logs'
+    | 'nutrition_logs'
+    | 'hydration_logs'
+    | 'sleep_logs';
   rowId: string;
   op: 'upsert' | 'delete';
   /** Server time when last enqueued (for ordering). */
@@ -36,6 +42,9 @@ export class WorkoutDB extends Dexie {
   cardio_logs!: Table<CardioLog, string>;
   bodyweight_logs!: Table<BodyweightLog, string>;
   readiness_logs!: Table<ReadinessLog, string>;
+  nutrition_logs!: Table<NutritionLog, string>;
+  hydration_logs!: Table<HydrationLog, string>;
+  sleep_logs!: Table<SleepLog, string>;
   dirty!: Table<DirtyRow, string>;
   meta!: Table<{ key: string; value: unknown }, string>;
 
@@ -70,10 +79,27 @@ export class WorkoutDB extends Dexie {
       dirty: 'id, table, rowId, enqueuedAt',
       meta: 'key',
     });
+
+    // v3 — add recovery-supporting daily signal logs.
+    this.version(3).stores({
+      lifts: 'id, name',
+      templates: 'id, dayOfWeek',
+      prescriptions: 'id, templateId, liftId, [templateId+order]',
+      session_logs: 'id, date, templateId',
+      set_logs: 'id, sessionLogId, liftId, [sessionLogId+liftId+setIndex]',
+      cardio_logs: 'id, date, sessionLogId',
+      bodyweight_logs: 'id, date, isoWeek',
+      readiness_logs: 'id, sessionLogId, date',
+      nutrition_logs: 'id, date',
+      hydration_logs: 'id, date',
+      sleep_logs: 'id, date',
+      dirty: 'id, table, rowId, enqueuedAt',
+      meta: 'key',
+    });
   }
 }
 
-export const SCHEMA_VERSION = 2;
+export const SCHEMA_VERSION = 3;
 
 let _db: WorkoutDB | null = null;
 export function getDb(): WorkoutDB {

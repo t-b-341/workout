@@ -21,6 +21,7 @@ import { ReadinessForm } from './ReadinessForm';
 import { ReadinessSummary } from './ReadinessSummary';
 import { getDb } from '@/lib/db';
 import { defaultTemplateForLocalDate } from '@/lib/seed';
+import { applyEffortScale, effortLabel } from '@/lib/effort';
 
 export function TodayView() {
   const templates = useTemplates();
@@ -109,14 +110,21 @@ export function TodayView() {
           {(prescriptions ?? []).map((p) => {
             const lift = lifts.find((l) => l.id === p.liftId);
             if (!lift) return null;
-            const adjusted = applySessionMode(p, session);
+            const adjusted = applyEffortScale(applySessionMode(p, session), session);
             return <LiftCard key={p.id} prescription={adjusted} lift={lift} session={session} />;
           })}
         </div>
       )}
 
       {!needsReadiness && session.mode !== 'skip' && (
-        <FinishSessionButton session={session} prescriptions={prescriptions ?? []} />
+        <>
+          {(session.effortScale ?? 0) !== 0 && (
+            <div className="text-xs text-zinc-500 text-center">
+              Effort mode active: {effortLabel(session.effortScale ?? 0)}
+            </div>
+          )}
+          <FinishSessionButton session={session} prescriptions={prescriptions ?? []} />
+        </>
       )}
     </div>
   );

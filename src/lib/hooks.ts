@@ -7,10 +7,13 @@ import { isoWeekString, weekRange, todayIso } from './time';
 import type {
   BodyweightLog,
   CardioLog,
+  HydrationLog,
+  NutritionLog,
   Prescription,
   ReadinessLog,
   SessionLog,
   SetLog,
+  SleepLog,
   TemplateId,
 } from './types';
 
@@ -128,4 +131,25 @@ export function useAllReadiness(): ReadinessLog[] | undefined {
     const all = await getDb().readiness_logs.toArray();
     return all.sort((a, b) => (a.date < b.date ? 1 : -1));
   }, []);
+}
+
+export function useNutritionForDate(date: string): NutritionLog | undefined {
+  return useLiveQuery(async () => {
+    const matches = await getDb().nutrition_logs.where('date').equals(date).toArray();
+    return matches[0];
+  }, [date]);
+}
+
+export function useHydrationForDate(date: string): HydrationLog | undefined {
+  return useLiveQuery(async () => {
+    const matches = await getDb().hydration_logs.where('date').equals(date).toArray();
+    return matches[0];
+  }, [date]);
+}
+
+export function useSleepForDate(date: string): SleepLog | undefined {
+  return useLiveQuery(async () => {
+    const matches = await getDb().sleep_logs.where('date').equals(date).toArray();
+    return matches[0];
+  }, [date]);
 }

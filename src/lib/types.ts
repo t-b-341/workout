@@ -123,6 +123,11 @@ export type SessionLog = {
   /** ISO timestamp set on first interaction. */
   startedAt?: string;
   completedAt?: string;
+  /**
+   * Non-RPE effort scaler for this session:
+   * -1 = easier, 0 = normal, 1 = harder.
+   */
+  effortScale?: -1 | 0 | 1;
 };
 
 export type CardioType = 'liss' | 'intervals';
@@ -168,4 +173,60 @@ export type ReadinessLog = {
   bodyweight?: number;
   /** ISO timestamp (for ordering in case of multiple). */
   createdAt: string;
+};
+
+export type NutritionLog = {
+  id: string;
+  /** ISO date YYYY-MM-DD. */
+  date: string;
+  caloriesTarget: number;
+  caloriesActual: number;
+  proteinTargetG: number;
+  proteinActualG: number;
+  carbsTargetG: number;
+  carbsActualG: number;
+  fatTargetG: number;
+  fatActualG: number;
+  mealsLoggedCount: number;
+};
+
+export type HydrationLog = {
+  id: string;
+  /** ISO date YYYY-MM-DD. */
+  date: string;
+  waterTargetMl: number;
+  waterActualMl: number;
+  electrolytes: boolean;
+  /** 1 = very clear, 8 = very dark. */
+  urineColor?: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8;
+};
+
+export type SleepLog = {
+  id: string;
+  /** ISO date YYYY-MM-DD. */
+  date: string;
+  sleepHours: number;
+  /** 1 = poor, 5 = excellent. */
+  sleepQuality: 1 | 2 | 3 | 4 | 5;
+  sleepOnsetLatencyMin?: number;
+  wakeCount?: number;
+};
+
+export type RecoveryBand = 'push' | 'normal' | 'conservative' | 'recovery';
+
+export type RecoveryPlan = {
+  band: RecoveryBand;
+  intensityNote: string;
+  cardioNote: string;
+  nutritionNote: string;
+};
+
+export type RecoveryScore = {
+  date: string;
+  sleepScore: number;
+  hydrationScore: number;
+  nutritionScore: number;
+  readinessScore: number;
+  compositeScore: number;
+  band: RecoveryBand;
 };

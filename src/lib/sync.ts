@@ -7,10 +7,13 @@ import { LIFTS, PRESCRIPTIONS, TEMPLATES } from './seed';
 import type {
   BodyweightLog,
   CardioLog,
+  HydrationLog,
+  NutritionLog,
   Prescription,
   ReadinessLog,
   SessionLog,
   SetLog,
+  SleepLog,
 } from './types';
 
 type RemoteTable = DirtyRow['table'];
@@ -22,6 +25,9 @@ const TABLE_TO_LOCAL: Record<RemoteTable, keyof ReturnType<typeof getDb> & strin
   cardio_logs: 'cardio_logs',
   bodyweight_logs: 'bodyweight_logs',
   readiness_logs: 'readiness_logs',
+  nutrition_logs: 'nutrition_logs',
+  hydration_logs: 'hydration_logs',
+  sleep_logs: 'sleep_logs',
 };
 
 const ALL_TABLES: RemoteTable[] = [
@@ -31,6 +37,9 @@ const ALL_TABLES: RemoteTable[] = [
   'cardio_logs',
   'bodyweight_logs',
   'readiness_logs',
+  'nutrition_logs',
+  'hydration_logs',
+  'sleep_logs',
 ];
 
 const camelToSnake = (s: string) => s.replace(/[A-Z]/g, (m) => '_' + m.toLowerCase());
@@ -120,6 +129,15 @@ async function persistRows(table: RemoteTable, rows: RowPayload[]) {
       return;
     case 'readiness_logs':
       await db.readiness_logs.bulkPut(rows.map((r) => fromRemote<ReadinessLog>(r)));
+      return;
+    case 'nutrition_logs':
+      await db.nutrition_logs.bulkPut(rows.map((r) => fromRemote<NutritionLog>(r)));
+      return;
+    case 'hydration_logs':
+      await db.hydration_logs.bulkPut(rows.map((r) => fromRemote<HydrationLog>(r)));
+      return;
+    case 'sleep_logs':
+      await db.sleep_logs.bulkPut(rows.map((r) => fromRemote<SleepLog>(r)));
       return;
   }
 }
