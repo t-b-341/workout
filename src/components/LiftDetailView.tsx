@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { useMemo } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { getDb } from '@/lib/db';
-import { useAllSessions, useAllSets, useLifts } from '@/lib/hooks';
+import { useAllSets, useLifts, useSessionsAfterReadiness } from '@/lib/hooks';
 import { fmtDate } from '@/lib/time';
 import { buildLiftHistory, est1RM, liftPRs } from '@/lib/stats';
 import { MiniBars, Sparkline } from './Sparkline';
@@ -13,7 +13,7 @@ import type { Prescription } from '@/lib/types';
 export function LiftDetailView({ liftId }: { liftId: string }) {
   const lifts = useLifts();
   const allSets = useAllSets();
-  const allSessions = useAllSessions();
+  const allSessions = useSessionsAfterReadiness();
   const prescriptions = useLiveQuery(async () => {
     const all = await getDb().prescriptions.where('liftId').equals(liftId).toArray();
     return all.sort((a, b) => a.templateId.localeCompare(b.templateId));

@@ -69,9 +69,15 @@ export function ReadinessForm({
         });
       }
 
+      const completedAt = new Date().toISOString();
+      let nextSession: SessionLog = {
+        ...session,
+        readinessCompletedAt: completedAt,
+      };
       if (applyMode && rec.mode !== session.mode) {
-        await localUpsert('session_logs', { ...session, mode: rec.mode });
+        nextSession = { ...nextSession, mode: rec.mode };
       }
+      await localUpsert('session_logs', nextSession);
       onComplete();
     } finally {
       setBusy(false);

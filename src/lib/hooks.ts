@@ -1,9 +1,11 @@
 'use client';
 
+import { useMemo } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { getDb } from './db';
 import { CARDIO_WEEKLY_TARGET_MIN } from './seed';
 import { isoWeekString, weekRange, todayIso } from './time';
+import { filterSessionsAfterReadiness } from './sessionFilters';
 import type {
   BodyweightLog,
   CardioLog,
@@ -141,6 +143,16 @@ export function useAllReadiness(): ReadinessLog[] | undefined {
     const all = await getDb().readiness_logs.toArray();
     return all.sort((a, b) => (a.date < b.date ? 1 : -1));
   }, []);
+}
+
+/** Sessions that appear in History / analytics (readiness done or legacy with work logged). */
+export function useSessionsAfterReadiness(): SessionLog[] | undefined {
+  const sessions = useAllSessions();
+  const readiness = useAllReadiness();
+  return useMemo(() => {
+    if (!sessions || !readiness) return undefined;
+    return filterSessionsAfterReadiness(sessions, readiness);
+  }, [sessions, readiness]);
 }
 
 export function useNutritionForDate(date: string): NutritionLog | undefined {

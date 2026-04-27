@@ -6,7 +6,7 @@ import {
   useAllBodyweight,
   useAllCardio,
   useAllReadiness,
-  useAllSessions,
+  useSessionsAfterReadiness,
   useAllSets,
   useLifts,
 } from '@/lib/hooks';
@@ -49,7 +49,7 @@ const TABS: Array<{ id: Tab; label: string }> = [
 export function HistoryView() {
   const [tab, setTab] = useState<Tab>('sessions');
   const lifts = useLifts();
-  const sessions = useAllSessions();
+  const sessions = useSessionsAfterReadiness();
   const allSets = useAllSets();
   const cardio = useAllCardio();
   const bodyweights = useAllBodyweight();

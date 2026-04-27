@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { useAllSessions, useAllSets, useLifts, usePrescriptions, useTemplates } from '@/lib/hooks';
+import { useAllSets, useLifts, usePrescriptions, useSessionsAfterReadiness, useTemplates } from '@/lib/hooks';
 import { localUpsert, flushDirty, pullAll } from '@/lib/sync';
 import type { Prescription, SessionLog, SessionTemplate, SetLog, TemplateId } from '@/lib/types';
 import { getDb } from '@/lib/db';
@@ -176,7 +176,7 @@ type ScheduleWeek = {
 };
 
 function Schedule({ templates }: { templates: SessionTemplate[] }) {
-  const sessions = useAllSessions();
+  const sessions = useSessionsAfterReadiness();
   const sets = useAllSets();
   const meso = useMesoConfig();
   const [weeksToShow, setWeeksToShow] = useState<WeekCount>(4);

@@ -98,7 +98,13 @@ export function TodayView() {
           />
           <button
             type="button"
-            onClick={() => setReadinessSkipped(true)}
+            onClick={async () => {
+              await localUpsert('session_logs', {
+                ...session,
+                readinessCompletedAt: new Date().toISOString(),
+              });
+              setReadinessSkipped(true);
+            }}
             className="w-full text-xs text-zinc-500 underline underline-offset-2"
           >Skip readiness check</button>
         </>

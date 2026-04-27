@@ -128,6 +128,8 @@ export type SessionLog = {
    * -1 = easier, 0 = normal, 1 = harder.
    */
   effortScale?: -1 | 0 | 1;
+  /** Set when the readiness check is submitted or skipped — gates History until present. */
+  readinessCompletedAt?: string;
 };
 
 export type CardioType = 'liss' | 'intervals';
