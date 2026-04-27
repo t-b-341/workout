@@ -121,9 +121,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   const tabs = [
     { href: '/', label: 'Today' },
+    { href: '/recovery', label: 'Daily Check-In' },
     { href: '/history', label: 'History' },
     { href: '/cardio', label: 'Cardio' },
-    { href: '/recovery', label: 'Recovery' },
     { href: '/program', label: 'Program' },
   ];
 
