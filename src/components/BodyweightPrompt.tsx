@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { useThisWeekBodyweight } from '@/lib/hooks';
 import { localUpsert } from '@/lib/sync';
-import { isoWeekString, todayIso } from '@/lib/time';
+import { isoWeekString, isoWeekStringFromIsoDate, todayIso } from '@/lib/time';
 
 /** Shows on Tuesday (template L1) if no entry this ISO week. */
 export function BodyweightPrompt({ visible }: { visible: boolean }) {
@@ -30,11 +30,11 @@ export function BodyweightPrompt({ visible }: { visible: boolean }) {
         <span className="text-zinc-400 text-sm">lb</span>
         <button
           onClick={async () => {
-            const wk = isoWeekString();
+            const d = todayIso();
             await localUpsert('bodyweight_logs', {
-              id: `bw-${wk}`,
-              date: todayIso(),
-              isoWeek: wk,
+              id: `bw-${d}`,
+              date: d,
+              isoWeek: isoWeekStringFromIsoDate(d),
               bodyweight: bw,
             });
             setSubmitted(true);

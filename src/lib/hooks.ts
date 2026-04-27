@@ -87,12 +87,22 @@ export function useThisWeekCardio() {
   }, []);
 }
 
+/** Latest bodyweight entry this ISO week (any day), or undefined. */
 export function useThisWeekBodyweight() {
   return useLiveQuery(async () => {
     const wk = isoWeekString();
     const matches = await getDb().bodyweight_logs.where('isoWeek').equals(wk).toArray();
-    return matches[0];
+    if (matches.length === 0) return undefined;
+    return matches.sort((a, b) => (a.date < b.date ? 1 : -1))[0];
   }, []);
+}
+
+/** Bodyweight row for a specific calendar day (`YYYY-MM-DD`). */
+export function useBodyweightForDate(date: string): BodyweightLog | undefined {
+  return useLiveQuery(async () => {
+    const matches = await getDb().bodyweight_logs.where('date').equals(date).toArray();
+    return matches[0];
+  }, [date]);
 }
 
 export function useReadinessForSession(sessionId?: string): ReadinessLog | undefined {

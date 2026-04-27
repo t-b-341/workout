@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { localUpsert } from '@/lib/sync';
-import { isoWeekString, todayIso } from '@/lib/time';
+import { isoWeekStringFromIsoDate } from '@/lib/time';
 import { useThisWeekBodyweight } from '@/lib/hooks';
 import type { ReadinessLog, SessionLog, SessionMode } from '@/lib/types';
 
@@ -61,11 +61,10 @@ export function ReadinessForm({
       await localUpsert('readiness_logs', row);
 
       if (showBwInput) {
-        const wk = isoWeekString();
         await localUpsert('bodyweight_logs', {
-          id: `bw-${wk}`,
-          date: todayIso(),
-          isoWeek: wk,
+          id: `bw-${session.date}`,
+          date: session.date,
+          isoWeek: isoWeekStringFromIsoDate(session.date),
           bodyweight: bw,
         });
       }

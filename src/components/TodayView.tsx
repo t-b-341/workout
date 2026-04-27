@@ -22,6 +22,7 @@ import { ReadinessSummary } from './ReadinessSummary';
 import { getDb } from '@/lib/db';
 import { defaultTemplateForLocalDate } from '@/lib/seed';
 import { applyEffortScale, effortLabel } from '@/lib/effort';
+import { BodyweightQuickLog } from './BodyweightQuickLog';
 
 export function TodayView() {
   const templates = useTemplates();
@@ -81,6 +82,11 @@ export function TodayView() {
         session={session}
         templates={templates}
         onTemplateChange={(t) => setChosenTemplateId(t.id)}
+      />
+
+      <BodyweightQuickLog
+        date={todayIso()}
+        subtitle="Doesn&apos;t have to be lower day — updates the BW chart for this date."
       />
 
       {needsReadiness ? (

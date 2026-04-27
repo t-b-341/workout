@@ -9,6 +9,11 @@ export function isoWeekString(d: Date = new Date()): string {
   return `${getISOWeekYear(d)}-W${wk}`;
 }
 
+/** ISO week string for a calendar date `YYYY-MM-DD` (local noon parse). */
+export function isoWeekStringFromIsoDate(dateIso: string): string {
+  return isoWeekString(new Date(`${dateIso}T12:00:00`));
+}
+
 export function weekRange(d: Date = new Date()): { start: Date; end: Date } {
   return { start: startOfISOWeek(d), end: endOfISOWeek(d) };
 }

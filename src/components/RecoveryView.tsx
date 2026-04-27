@@ -19,6 +19,7 @@ import {
 import { localUpsert } from '@/lib/sync';
 import { todayIso } from '@/lib/time';
 import type { HydrationLog, NutritionLog, TemplateId } from '@/lib/types';
+import { BodyweightQuickLog } from './BodyweightQuickLog';
 
 function clamp(n: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, n));
@@ -56,6 +57,7 @@ export function RecoveryView() {
       </div>
 
       <SleepSection date={date} existing={sleep} />
+      <BodyweightQuickLog date={date} />
       {prefs && (
         <>
           <HydrationSection date={date} existing={hydration} prefs={prefs} />
