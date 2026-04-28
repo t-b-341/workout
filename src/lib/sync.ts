@@ -4,6 +4,7 @@ import type { RealtimeChannel } from '@supabase/supabase-js';
 import { getDb, type DirtyRow } from './db';
 import { createClient } from './supabase/client';
 import { LIFTS, PRESCRIPTIONS, TEMPLATES } from './seed';
+import { fromRemote, toRemote } from './syncCodec';
 import type {
   BodyweightLog,
   CardioLog,
@@ -41,32 +42,6 @@ const ALL_TABLES: RemoteTable[] = [
   'hydration_logs',
   'sleep_logs',
 ];
-
-const camelToSnake = (s: string) => s.replace(/[A-Z]/g, (m) => '_' + m.toLowerCase());
-const snakeToCamel = (s: string) => s.replace(/_([a-z])/g, (_, c: string) => c.toUpperCase());
-
-function toRemote<T extends Record<string, unknown>>(row: T): Record<string, unknown> {
-  const out: Record<string, unknown> = {};
-  for (const [k, v] of Object.entries(row)) out[camelToSnake(k)] = v;
-  return out;
-}
-
-function fromRemote<T>(row: Record<string, unknown>): T {
-  const out: Record<string, unknown> = {};
-  for (const [k, v] of Object.entries(row)) {
-    if (k === 'user_id') continue;
-    // Postgres returns absent optional columns as `null`, but local writes
-    // store them as `undefined`. Storing `null` here breaks strict-equality
-    // checks like `setLog.side === undefined` (where the row was logged
-    // without a side, then synced). Drop nulls so optional fields stay
-    // `undefined` after a server round-trip.
-    if (v === null) continue;
-    out[snakeToCamel(k)] = v;
-  }
-  // We carry updated_at through (as updatedAt) so consumers can do per-field
-  // merge if desired. Components ignore unknown fields.
-  return out as T;
-}
 
 const WATERMARK_PREFIX = 'sync:watermark:';
 

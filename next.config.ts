@@ -1,6 +1,8 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  // Playwright uses 127.0.0.1 while the dev server may print localhost — avoids HMR cross-origin noise.
+  allowedDevOrigins: ["127.0.0.1"],
   async headers() {
     return [
       {

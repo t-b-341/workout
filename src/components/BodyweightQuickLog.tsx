@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useAllBodyweight, useBodyweightForDate } from '@/lib/hooks';
 import { flushDirty, localUpsert } from '@/lib/sync';
 import { isoWeekStringFromIsoDate } from '@/lib/time';
@@ -15,25 +15,42 @@ type Props = {
 export function BodyweightQuickLog({ date, subtitle }: Props) {
   const todayRow = useBodyweightForDate(date);
   const allBw = useAllBodyweight();
-  const [lb, setLb] = useState(200);
-  const seededFromHistory = useRef(false);
 
-  useEffect(() => {
-    seededFromHistory.current = false;
-  }, [date]);
-
-  useEffect(() => {
-    if (todayRow) {
-      setLb(todayRow.bodyweight);
-      return;
-    }
-    if (allBw === undefined) return;
-    const last = allBw[allBw.length - 1];
-    if (!last) return;
-    if (seededFromHistory.current) return;
-    seededFromHistory.current = true;
-    setLb(last.bodyweight);
+  const seed = useMemo(() => {
+    if (todayRow) return todayRow.bodyweight;
+    if (allBw && allBw.length > 0) return allBw[allBw.length - 1].bodyweight;
+    return 200;
   }, [todayRow, allBw]);
+
+  const formKey = useMemo(() => {
+    if (todayRow) return `bw:${todayRow.date}:${todayRow.bodyweight}`;
+    if (allBw === undefined) return `bw:loading:${date}`;
+    return `bw:hist:${date}:${allBw.length}:${allBw[allBw.length - 1]?.bodyweight ?? 0}`;
+  }, [todayRow, allBw, date]);
+
+  return (
+    <BodyweightQuickLogForm
+      key={formKey}
+      date={date}
+      subtitle={subtitle}
+      initialLb={seed}
+      todayRow={todayRow}
+    />
+  );
+}
+
+function BodyweightQuickLogForm({
+  date,
+  subtitle,
+  initialLb,
+  todayRow,
+}: {
+  date: string;
+  subtitle?: string;
+  initialLb: number;
+  todayRow: ReturnType<typeof useBodyweightForDate>;
+}) {
+  const [lb, setLb] = useState(initialLb);
 
   async function save() {
     await localUpsert('bodyweight_logs', {

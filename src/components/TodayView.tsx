@@ -31,6 +31,7 @@ import { defaultTemplateForLocalDate } from '@/lib/seed';
 import { applyEffortScale, effortLabel } from '@/lib/effort';
 import { BodyweightQuickLog } from './BodyweightQuickLog';
 import { SessionRecapSheet } from './SessionRecapSheet';
+import { SyncStatusBar } from './SyncStatusBar';
 
 export function TodayView() {
   const templates = useTemplates();
@@ -53,7 +54,7 @@ export function TodayView() {
   const completeHighlights = useMemo(() => {
     if (!session?.completedAt || !allSets || !lifts) return null;
     return sessionFinishHighlights(session.id, allSets, lifts);
-  }, [session?.completedAt, session?.id, allSets, lifts]);
+  }, [session, allSets, lifts]);
 
   // Auto-create today's session row. We re-check Dexie inside the effect
   // because `session` is briefly `undefined` while useLiveQuery resolves;
@@ -89,6 +90,7 @@ export function TodayView() {
 
   return (
     <div className="max-w-2xl mx-auto p-4 space-y-4">
+      <SyncStatusBar />
       {session.completedAt && (
         <SessionCompleteBanner
           session={session}

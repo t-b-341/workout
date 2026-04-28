@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import {
   useHydrationForDate,
   useNutritionForDate,
@@ -88,15 +88,19 @@ function SleepSection({
   date: string;
   existing: ReturnType<typeof useSleepForDate>;
 }) {
-  const [hours, setHours] = useState(existing?.sleepHours ?? 8);
-  const [quality, setQuality] = useState(existing?.sleepQuality ?? 3);
+  const formKey = existing?.id ?? `sleep-new-${date}`;
+  return <SleepSectionForm key={formKey} date={date} initial={existing} />;
+}
 
-  useEffect(() => {
-    if (existing) {
-      setHours(existing.sleepHours);
-      setQuality(existing.sleepQuality);
-    }
-  }, [existing]);
+function SleepSectionForm({
+  date,
+  initial,
+}: {
+  date: string;
+  initial: ReturnType<typeof useSleepForDate>;
+}) {
+  const [hours, setHours] = useState(initial?.sleepHours ?? 8);
+  const [quality, setQuality] = useState(initial?.sleepQuality ?? 3);
 
   return (
     <div className="rounded-2xl bg-zinc-900 border border-zinc-800 p-4 space-y-3">
@@ -160,18 +164,24 @@ function HydrationSection({
   existing: HydrationLog | undefined;
   prefs: RecoveryPrefs;
 }) {
-  const [targetMl, setTargetMl] = useState(
-    () => existing?.waterTargetMl ?? prefs.hydrationTargetMl,
-  );
-  const [actualMl, setActualMl] = useState(() => existing?.waterActualMl ?? 0);
-  const [electrolytes, setElectrolytes] = useState(existing?.electrolytes ?? false);
+  const formKey = existing?.id ?? `hydration-new-${date}`;
+  return <HydrationSectionForm key={formKey} date={date} existing={existing} prefs={prefs} />;
+}
 
-  useEffect(() => {
-    if (!existing) return;
-    setTargetMl(existing.waterTargetMl);
-    setActualMl(existing.waterActualMl);
-    setElectrolytes(existing.electrolytes);
-  }, [existing?.id]);
+function HydrationSectionForm({
+  date,
+  existing,
+  prefs,
+}: {
+  date: string;
+  existing: HydrationLog | undefined;
+  prefs: RecoveryPrefs;
+}) {
+  const [targetMl, setTargetMl] = useState(
+    existing?.waterTargetMl ?? prefs.hydrationTargetMl,
+  );
+  const [actualMl, setActualMl] = useState(existing?.waterActualMl ?? 0);
+  const [electrolytes, setElectrolytes] = useState(existing?.electrolytes ?? false);
 
   function addOz(oz: number) {
     setActualMl((a) => a + usFlozToMl(oz));
@@ -332,33 +342,33 @@ function NutritionSection({
   existing: NutritionLog | undefined;
   prefs: RecoveryPrefs;
 }) {
+  const formKey = existing?.id ?? `nutrition-new-${date}`;
+  return <NutritionSectionForm key={formKey} date={date} existing={existing} prefs={prefs} />;
+}
+
+function NutritionSectionForm({
+  date,
+  existing,
+  prefs,
+}: {
+  date: string;
+  existing: NutritionLog | undefined;
+  prefs: RecoveryPrefs;
+}) {
   const nt = prefs.nutritionTargets;
   const [calT, setCalT] = useState(
-    () => existing?.caloriesTarget ?? nt.calories,
+    existing?.caloriesTarget ?? nt.calories,
   );
-  const [pT, setPT] = useState(() => existing?.proteinTargetG ?? nt.proteinG);
-  const [cT, setCT] = useState(() => existing?.carbsTargetG ?? nt.carbsG);
-  const [fT, setFT] = useState(() => existing?.fatTargetG ?? nt.fatG);
+  const [pT, setPT] = useState(existing?.proteinTargetG ?? nt.proteinG);
+  const [cT, setCT] = useState(existing?.carbsTargetG ?? nt.carbsG);
+  const [fT, setFT] = useState(existing?.fatTargetG ?? nt.fatG);
 
-  const [calA, setCalA] = useState(() => existing?.caloriesActual ?? 0);
-  const [pA, setPA] = useState(() => existing?.proteinActualG ?? 0);
-  const [cA, setCA] = useState(() => existing?.carbsActualG ?? 0);
-  const [fA, setFA] = useState(() => existing?.fatActualG ?? 0);
+  const [calA, setCalA] = useState(existing?.caloriesActual ?? 0);
+  const [pA, setPA] = useState(existing?.proteinActualG ?? 0);
+  const [cA, setCA] = useState(existing?.carbsActualG ?? 0);
+  const [fA, setFA] = useState(existing?.fatActualG ?? 0);
 
-  const [meals, setMeals] = useState(() => existing?.mealsLoggedCount ?? 0);
-
-  useEffect(() => {
-    if (!existing) return;
-    setCalT(existing.caloriesTarget);
-    setPT(existing.proteinTargetG);
-    setCT(existing.carbsTargetG);
-    setFT(existing.fatTargetG);
-    setCalA(existing.caloriesActual);
-    setPA(existing.proteinActualG);
-    setCA(existing.carbsActualG);
-    setFA(existing.fatActualG);
-    setMeals(existing.mealsLoggedCount);
-  }, [existing?.id]);
+  const [meals, setMeals] = useState(existing?.mealsLoggedCount ?? 0);
 
   async function saveLog() {
     await localUpsert('nutrition_logs', {

@@ -98,6 +98,10 @@ Push to GitHub, import in [Vercel](https://vercel.com), set the same two env
 vars (`NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`). Add the
 Vercel URL to GitHub OAuth app redirect URIs.
 
+GitHub Actions runs **lint, unit tests, Playwright mobile smoke, and production
+build** on every push and pull request (`.github/workflows/ci.yml`). Before a
+meaningful release, see `docs/release-checklist.md`.
+
 ## Tests
 
 ```bash
@@ -108,6 +112,26 @@ npm run test:watch # rerun on change
 The progression engine is the highest-leverage piece of logic — it's covered
 by 20 unit tests in `tests/progression.test.ts` (standard / light / skip /
 deload, per-side lifts, increment overrides, snapping helpers).
+
+### Mobile layout from desktop
+
+- **Chrome DevTools** — Toggle the device toolbar (Ctrl+Shift+M / Cmd+Shift+M),
+  pick a phone preset, and throttle CPU/network if you want a closer gym
+  simulation.
+- **Playwright (automated)** — Runs the dev server and loads key routes in
+  **Pixel 5** and **iPhone 12** viewports (no GitHub login required for the
+  current checks):
+
+  ```bash
+  npm run test:e2e        # headless
+  npm run test:e2e:ui     # interactive runner + trace viewer
+  ```
+
+  First-time setup on a new machine: `npx playwright install chromium webkit`.
+
+  To extend coverage after signing in once, use
+  [`storageState`](https://playwright.dev/docs/auth#reuse-signed-in-authentication)
+  and add specs for Today / History at mobile width.
 
 ## Future work
 

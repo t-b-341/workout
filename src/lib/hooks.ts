@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { getDb } from './db';
 import { CARDIO_WEEKLY_TARGET_MIN } from './seed';
@@ -174,4 +174,26 @@ export function useSleepForDate(date: string): SleepLog | undefined {
     const matches = await getDb().sleep_logs.where('date').equals(date).toArray();
     return matches[0];
   }, [date]);
+}
+
+/** Rows waiting for `flushDirty()` (Dexie `dirty` table). */
+export function useDirtyQueueCount(): number | undefined {
+  return useLiveQuery(() => getDb().dirty.count(), []);
+}
+
+export function useOnline() {
+  const [online, setOnline] = useState(
+    () => typeof navigator !== 'undefined' && navigator.onLine,
+  );
+  useEffect(() => {
+    const up = () => setOnline(true);
+    const down = () => setOnline(false);
+    window.addEventListener('online', up);
+    window.addEventListener('offline', down);
+    return () => {
+      window.removeEventListener('online', up);
+      window.removeEventListener('offline', down);
+    };
+  }, []);
+  return online;
 }
