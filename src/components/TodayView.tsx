@@ -10,8 +10,8 @@ import {
   useTodaySession,
 } from '@/lib/hooks';
 import { localUpsert, flushDirty } from '@/lib/sync';
-import { todayIso } from '@/lib/time';
-import type { Prescription, SessionLog, SessionTemplate, TemplateId } from '@/lib/types';
+import { fmtDate, todayIso } from '@/lib/time';
+import type { Prescription, SessionLog, SessionTemplate, SetLog, TemplateId } from '@/lib/types';
 import { CardioBanner } from './CardioBanner';
 import { SessionHeader } from './SessionHeader';
 import { LiftCard } from './LiftCard';
@@ -48,6 +48,7 @@ export function TodayView() {
   const session = useTodaySession((activeId ?? 'U1') as TemplateId);
   const prescriptions = usePrescriptions((activeId ?? undefined) as TemplateId | undefined);
   const readiness = useReadinessForSession(session?.id);
+  const allSets = useAllSets();
 
   // Auto-create today's session row. We re-check Dexie inside the effect
   // because `session` is briefly `undefined` while useLiveQuery resolves;
@@ -83,6 +84,14 @@ export function TodayView() {
 
   return (
     <div className="max-w-2xl mx-auto p-4 space-y-4">
+      {session.completedAt && (
+        <SessionCompleteBanner
+          session={session}
+          templateName={activeTemplate.name}
+          sets={allSets ?? []}
+        />
+      )}
+
       <CardioBanner />
 
       <SessionHeader
@@ -146,6 +155,48 @@ export function TodayView() {
           <FinishSessionButton session={session} prescriptions={prescriptions ?? []} />
         </>
       )}
+    </div>
+  );
+}
+
+function SessionCompleteBanner({
+  session,
+  templateName,
+  sets,
+}: {
+  session: SessionLog;
+  templateName: string;
+  sets: SetLog[];
+}) {
+  const durationMs = sessionDurationMs(session, sets);
+  return (
+    <div
+      role="status"
+      className="rounded-2xl border border-emerald-500/45 bg-gradient-to-br from-emerald-950/90 via-emerald-950/50 to-zinc-900 px-4 py-3.5 flex items-start gap-3 shadow-lg shadow-emerald-950/20"
+    >
+      <div
+        className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-emerald-500 text-zinc-950 text-lg font-bold"
+        aria-hidden
+      >
+        ✓
+      </div>
+      <div className="min-w-0 flex-1 pt-0.5">
+        <div className="text-base font-semibold text-emerald-50">Session complete</div>
+        <div className="text-sm text-emerald-200/85 mt-1">
+          <span className="font-medium text-emerald-100">{templateName}</span>
+          <span className="text-emerald-200/50"> · </span>
+          <span>{fmtDate(session.date, 'EEE, MMM d')}</span>
+          {durationMs != null && (
+            <>
+              <span className="text-emerald-200/50"> · </span>
+              <span className="font-mono text-emerald-100/90">{fmtDurationShort(durationMs)}</span>
+            </>
+          )}
+        </div>
+        <p className="text-xs text-emerald-200/60 mt-1.5">
+          You can still edit sets below; use <span className="text-emerald-100/90">Re-run progression</span> if you change something material.
+        </p>
+      </div>
     </div>
   );
 }
