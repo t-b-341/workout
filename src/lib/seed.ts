@@ -84,6 +84,22 @@ export const TEMPLATES: SessionTemplate[] = [
 ];
 
 /**
+ * Program-tab / picker order: **U1, L1, U2, L2, U3, L3** (upper then lower
+ * for each day-pair). Dexie `templates.toArray()` is otherwise sorted by id
+ * (`L*` before `U*`).
+ */
+export function sortTemplatesProgramOrder<T extends { id: string }>(templates: T[]): T[] {
+  const rank = (id: string): number => {
+    const m = /^([UL])(\d)$/.exec(id);
+    if (!m) return 999;
+    const n = parseInt(m[2], 10);
+    const upperFirst = m[1] === 'U' ? 0 : 1;
+    return (n - 1) * 2 + upperFirst;
+  };
+  return [...templates].sort((a, b) => rank(a.id) - rank(b.id));
+}
+
+/**
  * Default template for "today" on the Today tab / Program picker.
  *
  * `SessionTemplate.dayOfWeek` is ISO-style **1 = Monday … 6 = Saturday**

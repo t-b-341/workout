@@ -10,6 +10,7 @@ import {
 } from '@/lib/hooks';
 import { buildRecoveryScore, recoveryPlan } from '@/lib/recovery';
 import {
+  BOTTLE_REFILL_OZ_MAX,
   mlToUsFloz,
   patchRecoveryPrefs,
   useRecoveryPrefs,
@@ -279,9 +280,9 @@ function HydrationSection({
             }}
             className="h-9 rounded-lg bg-zinc-950 border border-zinc-800 px-2"
           >
-            {[8, 12, 16, 20, 24, 32].map((o) => (
+            {[8, 12, 16, 20, 24, 32, BOTTLE_REFILL_OZ_MAX].map((o) => (
               <option key={o} value={o}>
-                {o} fl oz
+                {o === BOTTLE_REFILL_OZ_MAX ? `${o} fl oz (1 gal)` : `${o} fl oz`}
               </option>
             ))}
           </select>

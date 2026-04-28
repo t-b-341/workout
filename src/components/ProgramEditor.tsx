@@ -5,7 +5,7 @@ import { useAllSets, useLifts, usePrescriptions, useSessionsAfterReadiness, useT
 import { localUpsert, flushDirty, pullAll } from '@/lib/sync';
 import type { Prescription, SessionLog, SessionTemplate, SetLog, TemplateId } from '@/lib/types';
 import { getDb } from '@/lib/db';
-import { defaultTemplateForLocalDate } from '@/lib/seed';
+import { defaultTemplateForLocalDate, sortTemplatesProgramOrder } from '@/lib/seed';
 import { fmtDate, todayIso } from '@/lib/time';
 import { isoWeekOf, startOfWeekIso } from '@/lib/stats';
 import { liftForSnap, snapWorkingWeight } from '@/lib/progression';
@@ -37,6 +37,11 @@ export function ProgramEditor() {
   const activeId = templateOverride ?? defaultTemplateId;
   const prescriptions = usePrescriptions(activeId);
   const [exporting, setExporting] = useState(false);
+
+  const templatesProgramOrder = useMemo(
+    () => (templates?.length ? sortTemplatesProgramOrder(templates) : []),
+    [templates],
+  );
 
   if (!templates || !lifts) return <div className="p-6 text-zinc-500">Loading…</div>;
 
@@ -92,7 +97,7 @@ export function ProgramEditor() {
       <Schedule templates={templates} />
 
       <div className="flex flex-wrap gap-2">
-        {templates.map((t) => (
+        {templatesProgramOrder.map((t) => (
           <button
             key={t.id}
             onClick={() => setTemplateOverride(t.id)}

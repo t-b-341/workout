@@ -13,7 +13,7 @@ describe('normalizeRecoveryPrefsValue', () => {
       bottleRefillOz: 200,
       nutritionTargets: { calories: 2000 },
     });
-    expect(out.bottleRefillOz).toBe(64);
+    expect(out.bottleRefillOz).toBe(128);
     expect(out.nutritionTargets.calories).toBe(2000);
     expect(out.nutritionTargets.proteinG).toBe(DEFAULT_RECOVERY_PREFS.nutritionTargets.proteinG);
   });

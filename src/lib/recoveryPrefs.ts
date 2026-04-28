@@ -48,6 +48,9 @@ export const DEFAULT_RECOVERY_PREFS: RecoveryPrefs = {
 
 const META_KEY = 'recovery:prefs';
 
+/** US fl oz; largest “bottle” quick-refill option (128 = 1 gal). */
+export const BOTTLE_REFILL_OZ_MAX = 128;
+
 /** Normalize stored meta (or missing row) into prefs. Exported for tests. */
 export function normalizeRecoveryPrefsValue(v: unknown): RecoveryPrefs {
   const partial = v as Partial<RecoveryPrefs> | undefined;
@@ -55,7 +58,7 @@ export function normalizeRecoveryPrefsValue(v: unknown): RecoveryPrefs {
   const bo = partial.bottleRefillOz ?? DEFAULT_RECOVERY_PREFS.bottleRefillOz;
   return {
     hydrationTargetMl: partial.hydrationTargetMl ?? DEFAULT_RECOVERY_PREFS.hydrationTargetMl,
-    bottleRefillOz: Math.min(64, Math.max(8, bo)),
+    bottleRefillOz: Math.min(BOTTLE_REFILL_OZ_MAX, Math.max(8, bo)),
     nutritionTargets: {
       calories: partial.nutritionTargets?.calories ?? DEFAULT_RECOVERY_PREFS.nutritionTargets.calories,
       proteinG: partial.nutritionTargets?.proteinG ?? DEFAULT_RECOVERY_PREFS.nutritionTargets.proteinG,
