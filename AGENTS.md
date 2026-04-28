@@ -14,6 +14,7 @@ Personal strength + cardio tracker: **Next.js 16** (App Router), **TypeScript**,
 - **Postgres**: Migrations in `supabase/migrations/` are append-only and idempotent; run in filename order (see `supabase/migrations/README.md`).
 - **Sync**: Row shape conversion lives in `src/lib/syncCodec.ts` (`toRemote` / `fromRemote`). `src/lib/sync.ts` owns I/O (pull, push, realtime). Optional fields round-trip as `undefined` locally, not `null` — tests in `tests/syncCodec.test.ts` lock this in.
 - **Env**: `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY` are required for auth and sync. Copy from `.env.example` → `.env.local` (not committed).
+- **Layout**: `LayoutModeProvider` (`src/lib/layoutMode.tsx`, wired in `src/app/providers.tsx`) persists `workout:layout-mode` in `localStorage` — default **phone** (`mobile`); **wide** (`desktop`) widens `PageShell` max-widths. Bottom nav has a **Wide / Phone** toggle.
 
 ## Commands
 

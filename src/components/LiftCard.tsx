@@ -154,9 +154,9 @@ export function LiftCard({ prescription, lift, session }: Props) {
   }
 
   return (
-    <div className="rounded-2xl bg-zinc-900 border border-zinc-800 p-4 space-y-3">
+    <div id={`lift-${prescription.id}`} className="rounded-2xl bg-zinc-900 border border-zinc-800 p-4 space-y-3 scroll-mt-24">
       <div className="flex items-start justify-between gap-2">
-        <div>
+        <div className="min-w-0">
           <div className="font-semibold text-zinc-100">{lift.name}</div>
           <div className="text-xs text-zinc-400 mt-0.5">
             <span className="font-mono">{prescription.weight}</span>
@@ -184,10 +184,13 @@ export function LiftCard({ prescription, lift, session }: Props) {
       </div>
 
       {lastSession && (
-        <div className="text-xs text-zinc-500 border-t border-zinc-800 pt-2">
-          <span className="text-zinc-400">Last ({fmtDate(lastSession.session.date)}):</span>{' '}
-          <span className="font-mono">
-            {lastSession.sets.map((s) => `${s.weight}×${s.reps}`).join(', ')}
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-500/25 bg-emerald-950/40 px-2.5 py-1 text-[11px] text-emerald-100/90">
+            <span className="text-emerald-400/80 uppercase tracking-wide text-[10px]">Last time</span>
+            <span className="font-mono">
+              {lastSession.sets.map((s) => `${s.weight}×${s.reps}`).join(' · ')}
+            </span>
+            <span className="text-emerald-200/50">· {fmtDate(lastSession.session.date, 'MMM d')}</span>
           </span>
         </div>
       )}

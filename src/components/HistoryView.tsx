@@ -28,6 +28,7 @@ import {
 import { Sparkline, MiniBars } from './Sparkline';
 import { ReadinessSummary } from './ReadinessSummary';
 import { SessionEditSheet } from './SessionEditSheet';
+import { PageShell } from './PageShell';
 import { CARDIO_WEEKLY_TARGET_MIN, MUSCLE_GROUPS, PATTERNS } from '@/lib/seed';
 import type {
   BodyweightLog,
@@ -64,7 +65,7 @@ export function HistoryView() {
   }
 
   return (
-    <div className="max-w-2xl mx-auto p-4 space-y-4">
+    <PageShell className="p-4 space-y-4">
       <h1 className="text-2xl font-semibold">History</h1>
 
       <div className="grid grid-cols-3 sm:grid-cols-6 gap-1 rounded-xl bg-zinc-900 border border-zinc-800 p-1">
@@ -83,7 +84,7 @@ export function HistoryView() {
       {tab === 'prs' && <PRsList sessions={sessions} sets={allSets} lifts={lifts} />}
       {tab === 'muscle' && <MuscleList sessions={sessions} sets={allSets} lifts={lifts} />}
       {tab === 'bodyweight' && <BodyweightList logs={bodyweights} />}
-    </div>
+    </PageShell>
   );
 }
 

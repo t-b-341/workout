@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
+import { format } from 'date-fns';
 import { getDb } from './db';
 import { CARDIO_WEEKLY_TARGET_MIN } from './seed';
 import { isoWeekString, weekRange, todayIso } from './time';
@@ -136,6 +137,36 @@ export function useAllSessions(): SessionLog[] | undefined {
 
 export function useAllCardio(): CardioLog[] | undefined {
   return useLiveQuery(() => getDb().cardio_logs.toArray(), []);
+}
+
+/** Calendar dates (yyyy-MM-dd) in the current ISO week with logged work (session or cardio). */
+export function useWeekActivityDates(): string[] | undefined {
+  return useLiveQuery(async () => {
+    const { start, end } = weekRange();
+    const startStr = format(start, 'yyyy-MM-dd');
+    const endStr = format(end, 'yyyy-MM-dd');
+    const sessionsInWeek = await getDb()
+      .session_logs.where('date')
+      .between(startStr, endStr, true, true)
+      .toArray();
+    const sessionIds = new Set(sessionsInWeek.map((s) => s.id));
+    const allSets = await getDb().set_logs.toArray();
+    const counts = new Map<string, number>();
+    for (const st of allSets) {
+      if (!sessionIds.has(st.sessionLogId)) continue;
+      counts.set(st.sessionLogId, (counts.get(st.sessionLogId) ?? 0) + 1);
+    }
+    const dates = new Set<string>();
+    for (const s of sessionsInWeek) {
+      const n = counts.get(s.id) ?? 0;
+      if (s.startedAt || s.completedAt || n > 0) dates.add(s.date);
+    }
+    const cardio = await getDb().cardio_logs.toArray();
+    for (const c of cardio) {
+      if (c.date >= startStr && c.date <= endStr) dates.add(c.date);
+    }
+    return Array.from(dates).sort();
+  }, []);
 }
 
 export function useAllReadiness(): ReadinessLog[] | undefined {

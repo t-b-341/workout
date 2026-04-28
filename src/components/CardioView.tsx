@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { CardioBanner } from './CardioBanner';
+import { PageShell } from './PageShell';
 import { useThisWeekCardio } from '@/lib/hooks';
 import { localDelete, localUpsert } from '@/lib/sync';
 import { todayIso, fmtDate } from '@/lib/time';
@@ -33,7 +34,7 @@ export function CardioView() {
   }
 
   return (
-    <div className="max-w-2xl mx-auto p-4 space-y-4">
+    <PageShell className="p-4 space-y-4">
       <CardioBanner />
 
       <div className="rounded-2xl bg-zinc-900 border border-zinc-800 p-4 space-y-3">
@@ -95,7 +96,7 @@ export function CardioView() {
           </div>
         ))}
       </div>
-    </div>
+    </PageShell>
   );
 }
 

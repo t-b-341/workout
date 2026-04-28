@@ -32,6 +32,9 @@ import { applyEffortScale, effortLabel } from '@/lib/effort';
 import { BodyweightQuickLog } from './BodyweightQuickLog';
 import { SessionRecapSheet } from './SessionRecapSheet';
 import { SyncStatusBar } from './SyncStatusBar';
+import { WeekActivityStrip } from './WeekActivityStrip';
+import { SessionContextDock } from './SessionContextDock';
+import { PageShell } from './PageShell';
 
 export function TodayView() {
   const templates = useTemplates();
@@ -88,9 +91,16 @@ export function TodayView() {
   const needsReadiness =
     !readiness && !readinessSkipped && !session.startedAt && !session.completedAt;
 
+  const showSessionDock =
+    !needsReadiness &&
+    session.mode !== 'skip' &&
+    (prescriptions?.length ?? 0) > 0 &&
+    !session.completedAt;
+
   return (
-    <div className="max-w-2xl mx-auto p-4 space-y-4">
+    <PageShell className={`p-4 space-y-4 ${showSessionDock ? 'pb-24' : ''}`}>
       <SyncStatusBar />
+      <WeekActivityStrip />
       {session.completedAt && (
         <SessionCompleteBanner
           session={session}
@@ -163,7 +173,10 @@ export function TodayView() {
           <FinishSessionButton session={session} prescriptions={prescriptions ?? []} />
         </>
       )}
-    </div>
+      {showSessionDock && allSets && (
+        <SessionContextDock session={session} prescriptions={prescriptions ?? []} allSets={allSets} />
+      )}
+    </PageShell>
   );
 }
 

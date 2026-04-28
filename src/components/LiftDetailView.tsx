@@ -8,6 +8,7 @@ import { useAllSets, useLifts, useSessionsAfterReadiness } from '@/lib/hooks';
 import { fmtDate } from '@/lib/time';
 import { buildLiftHistory, est1RM, liftPRs } from '@/lib/stats';
 import { MiniBars, Sparkline } from './Sparkline';
+import { PageShell } from './PageShell';
 import type { Prescription } from '@/lib/types';
 
 export function LiftDetailView({ liftId }: { liftId: string }) {
@@ -36,10 +37,10 @@ export function LiftDetailView({ liftId }: { liftId: string }) {
   const lift = lifts.find((l) => l.id === liftId);
   if (!lift) {
     return (
-      <div className="p-6 max-w-2xl mx-auto space-y-4">
+      <PageShell className="p-6 space-y-4">
         <Link href="/history" className="text-sm text-amber-400">← History</Link>
         <div className="text-zinc-400">Unknown lift: {liftId}</div>
-      </div>
+      </PageShell>
     );
   }
 
@@ -51,7 +52,7 @@ export function LiftDetailView({ liftId }: { liftId: string }) {
   const totalSetsLogged = allSets.filter((s) => s.liftId === liftId && s.status === 'completed').length;
 
   return (
-    <div className="max-w-2xl mx-auto p-4 space-y-4">
+    <PageShell className="p-4 space-y-4">
       <div>
         <Link href="/history" className="text-sm text-amber-400">← History</Link>
         <h1 className="text-2xl font-semibold mt-1">{lift.name}</h1>
@@ -150,7 +151,7 @@ export function LiftDetailView({ liftId }: { liftId: string }) {
           ))}
         </div>
       )}
-    </div>
+    </PageShell>
   );
 }
 

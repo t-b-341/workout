@@ -21,6 +21,7 @@ import { flushDirty, localUpsert } from '@/lib/sync';
 import { todayIso } from '@/lib/time';
 import type { HydrationLog, NutritionLog, TemplateId } from '@/lib/types';
 import { BodyweightQuickLog } from './BodyweightQuickLog';
+import { PageShell } from './PageShell';
 
 function clamp(n: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, n));
@@ -42,7 +43,7 @@ export function RecoveryView() {
   const plan = useMemo(() => recoveryPlan(score.band), [score.band]);
 
   return (
-    <div className="max-w-2xl mx-auto p-4 space-y-4">
+    <PageShell className="p-4 space-y-4">
       <div className="rounded-2xl bg-zinc-900 border border-zinc-800 p-4">
         <div className="text-xs uppercase tracking-wider text-zinc-500">Daily recovery</div>
         <div className="text-3xl font-semibold mt-1">{score.compositeScore}</div>
@@ -68,7 +69,7 @@ export function RecoveryView() {
         <div className="text-sm text-zinc-300">{plan.cardioNote}</div>
         <div className="text-sm text-zinc-300">{plan.nutritionNote}</div>
       </div>
-    </div>
+    </PageShell>
   );
 }
 

@@ -17,22 +17,27 @@ Consolidated backlog from product, UX, engineering, and testing discussions. Reo
 
 ## Mobile (primary use)
 
-- [ ] Sticky session context: elapsed time, rest state, “jump to current” while scrolling long Today lists
-- [ ] Glanceable day progress (e.g. sets done / total, or per-block ring) on Today
-- [ ] Per-lift “last time here” line (top set + reps from last session or last week)
-- [x] Global sync/offline strip on Today: pending count + link to Program sync (last-sync timestamp deferred)
+- [x] Sticky session context: **SessionContextDock** — sets done / total, live session length while in progress, “Since log” rest line, **Jump** to first open lift (`scroll-mt` on `LiftCard`)
+- [x] Glanceable day progress — same dock shows `done/total` working slots for today’s template
+- [x] Per-lift **Last time** pill on `LiftCard` (prior session sets + date)
+- [x] Global sync/offline strip on Today (`SyncStatusBar`) + link to Program
 - [ ] Rest timer: larger tap targets, optional sound/haptic toggles (respect `prefers-reduced-motion`)
 - [ ] Optional: expandable one-line **set notes** without leaving the row
-- [ ] Optional: week-at-a-glance row (Mon–Sun) on Today for consistency motivation
+- [x] Week-at-a-glance — **WeekActivityStrip** (Mon–Sun, ISO week; green dot = strength session or cardio that day)
 - [ ] Optional: first-run checklist (install PWA, log first set) with dismiss
 - [ ] Optional: high-contrast or “sunlight” theme / larger type scale in settings
 - [x] Silence Next dev **HMR cross-origin** warning when using `127.0.0.1` (`allowedDevOrigins` in `next.config.ts`)
+
+## Layout (phone vs wide column)
+
+- [x] **Phone layout (default)** — narrow content column via `PageShell` + nav chrome; persisted as `workout:layout-mode` in `localStorage` (`LayoutModeProvider` in `src/app/providers.tsx`)
+- [x] **Wide layout** — wider `max-w-*` for History / Program / etc.; toggle last cell in bottom nav (**Wide** / **Phone**)
 
 ---
 
 ## Desktop (analysis & editing)
 
-- [ ] History: wider layout at `md+` (side-by-side chart + table where useful)
+- [x] History: wider layout when **Wide** mode — `PageShell` uses `max-w-5xl` vs `max-w-2xl` in phone mode (not yet side-by-side chart + table)
 - [ ] History Trends: **compare** two ranges or two lifts (overlay or toggle)
 - [ ] Export: CSV or “copy table” from Weeks / Trends for spreadsheets
 - [ ] Keyboard navigation and density pass on History tabs and tables

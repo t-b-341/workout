@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
+import { shellMaxClass, useLayoutMode } from '@/lib/layoutMode';
 import {
   ensureLocalSeed,
   flushDirty,
@@ -16,6 +17,8 @@ import { backfillCardioFromSets } from '@/lib/backfill';
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
+  const { mode, toggleMode } = useLayoutMode();
+  const shell = shellMaxClass(mode);
   const [ready, setReady] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -129,11 +132,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="min-h-dvh flex flex-col">
-      <main className="flex-1 pb-28 supports-[padding:max(0px)]:pb-[max(7rem,env(safe-area-inset-bottom,0px)+4.5rem)]">
+      <main className="flex-1 w-full pb-28 supports-[padding:max(0px)]:pb-[max(7rem,env(safe-area-inset-bottom,0px)+4.5rem)]">
         {children}
       </main>
       <nav className="fixed bottom-0 inset-x-0 border-t border-zinc-800 bg-zinc-950/95 backdrop-blur supports-[padding:max(0px)]:pb-[max(env(safe-area-inset-bottom),0px)]">
-        <div className="grid grid-cols-5 mx-auto max-w-2xl">
+        <div className={`grid grid-cols-[1fr_1fr_1fr_1fr_1fr_auto] items-stretch gap-0 mx-auto w-full ${shell}`}>
           {tabs.map((t) => {
             const active =
               pathname === t.href ||
@@ -143,12 +146,32 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               <Link
                 key={t.href}
                 href={t.href}
-                className={`h-16 flex items-center justify-center text-sm ${active ? 'text-amber-400' : 'text-zinc-400'}`}
+                className={`h-16 flex items-center justify-center text-xs sm:text-sm px-0.5 min-w-0 ${active ? 'text-amber-400' : 'text-zinc-400'}`}
               >
-                {t.label}
+                <span className="truncate text-center leading-tight">{t.label}</span>
               </Link>
             );
           })}
+          <button
+            type="button"
+            onClick={toggleMode}
+            className="h-16 w-12 shrink-0 flex flex-col items-center justify-center gap-0.5 border-l border-zinc-800 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900/80"
+            aria-label={mode === 'mobile' ? 'Use wide layout for this screen' : 'Use phone-width layout'}
+            title={mode === 'mobile' ? 'Wide layout' : 'Phone layout'}
+          >
+            {mode === 'mobile' ? (
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" aria-hidden>
+                <rect x="2" y="3" width="20" height="14" rx="2" />
+                <path d="M8 21h8" strokeLinecap="round" />
+              </svg>
+            ) : (
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" aria-hidden>
+                <rect x="6" y="2" width="12" height="20" rx="2" />
+                <path d="M10 18h4" strokeLinecap="round" />
+              </svg>
+            )}
+            <span className="text-[9px] font-medium leading-none">{mode === 'mobile' ? 'Wide' : 'Phone'}</span>
+          </button>
         </div>
       </nav>
     </div>
