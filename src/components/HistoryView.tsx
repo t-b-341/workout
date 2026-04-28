@@ -21,7 +21,9 @@ import {
   buildWeeklyPatternCoverage,
   buildWeeklyReadiness,
   buildWeeklySummaries,
+  fmtDurationShort,
   prFeed,
+  sessionTotalRestBetweenSetsMs,
 } from '@/lib/stats';
 import { Sparkline, MiniBars } from './Sparkline';
 import { ReadinessSummary } from './ReadinessSummary';
@@ -143,11 +145,17 @@ function SessionsList({
         }
         const r = readinessBySession.get(s.id);
         const isEmpty = ss.length === 0 && !r;
+        const restMs = s.completedAt ? sessionTotalRestBetweenSetsMs(s.id, sets) : 0;
         return (
           <div key={s.id} className="rounded-2xl bg-zinc-900 border border-zinc-800 p-4">
             <div className="flex items-baseline justify-between gap-2">
               <div className="min-w-0">
                 <div className="text-sm font-medium">{fmtDate(s.date, 'EEE, MMM d')} · {s.templateId}</div>
+                {restMs > 0 && (
+                  <div className="text-[11px] text-zinc-500 font-mono mt-0.5">
+                    Rest between sets · {fmtDurationShort(restMs)}
+                  </div>
+                )}
                 <div className="text-xs text-zinc-500 mt-0.5">
                   {s.mode !== 'standard' && <span className="mr-2 text-amber-400">{s.mode}</span>}
                   {s.deload && <span className="mr-2 text-indigo-400">deload</span>}

@@ -50,6 +50,11 @@ export function TodayView() {
   const readiness = useReadinessForSession(session?.id);
   const allSets = useAllSets();
 
+  const completeHighlights = useMemo(() => {
+    if (!session?.completedAt || !allSets || !lifts) return null;
+    return sessionFinishHighlights(session.id, allSets, lifts);
+  }, [session?.completedAt, session?.id, allSets, lifts]);
+
   // Auto-create today's session row. We re-check Dexie inside the effect
   // because `session` is briefly `undefined` while useLiveQuery resolves;
   // a naive upsert would clobber an existing row's mode/deload/watchFlags/
@@ -89,6 +94,7 @@ export function TodayView() {
           session={session}
           templateName={activeTemplate.name}
           sets={allSets ?? []}
+          highlights={completeHighlights}
         />
       )}
 
@@ -163,10 +169,12 @@ function SessionCompleteBanner({
   session,
   templateName,
   sets,
+  highlights,
 }: {
   session: SessionLog;
   templateName: string;
   sets: SetLog[];
+  highlights: SessionFinishHighlights | null;
 }) {
   const durationMs = sessionDurationMs(session, sets);
   return (
@@ -190,6 +198,14 @@ function SessionCompleteBanner({
             <>
               <span className="text-emerald-200/50"> · </span>
               <span className="font-mono text-emerald-100/90">{fmtDurationShort(durationMs)}</span>
+            </>
+          )}
+          {highlights != null && highlights.totalRestBetweenSetsMs > 0 && (
+            <>
+              <span className="text-emerald-200/50"> · </span>
+              <span className="font-mono text-emerald-100/90">
+                rest {fmtDurationShort(highlights.totalRestBetweenSetsMs)}
+              </span>
             </>
           )}
         </div>

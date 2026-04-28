@@ -5,6 +5,7 @@ import { useLifts, usePrescriptions } from '@/lib/hooks';
 import { getDb } from '@/lib/db';
 import { flushDirty, localDelete, localUpsert } from '@/lib/sync';
 import { fmtDate } from '@/lib/time';
+import { snapWorkingWeight } from '@/lib/progression';
 import type {
   CardioLog,
   CardioType,
@@ -94,9 +95,10 @@ export function SessionEditSheet({ session, initialSets, onClose }: Props) {
         const w = Number.isFinite(row.weight) ? row.weight : 0;
         const r = Number.isFinite(row.reps) ? Math.round(row.reps) : 0;
         const status = row.status;
+        const snapRef = { id: lift.id, equipment: lift.equipment, loadUnit: lift.loadUnit };
         const next: SetLog = {
           ...row,
-          weight: w,
+          weight: snapWorkingWeight(w, snapRef),
           reps: r,
           status,
           reason: row.reason?.trim() || undefined,

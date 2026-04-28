@@ -8,6 +8,7 @@ import { getDb } from '@/lib/db';
 import { defaultTemplateForLocalDate } from '@/lib/seed';
 import { fmtDate, todayIso } from '@/lib/time';
 import { isoWeekOf, startOfWeekIso } from '@/lib/stats';
+import { liftForSnap, snapWorkingWeight } from '@/lib/progression';
 import {
   mesocyclePosition,
   saveMesoConfig,
@@ -115,7 +116,11 @@ export function ProgramEditor() {
               type="number"
               step={0.5}
               value={p.weight}
-              onChange={(e) => update(p, { weight: parseFloat(e.target.value || '0') })}
+              onChange={(e) =>
+                update(p, {
+                  weight: snapWorkingWeight(parseFloat(e.target.value || '0'), liftForSnap(p.liftId)),
+                })
+              }
               className="col-span-2 h-10 rounded-lg bg-zinc-950 border border-zinc-800 text-center"
             />
             <input

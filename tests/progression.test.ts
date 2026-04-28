@@ -3,6 +3,8 @@ import {
   decideProgression,
   snapBarbell,
   snapDbLoad,
+  snapWorkingWeight,
+  liftForSnap,
 } from '../src/lib/progression';
 import type {
   Prescription,
@@ -76,7 +78,7 @@ describe('decideProgression — standard mode', () => {
       makeSets(3, 8),
       makeSession(),
     );
-    expect(dec.nextWeight).toBe(177.5);
+    expect(dec.nextWeight).toBe(180);
   });
 
   it('uses liftIncrementOverride when prescription has none', () => {
@@ -86,7 +88,7 @@ describe('decideProgression — standard mode', () => {
       makeSession(),
       2.5,
     );
-    expect(dec.nextWeight).toBe(177.5);
+    expect(dec.nextWeight).toBe(180);
   });
 
   it('falls back to +5 when neither override is provided', () => {
@@ -233,5 +235,26 @@ describe('snapDbLoad', () => {
     expect(snapDbLoad(0)).toBe(5);
     expect(snapDbLoad(3)).toBe(5);
     expect(snapDbLoad(60)).toBe(52.5);
+  });
+});
+
+describe('snapWorkingWeight', () => {
+  it('snaps barbell bench to nearest 5 lb', () => {
+    const lift = liftForSnap('bp');
+    expect(snapWorkingWeight(142, lift)).toBe(140);
+    expect(snapWorkingWeight(143, lift)).toBe(145);
+  });
+
+  it('snaps P1 weighted pull-up added load in 2.5 steps', () => {
+    const lift = liftForSnap('p1_eccentric');
+    expect(snapWorkingWeight(11, lift)).toBe(10);
+    expect(snapWorkingWeight(11.2, lift)).toBe(10);
+    expect(snapWorkingWeight(11.3, lift)).toBe(12.5);
+  });
+
+  it('allows negative assistance on p1_assisted snapped to 2.5', () => {
+    const lift = liftForSnap('p1_assisted');
+    expect(snapWorkingWeight(-17.2, lift)).toBe(-17.5);
+    expect(snapWorkingWeight(12.4, lift)).toBe(12.5);
   });
 });

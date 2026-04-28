@@ -1,30 +1,37 @@
 'use client';
 
-import type { Equipment } from '@/lib/types';
-import { snapBarbell, snapDbLoad } from '@/lib/progression';
+import type { Lift } from '@/lib/types';
+import { snapWorkingWeight, type SnapLiftRef } from '@/lib/progression';
 
 type Props = {
+  lift: SnapLiftRef & Pick<Lift, 'increment'>;
   value: number;
   onChange: (n: number) => void;
-  equipment: Equipment;
-  increment?: number;
-  /** Allow negative loads (e.g., assistance). */
+  /** Prescription increment when it differs from the lift default. */
+  stepIncrement?: number;
   allowNegative?: boolean;
   unit?: string;
 };
 
-export function WeightStepper({ value, onChange, equipment, increment, allowNegative, unit = 'lb' }: Props) {
-  const inc = increment ?? (equipment === 'dumbbell' ? 2.5 : 5);
+export function WeightStepper({
+  lift,
+  value,
+  onChange,
+  stepIncrement,
+  allowNegative,
+  unit = 'lb',
+}: Props) {
+  const inc =
+    stepIncrement ?? (lift.equipment === 'dumbbell' || lift.equipment === 'carry' ? 2.5 : 5);
   const min = allowNegative ? -200 : 0;
 
   const snap = (n: number) => {
-    if (equipment === 'dumbbell') return Math.max(min, snapDbLoad(n));
-    if (equipment === 'barbell')  return Math.max(min, snapBarbell(n));
-    return Math.max(min, Math.round(n / inc) * inc);
+    const snapped = snapWorkingWeight(n, lift);
+    return Math.max(min, snapped);
   };
 
   const dec = () => onChange(snap(value - inc));
-  const up  = () => onChange(snap(value + inc));
+  const up = () => onChange(snap(value + inc));
 
   return (
     <div className="flex items-center gap-2">

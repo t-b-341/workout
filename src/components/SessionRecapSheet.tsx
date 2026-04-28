@@ -24,9 +24,9 @@ function sessionModeLabel(s: SessionLog): string {
   return 'Standard';
 }
 
-function StatChip({ label, value }: { label: string; value: string }) {
+function StatChip({ label, value, className }: { label: string; value: string; className?: string }) {
   return (
-    <div className="rounded-xl bg-zinc-900/90 border border-zinc-800 px-3 py-2.5 text-center">
+    <div className={`rounded-xl bg-zinc-900/90 border border-zinc-800 px-3 py-2.5 text-center ${className ?? ''}`}>
       <div className="text-[10px] uppercase tracking-wide text-zinc-500 font-medium">{label}</div>
       <div className="text-sm font-semibold text-zinc-100 mt-0.5 tabular-nums">{value}</div>
     </div>
@@ -80,6 +80,10 @@ export function SessionRecapSheet({
     highlights.completedSetCount > 0
       ? `${highlights.completedSetCount} sets · ${highlights.distinctLifts} lift${highlights.distinctLifts === 1 ? '' : 's'}`
       : '—';
+  const restLabel =
+    highlights.totalRestBetweenSetsMs > 0
+      ? fmtDurationShort(highlights.totalRestBetweenSetsMs)
+      : '—';
 
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center sm:items-center p-0 sm:p-4">
@@ -118,8 +122,9 @@ export function SessionRecapSheet({
             <div className="grid grid-cols-2 gap-2">
               <StatChip label="Time" value={durationLabel} />
               <StatChip label="PRs" value={prLabel} />
+              <StatChip label="Rest (logged)" value={restLabel} />
               <StatChip label="Strength volume" value={volLabel} />
-              <StatChip label="Work logged" value={workLabel} />
+              <StatChip label="Work logged" value={workLabel} className="col-span-2" />
             </div>
             {highlights.bestSessionE1RmLb > 0 && (
               <p className="text-xs text-zinc-500 mt-2 text-center font-mono">

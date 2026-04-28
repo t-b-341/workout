@@ -3,6 +3,7 @@ import {
   sessionFinishHighlights,
   sessionRecapPRs,
   sessionRecapSummaryLines,
+  sessionTotalRestBetweenSetsMs,
   sortSetsChronologically,
 } from '../src/lib/stats';
 import type { Lift, SessionLog, SetLog, TemplateId } from '../src/lib/types';
@@ -192,6 +193,76 @@ describe('sessionFinishHighlights', () => {
     expect(h.distinctLifts).toBe(1);
     expect(h.topSet?.weight).toBe(100);
     expect(h.topSet?.reps).toBe(5);
+    expect(h.totalRestBetweenSetsMs).toBe(0);
+  });
+});
+
+describe('sessionTotalRestBetweenSetsMs', () => {
+  it('sums positive gaps between consecutive logged sets (session-wide order)', () => {
+    const sets: SetLog[] = [
+      {
+        id: '1',
+        sessionLogId: 's1',
+        liftId: 'bp',
+        prescriptionId: 'p',
+        setIndex: 0,
+        weight: 100,
+        reps: 5,
+        status: 'completed',
+        loggedAt: '2026-01-01T10:00:00.000Z',
+      },
+      {
+        id: '2',
+        sessionLogId: 's1',
+        liftId: 'ohp',
+        prescriptionId: 'p2',
+        setIndex: 0,
+        weight: 95,
+        reps: 5,
+        status: 'completed',
+        loggedAt: '2026-01-01T10:01:30.000Z',
+      },
+      {
+        id: '3',
+        sessionLogId: 's1',
+        liftId: 'bp',
+        prescriptionId: 'p',
+        setIndex: 1,
+        weight: 100,
+        reps: 5,
+        status: 'completed',
+        loggedAt: '2026-01-01T10:03:00.000Z',
+      },
+    ];
+    expect(sessionTotalRestBetweenSetsMs('s1', sets)).toBe(90_000 + 90_000);
+  });
+
+  it('ignores gaps longer than 2 hours', () => {
+    const sets: SetLog[] = [
+      {
+        id: '1',
+        sessionLogId: 's1',
+        liftId: 'bp',
+        prescriptionId: 'p',
+        setIndex: 0,
+        weight: 100,
+        reps: 5,
+        status: 'completed',
+        loggedAt: '2026-01-01T10:00:00.000Z',
+      },
+      {
+        id: '2',
+        sessionLogId: 's1',
+        liftId: 'bp',
+        prescriptionId: 'p',
+        setIndex: 1,
+        weight: 100,
+        reps: 5,
+        status: 'completed',
+        loggedAt: '2026-01-01T14:00:00.000Z',
+      },
+    ];
+    expect(sessionTotalRestBetweenSetsMs('s1', sets)).toBe(0);
   });
 });
 
@@ -207,6 +278,7 @@ describe('sessionRecapSummaryLines', () => {
         reduced: 0,
         skipped: 0,
         substituted: 0,
+        totalRestBetweenSetsMs: 0,
       },
       progression: { advanced: 1, held: 0, skipped: 0 },
       prCount: 1,

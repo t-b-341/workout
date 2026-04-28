@@ -318,6 +318,32 @@ export function sessionRecapPRs(
   return out;
 }
 
+/**
+ * Sum of rest between consecutive **logged** sets in a session (`loggedAt`
+ * ascending, all lifts). The first set in that order contributes no prior gap.
+ * Gaps > 2h are ignored (meal / phone break).
+ */
+export function sessionTotalRestBetweenSetsMs(sessionId: string, sets: SetLog[]): number {
+  const sessionSets = sets.filter((s) => s.sessionLogId === sessionId && s.loggedAt);
+  if (sessionSets.length < 2) return 0;
+  const sideRank = (s: SetLog) => (s.side === 'L' ? 0 : s.side === 'R' ? 1 : 2);
+  const ordered = [...sessionSets].sort((a, b) => {
+    const ta = Date.parse(a.loggedAt!);
+    const tb = Date.parse(b.loggedAt!);
+    if (ta !== tb) return ta - tb;
+    if (a.liftId !== b.liftId) return a.liftId.localeCompare(b.liftId);
+    if (a.setIndex !== b.setIndex) return a.setIndex - b.setIndex;
+    return sideRank(a) - sideRank(b);
+  });
+  const maxGapMs = 2 * 60 * 60 * 1000;
+  let total = 0;
+  for (let i = 1; i < ordered.length; i++) {
+    const gap = Date.parse(ordered[i].loggedAt!) - Date.parse(ordered[i - 1].loggedAt!);
+    if (gap > 0 && gap <= maxGapMs) total += gap;
+  }
+  return total;
+}
+
 /** Aggregates for the finish / recap screen (one session). */
 export type SessionFinishHighlights = {
   completedSetCount: number;
@@ -331,6 +357,8 @@ export type SessionFinishHighlights = {
   reduced: number;
   skipped: number;
   substituted: number;
+  /** Sum of inter-set gaps from `sessionTotalRestBetweenSetsMs`. */
+  totalRestBetweenSetsMs: number;
 };
 
 export function sessionFinishHighlights(
@@ -383,6 +411,7 @@ export function sessionFinishHighlights(
     reduced,
     skipped,
     substituted,
+    totalRestBetweenSetsMs: sessionTotalRestBetweenSetsMs(sessionId, sets),
   };
 }
 
@@ -400,6 +429,9 @@ export function sessionRecapSummaryLines(opts: {
 
   if (opts.durationMs != null) {
     lines.push(`Finished in ${fmtDurationShort(opts.durationMs)}.`);
+  }
+  if (h.totalRestBetweenSetsMs > 0) {
+    lines.push(`About ${fmtDurationShort(h.totalRestBetweenSetsMs)} rest between logged sets.`);
   }
   if (opts.prCount > 0) {
     lines.push(

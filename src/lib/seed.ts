@@ -31,7 +31,7 @@ export const LIFTS: Lift[] = [
   { id: 'hammer_curls', name: 'Hammer Curls', equipment: 'dumbbell', loadUnit: 'lb', repUnit: 'reps', increment: 2.5,
     pattern: 'horiz-pull', muscleGroups: ['biceps', 'forearms'] },
 
-  // Upper - bodyweight pullup variants (P1)
+  // Upper - bodyweight pullup variants (P1). Added-load snap rules: `LIFT_IDS_PULLUP_ADDED_LOAD` in progression.ts.
   { id: 'p1_eccentric', name: 'P1 Weighted Eccentric', equipment: 'bodyweight', loadUnit: 'lb', repUnit: 'reps', increment: 2.5, notes: '5 sec eccentric, weighted (added load)',
     pattern: 'vert-pull', muscleGroups: ['lats', 'biceps', 'mid-back'] },
   { id: 'p1_assisted', name: 'P1 Assisted', equipment: 'bodyweight', loadUnit: 'lb', repUnit: 'reps', increment: 2.5, notes: 'Assisted; weight = assistance lb (negative load)',

@@ -13,6 +13,7 @@ import type { CardioLog, CardioType, Lift, Prescription, SessionLog, SetLog, Set
 import { WeightStepper, RepStepper } from './WeightStepper';
 import { fmtDate } from '@/lib/time';
 import { platesPerSide } from '@/lib/plates';
+import { snapWorkingWeight } from '@/lib/progression';
 import { detectPR, est1RM } from '@/lib/stats';
 import { RestTimer } from './RestTimer';
 
@@ -97,13 +98,14 @@ export function LiftCard({ prescription, lift, session }: Props) {
     const existing = getSet(args.setIndex, args.side);
     const id = existing?.id ?? `${session.id}-${prescription.id}-${args.setIndex}-${args.side ?? 'X'}`;
     const status = args.status ?? 'completed';
+    const weight = snapWorkingWeight(args.weight, lift);
     const row: SetLog = {
       id,
       sessionLogId: session.id,
       liftId: prescription.liftId,
       prescriptionId: prescription.id,
       setIndex: args.setIndex,
-      weight: args.weight,
+      weight,
       reps: args.reps,
       status,
       substituteLiftId: args.substituteLiftId,
@@ -356,10 +358,10 @@ function SetRow({
       <div className="flex flex-wrap items-center gap-3">
         {showWeight && (
           <WeightStepper
+            lift={lift}
             value={w}
             onChange={setW}
-            equipment={lift.equipment}
-            increment={prescription.increment ?? lift.increment}
+            stepIncrement={prescription.increment}
             allowNegative={allowNegative}
             unit={lift.loadUnit === 'lb' ? 'lb' : ''}
           />

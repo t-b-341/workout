@@ -1,4 +1,56 @@
-import type { Prescription, SessionLog, SetLog } from './types';
+import { LIFTS } from './seed';
+import type { Lift, Prescription, SessionLog, SetLog } from './types';
+
+/** P1 pull-up variants: added (or assisted negative) load snaps in 2.5 lb steps — not barbell 5s. */
+export const LIFT_IDS_PULLUP_ADDED_LOAD = new Set<string>(['p1_eccentric', 'p1_assisted', 'p1_bw']);
+
+export type SnapLiftRef = Pick<Lift, 'id' | 'equipment' | 'loadUnit'>;
+
+export function liftForSnap(liftId: string): SnapLiftRef {
+  const l = LIFTS.find((x) => x.id === liftId);
+  if (l) return { id: l.id, equipment: l.equipment, loadUnit: l.loadUnit };
+  return { id: liftId, equipment: 'barbell', loadUnit: 'lb' };
+}
+
+/** Nearest 2.5 lb (any sign for assisted negatives). */
+export function snapQuarterLb(weight: number): number {
+  return Math.round(weight / 2.5) * 2.5;
+}
+
+/**
+ * Snap logged / prescribed working weight for the lift.
+ * - Barbell: nearest 5 lb (`snapBarbell`).
+ * - Dumbbell / farmer carry: `snapDbLoad` ladder.
+ * - Weighted pull-ups (`p1_*`): 2.5 lb (non‑negative except `p1_assisted` assistance negatives).
+ * - `loadUnit === 'none'` or pure cardio/time: unchanged.
+ */
+export function snapWorkingWeight(weight: number, lift: SnapLiftRef): number {
+  if (lift.loadUnit === 'none' || lift.equipment === 'cardio' || lift.equipment === 'time') {
+    return weight;
+  }
+
+  if (LIFT_IDS_PULLUP_ADDED_LOAD.has(lift.id)) {
+    if (lift.id === 'p1_assisted') {
+      if (weight >= 0) return Math.max(0, snapQuarterLb(weight));
+      return Math.max(-200, snapQuarterLb(weight));
+    }
+    return Math.max(0, snapQuarterLb(weight));
+  }
+
+  if (lift.equipment === 'barbell') {
+    return snapBarbell(weight);
+  }
+
+  if (lift.equipment === 'dumbbell' || lift.equipment === 'carry') {
+    return snapDbLoad(Math.max(5, weight));
+  }
+
+  if (lift.loadUnit === 'lb') {
+    return snapBarbell(weight);
+  }
+
+  return weight;
+}
 
 export type ProgressionDecision = {
   liftId: string;
@@ -74,9 +126,11 @@ export function decideProgression(
   }
 
   const inc = prescription.increment ?? liftIncrementOverride ?? 5;
+  const liftMeta = liftForSnap(prescription.liftId);
+  const rawNext = prescription.weight + inc;
   return {
     ...base,
-    nextWeight: prescription.weight + inc,
+    nextWeight: snapWorkingWeight(rawNext, liftMeta),
     advanced: true,
     reason: `All sets hit ${prescription.repMax} reps — +${inc}`,
   };
