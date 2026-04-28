@@ -19,7 +19,9 @@ import { decideProgression } from '@/lib/progression';
 import {
   fmtDurationShort,
   sessionDurationMs,
+  sessionFinishHighlights,
   sessionRecapPRs,
+  type SessionFinishHighlights,
   type SessionRecapPRItem,
 } from '@/lib/stats';
 import { ReadinessForm } from './ReadinessForm';
@@ -164,6 +166,7 @@ type SessionRecapPayload = {
   prs: SessionRecapPRItem[];
   durationMs: number | null;
   progression: { advanced: number; held: number; skipped: number };
+  highlights: SessionFinishHighlights;
 };
 
 function FinishSessionButton({ session, prescriptions }: { session: SessionLog; prescriptions: Prescription[] }) {
@@ -210,12 +213,14 @@ function FinishSessionButton({ session, prescriptions }: { session: SessionLog; 
         const allSessions = await db.session_logs.toArray();
         const lifts = await db.lifts.toArray();
         const prs = sessionRecapPRs(session.id, allSets, allSessions, lifts);
+        const highlights = sessionFinishHighlights(session.id, sessionSets, lifts);
         setRecap({
           session: finalSession,
           templateName: tmpl?.name ?? session.templateId,
           prs,
           durationMs,
           progression,
+          highlights,
         });
       }
     } finally {
@@ -234,6 +239,7 @@ function FinishSessionButton({ session, prescriptions }: { session: SessionLog; 
           durationMs={recap.durationMs}
           progression={recap.progression}
           prs={recap.prs}
+          highlights={recap.highlights}
         />
       )}
       {liveDuration != null && (

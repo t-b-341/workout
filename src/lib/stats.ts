@@ -318,6 +318,135 @@ export function sessionRecapPRs(
   return out;
 }
 
+/** Aggregates for the finish / recap screen (one session). */
+export type SessionFinishHighlights = {
+  completedSetCount: number;
+  /** weight × reps summed for completed, non–cardio/time sets with weight > 0. */
+  strengthVolumeLb: number;
+  distinctLifts: number;
+  /** Best Epley e1RM among completed strength sets this session (lb). */
+  bestSessionE1RmLb: number;
+  /** Heaviest completed strength set by weight (ties break on reps). */
+  topSet: { liftName: string; weight: number; reps: number } | null;
+  reduced: number;
+  skipped: number;
+  substituted: number;
+};
+
+export function sessionFinishHighlights(
+  sessionId: string,
+  sets: SetLog[],
+  lifts: Lift[],
+): SessionFinishHighlights {
+  const liftMap = new Map(lifts.map((l) => [l.id, l]));
+  let completedSetCount = 0;
+  let strengthVolumeLb = 0;
+  const liftIds = new Set<string>();
+  let bestSessionE1RmLb = 0;
+  let topSet: { liftId: string; weight: number; reps: number } | null = null;
+  let reduced = 0;
+  let skipped = 0;
+  let substituted = 0;
+
+  for (const s of sets) {
+    if (s.sessionLogId !== sessionId) continue;
+    if (s.status === 'reduced') reduced++;
+    else if (s.status === 'skipped') skipped++;
+    else if (s.status === 'substituted') substituted++;
+
+    if (s.status !== 'completed') continue;
+    completedSetCount++;
+    liftIds.add(s.liftId);
+    const lift = liftMap.get(s.liftId);
+    const strength = lift && lift.equipment !== 'cardio' && lift.equipment !== 'time';
+    if (strength && s.weight > 0) {
+      strengthVolumeLb += s.weight * s.reps;
+      const e = est1RM(s.weight, s.reps);
+      if (e > bestSessionE1RmLb) bestSessionE1RmLb = e;
+      if (
+        !topSet
+        || s.weight > topSet.weight
+        || (s.weight === topSet.weight && s.reps > topSet.reps)
+      ) {
+        topSet = { liftId: s.liftId, weight: s.weight, reps: s.reps };
+      }
+    }
+  }
+
+  const topName = topSet ? (liftMap.get(topSet.liftId)?.name ?? topSet.liftId) : null;
+  return {
+    completedSetCount,
+    strengthVolumeLb,
+    distinctLifts: liftIds.size,
+    bestSessionE1RmLb: Math.round(bestSessionE1RmLb),
+    topSet: topSet && topName ? { liftName: topName, weight: topSet.weight, reps: topSet.reps } : null,
+    reduced,
+    skipped,
+    substituted,
+  };
+}
+
+/** Short factual lines for the recap (newest / most important first). */
+export function sessionRecapSummaryLines(opts: {
+  highlights: SessionFinishHighlights;
+  progression: { advanced: number; held: number; skipped: number };
+  prCount: number;
+  durationMs: number | null;
+  templateName: string;
+}): string[] {
+  const lines: string[] = [];
+  const h = opts.highlights;
+  const p = opts.progression;
+
+  if (opts.durationMs != null) {
+    lines.push(`Finished in ${fmtDurationShort(opts.durationMs)}.`);
+  }
+  if (opts.prCount > 0) {
+    lines.push(
+      opts.prCount === 1
+        ? 'One new personal record on the books.'
+        : `${opts.prCount} new personal records on the books.`,
+    );
+  }
+  if (p.advanced > 0) {
+    lines.push(
+      p.advanced === 1
+        ? 'One lift is scheduled heavier next session.'
+        : `${p.advanced} lifts move up in weight next session.`,
+    );
+  }
+  if (h.strengthVolumeLb > 0) {
+    const v = Math.round(h.strengthVolumeLb).toLocaleString();
+    lines.push(`Roughly ${v} lb of strength volume across ${h.completedSetCount} completed sets.`);
+  } else if (h.completedSetCount > 0) {
+    lines.push(
+      `${h.completedSetCount} set${h.completedSetCount === 1 ? '' : 's'} logged${
+        h.distinctLifts > 0 ? ` across ${h.distinctLifts} movement${h.distinctLifts === 1 ? '' : 's'}` : ''
+      }.`,
+    );
+  }
+  if (h.topSet && lines.length < 6) {
+    lines.push(`Heaviest single set: ${h.topSet.liftName} at ${h.topSet.weight} lb × ${h.topSet.reps}.`);
+  } else if (h.bestSessionE1RmLb > 0 && lines.length < 6) {
+    lines.push(`Session peak estimated 1RM ≈ ${h.bestSessionE1RmLb} lb (Epley).`);
+  }
+  const mods = h.reduced + h.skipped + h.substituted;
+  if (mods > 0 && lines.length < 6) {
+    const bits: string[] = [];
+    if (h.reduced) bits.push(`${h.reduced} reduced`);
+    if (h.skipped) bits.push(`${h.skipped} skipped`);
+    if (h.substituted) bits.push(`${h.substituted} substituted`);
+    lines.push(`${bits.join(', ')} — adjustments still count.`);
+  }
+  if (p.held > 0 && p.advanced === 0 && opts.prCount === 0 && lines.length < 6) {
+    lines.push('Working weights held steady — solid maintenance work.');
+  }
+  if (lines.length === 0) {
+    lines.push(`${opts.templateName} is in the log. Showing up is the win.`);
+  }
+  return lines.slice(0, 6);
+}
+
 /** Chronological list of PRs across all lifts (one entry per (liftId, reps)
  *  PR event in time order). */
 export type PRFeedItem = {

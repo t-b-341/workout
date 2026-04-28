@@ -1,9 +1,9 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useMemo } from 'react';
 import type { SessionLog } from '@/lib/types';
-import type { SessionRecapPRItem } from '@/lib/stats';
-import { fmtDurationShort } from '@/lib/stats';
+import type { SessionFinishHighlights, SessionRecapPRItem } from '@/lib/stats';
+import { fmtDurationShort, sessionRecapSummaryLines } from '@/lib/stats';
 import { effortLabel } from '@/lib/effort';
 
 type Props = {
@@ -14,6 +14,7 @@ type Props = {
   durationMs: number | null;
   progression: { advanced: number; held: number; skipped: number };
   prs: SessionRecapPRItem[];
+  highlights: SessionFinishHighlights;
 };
 
 function sessionModeLabel(s: SessionLog): string {
@@ -21,6 +22,15 @@ function sessionModeLabel(s: SessionLog): string {
   if (s.deload) return 'Deload';
   if (s.mode === 'light') return 'Light day';
   return 'Standard';
+}
+
+function StatChip({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-xl bg-zinc-900/90 border border-zinc-800 px-3 py-2.5 text-center">
+      <div className="text-[10px] uppercase tracking-wide text-zinc-500 font-medium">{label}</div>
+      <div className="text-sm font-semibold text-zinc-100 mt-0.5 tabular-nums">{value}</div>
+    </div>
+  );
 }
 
 export function SessionRecapSheet({
@@ -31,7 +41,20 @@ export function SessionRecapSheet({
   durationMs,
   progression,
   prs,
+  highlights,
 }: Props) {
+  const summaryLines = useMemo(
+    () =>
+      sessionRecapSummaryLines({
+        highlights,
+        progression,
+        prCount: prs.length,
+        durationMs,
+        templateName,
+      }),
+    [highlights, progression, prs.length, durationMs, templateName],
+  );
+
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
@@ -47,6 +70,17 @@ export function SessionRecapSheet({
     ? ` · Effort: ${effortLabel(session.effortScale)}`
     : '';
 
+  const durationLabel = durationMs != null ? fmtDurationShort(durationMs) : '—';
+  const prLabel = prs.length === 0 ? 'None' : `${prs.length} PR${prs.length === 1 ? '' : 's'}`;
+  const volLabel =
+    highlights.strengthVolumeLb > 0
+      ? `${Math.round(highlights.strengthVolumeLb).toLocaleString()} lb`
+      : '—';
+  const workLabel =
+    highlights.completedSetCount > 0
+      ? `${highlights.completedSetCount} sets · ${highlights.distinctLifts} lift${highlights.distinctLifts === 1 ? '' : 's'}`
+      : '—';
+
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center sm:items-center p-0 sm:p-4">
       <button
@@ -59,13 +93,14 @@ export function SessionRecapSheet({
         role="dialog"
         aria-modal="true"
         aria-labelledby="session-recap-title"
-        className="relative w-full max-w-lg rounded-t-3xl sm:rounded-3xl border border-zinc-800 bg-zinc-950 shadow-2xl max-h-[min(90dvh,640px)] flex flex-col"
+        className="relative w-full max-w-lg rounded-t-3xl sm:rounded-3xl border border-amber-500/20 bg-zinc-950 shadow-2xl max-h-[min(90dvh,680px)] flex flex-col overflow-hidden"
       >
-        <div className="p-5 pb-3 border-b border-zinc-800 shrink-0">
-          <h2 id="session-recap-title" className="text-lg font-semibold text-zinc-100">
-            Session recap
+        <div className="px-5 pt-6 pb-4 bg-gradient-to-b from-amber-500/10 to-transparent border-b border-zinc-800 shrink-0">
+          <p className="text-amber-400 text-sm font-medium tracking-wide uppercase">All done</p>
+          <h2 id="session-recap-title" className="text-2xl font-bold text-zinc-50 mt-1">
+            Workout complete!
           </h2>
-          <p className="text-sm text-zinc-500 mt-1">
+          <p className="text-sm text-zinc-400 mt-2">
             {templateName}
             <span className="text-zinc-600"> · </span>
             {session.date}
@@ -73,14 +108,37 @@ export function SessionRecapSheet({
             {sessionModeLabel(session)}
             {effort}
           </p>
-          {durationMs != null && (
-            <p className="text-xs font-mono text-zinc-500 mt-2">
-              {fmtDurationShort(durationMs)}
-            </p>
-          )}
         </div>
 
         <div className="overflow-y-auto flex-1 p-5 space-y-5">
+          <div>
+            <h3 className="text-xs font-medium uppercase tracking-wide text-zinc-500 mb-2">
+              At a glance
+            </h3>
+            <div className="grid grid-cols-2 gap-2">
+              <StatChip label="Time" value={durationLabel} />
+              <StatChip label="PRs" value={prLabel} />
+              <StatChip label="Strength volume" value={volLabel} />
+              <StatChip label="Work logged" value={workLabel} />
+            </div>
+            {highlights.bestSessionE1RmLb > 0 && (
+              <p className="text-xs text-zinc-500 mt-2 text-center font-mono">
+                Session peak e1RM ≈ {highlights.bestSessionE1RmLb} lb
+              </p>
+            )}
+          </div>
+
+          <section className="rounded-2xl bg-zinc-900/60 border border-zinc-800 p-4">
+            <h3 className="text-xs font-medium uppercase tracking-wide text-amber-500/90 mb-2">
+              Summary
+            </h3>
+            <ul className="space-y-2 text-sm text-zinc-300 leading-snug list-disc pl-4 marker:text-amber-500/60">
+              {summaryLines.map((line, i) => (
+                <li key={i}>{line}</li>
+              ))}
+            </ul>
+          </section>
+
           <section>
             <h3 className="text-xs font-medium uppercase tracking-wide text-zinc-500 mb-2">
               Progression

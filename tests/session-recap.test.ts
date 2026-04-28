@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { sessionRecapPRs, sortSetsChronologically } from '../src/lib/stats';
+import {
+  sessionFinishHighlights,
+  sessionRecapPRs,
+  sessionRecapSummaryLines,
+  sortSetsChronologically,
+} from '../src/lib/stats';
 import type { Lift, SessionLog, SetLog, TemplateId } from '../src/lib/types';
 
 const liftBench: Lift = {
@@ -153,5 +158,62 @@ describe('sessionRecapPRs', () => {
     ];
     const prs = sessionRecapPRs('day2', sets, sessions, [liftBench]);
     expect(prs).toHaveLength(0);
+  });
+});
+
+describe('sessionFinishHighlights', () => {
+  it('sums strength volume and counts distinct lifts', () => {
+    const lifts = [liftBench];
+    const sets: SetLog[] = [
+      {
+        id: '1',
+        sessionLogId: 's1',
+        liftId: 'bp',
+        prescriptionId: 'p',
+        setIndex: 0,
+        weight: 100,
+        reps: 5,
+        status: 'completed',
+      },
+      {
+        id: '2',
+        sessionLogId: 's1',
+        liftId: 'bp',
+        prescriptionId: 'p',
+        setIndex: 1,
+        weight: 100,
+        reps: 5,
+        status: 'completed',
+      },
+    ];
+    const h = sessionFinishHighlights('s1', sets, lifts);
+    expect(h.completedSetCount).toBe(2);
+    expect(h.strengthVolumeLb).toBe(1000);
+    expect(h.distinctLifts).toBe(1);
+    expect(h.topSet?.weight).toBe(100);
+    expect(h.topSet?.reps).toBe(5);
+  });
+});
+
+describe('sessionRecapSummaryLines', () => {
+  it('includes duration and PR line when provided', () => {
+    const lines = sessionRecapSummaryLines({
+      highlights: {
+        completedSetCount: 3,
+        strengthVolumeLb: 3000,
+        distinctLifts: 2,
+        bestSessionE1RmLb: 200,
+        topSet: { liftName: 'Bench', weight: 100, reps: 5 },
+        reduced: 0,
+        skipped: 0,
+        substituted: 0,
+      },
+      progression: { advanced: 1, held: 0, skipped: 0 },
+      prCount: 1,
+      durationMs: 45 * 60 * 1000 + 30 * 1000,
+      templateName: 'Upper A',
+    });
+    expect(lines.some((l) => l.includes('45m'))).toBe(true);
+    expect(lines.some((l) => /personal record/i.test(l))).toBe(true);
   });
 });
