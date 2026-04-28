@@ -1,7 +1,8 @@
 'use client';
 
-import { recommendMode } from './ReadinessForm';
-import type { ReadinessLog } from '@/lib/types';
+import { useState } from 'react';
+import { recommendMode, ReadinessEditForm } from './ReadinessForm';
+import type { ReadinessLog, SessionLog } from '@/lib/types';
 
 /** Color thresholds mirror recommendMode() in ReadinessForm so the chips
  *  visually agree with the suggested mode. */
@@ -35,10 +36,29 @@ function modeLabel(mode: 'standard' | 'light' | 'skip'): string {
 export function ReadinessSummary({
   readiness,
   dense,
+  session,
+  allowEdit,
 }: {
   readiness: ReadinessLog;
   dense?: boolean;
+  /** When set with `allowEdit`, shows an edit flow for today’s check-in. */
+  session?: SessionLog;
+  allowEdit?: boolean;
 }) {
+  const [editing, setEditing] = useState(false);
+  const canEdit = Boolean(allowEdit && session && !dense);
+
+  if (canEdit && editing && session) {
+    return (
+      <ReadinessEditForm
+        key={`${readiness.id}-${readiness.sleepHours}-${readiness.soreness}-${readiness.motivation}`}
+        readiness={readiness}
+        session={session}
+        onDone={() => setEditing(false)}
+      />
+    );
+  }
+
   const rec = recommendMode(readiness.sleepHours, readiness.soreness, readiness.motivation);
   const chipBase = dense
     ? 'px-2 py-0.5 rounded-md text-[11px] font-mono'
@@ -75,18 +95,31 @@ export function ReadinessSummary({
   }
 
   return (
-    <details className="rounded-2xl bg-zinc-900 border border-zinc-800 p-3 group">
-      <summary className="cursor-pointer list-none flex items-center justify-between gap-2">
-        <div className="flex items-center gap-2 min-w-0">
-          <span className="text-xs uppercase tracking-wider text-zinc-500">Readiness</span>
-          <span className={`text-xs ${modeColor(rec.mode)}`}>{modeLabel(rec.mode)}</span>
-        </div>
-        <span className="text-xs text-zinc-500 group-open:hidden">tap to expand</span>
-      </summary>
-      <div className="mt-3 space-y-2">
-        {chips}
-        <div className="text-xs text-zinc-500">{rec.reason}</div>
+    <div className="rounded-2xl bg-zinc-900 border border-zinc-800 p-3">
+      <div className="flex items-center justify-between gap-2">
+        <details className="group flex-1 min-w-0">
+          <summary className="cursor-pointer list-none flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2 min-w-0">
+              <span className="text-xs uppercase tracking-wider text-zinc-500">Readiness</span>
+              <span className={`text-xs ${modeColor(rec.mode)}`}>{modeLabel(rec.mode)}</span>
+            </div>
+            <span className="text-xs text-zinc-500 group-open:hidden shrink-0">tap to expand</span>
+          </summary>
+          <div className="mt-3 space-y-2">
+            {chips}
+            <div className="text-xs text-zinc-500">{rec.reason}</div>
+          </div>
+        </details>
+        {canEdit && (
+          <button
+            type="button"
+            className="text-xs text-amber-500 hover:text-amber-400 shrink-0 py-1"
+            onClick={() => setEditing(true)}
+          >
+            Edit
+          </button>
+        )}
       </div>
-    </details>
+    </div>
   );
 }

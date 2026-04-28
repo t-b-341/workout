@@ -148,7 +148,9 @@ export function TodayView() {
         </>
       ) : session.mode === 'skip' ? (
         <>
-          {readiness && <ReadinessSummary readiness={readiness} />}
+          {readiness && (
+            <ReadinessSummary readiness={readiness} session={session} allowEdit />
+          )}
           <div className="rounded-2xl bg-zinc-900 border border-zinc-800 p-6 text-center text-zinc-400">
             <div className="text-lg font-medium text-zinc-200 mb-2">Skipping for recovery</div>
             <div className="text-sm">No sets to log. Switch back to Standard or Light if plans change.</div>
@@ -156,7 +158,9 @@ export function TodayView() {
         </>
       ) : (
         <div className="space-y-3">
-          {readiness && <ReadinessSummary readiness={readiness} />}
+          {readiness && (
+            <ReadinessSummary readiness={readiness} session={session} allowEdit />
+          )}
           {(prescriptions ?? []).map((p) => {
             const lift = lifts.find((l) => l.id === p.liftId);
             if (!lift) return null;
