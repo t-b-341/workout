@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import {
   useAllSets,
   useLifts,
+  useMacroTrendAdvice,
   usePrescriptions,
   useReadinessForSession,
   useTemplates,
@@ -35,6 +36,7 @@ import { SyncStatusBar } from './SyncStatusBar';
 import { WeekActivityStrip } from './WeekActivityStrip';
 import { SessionContextDock } from './SessionContextDock';
 import { PageShell } from './PageShell';
+import { MacroTrendCallout } from './MacroTrendCallout';
 
 export function TodayView() {
   const templates = useTemplates();
@@ -100,6 +102,7 @@ export function TodayView() {
   return (
     <PageShell className={`p-4 space-y-4 ${showSessionDock ? 'pb-24' : ''}`}>
       <SyncStatusBar />
+      <MacroTrendTodayBanner />
       <WeekActivityStrip />
       {session.completedAt && (
         <SessionCompleteBanner
@@ -177,6 +180,40 @@ export function TodayView() {
         <SessionContextDock session={session} prescriptions={prescriptions ?? []} allSets={allSets} />
       )}
     </PageShell>
+  );
+}
+
+const MACRO_TREND_DISMISS_PREFIX = 'workout:macroTrendDismiss:';
+
+function MacroTrendTodayBanner() {
+  const date = todayIso();
+  const advice = useMacroTrendAdvice(date);
+  const storageKey = `${MACRO_TREND_DISMISS_PREFIX}${date}`;
+  const [dismissed, setDismissed] = useState(() => {
+    if (typeof window === 'undefined') return false;
+    try {
+      return sessionStorage.getItem(storageKey) === '1';
+    } catch {
+      return false;
+    }
+  });
+
+  const dismiss = () => {
+    try {
+      sessionStorage.setItem(storageKey, '1');
+    } catch {
+      /* ignore */
+    }
+    setDismissed(true);
+  };
+
+  if (dismissed) return null;
+  return (
+    <MacroTrendCallout
+      advice={advice}
+      title="Fueling trend (recent days)"
+      onDismiss={dismiss}
+    />
   );
 }
 

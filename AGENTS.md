@@ -15,6 +15,7 @@ Personal strength + cardio tracker: **Next.js 16** (App Router), **TypeScript**,
 - **Sync**: Row shape conversion lives in `src/lib/syncCodec.ts` (`toRemote` / `fromRemote`). `src/lib/sync.ts` owns I/O (pull, push, realtime). Optional fields round-trip as `undefined` locally, not `null` — tests in `tests/syncCodec.test.ts` lock this in.
 - **Env**: `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY` are required for auth and sync. Copy from `.env.example` → `.env.local` (not committed).
 - **Layout**: `LayoutModeProvider` (`src/lib/layoutMode.tsx`, wired in `src/app/providers.tsx`) persists `workout:layout-mode` in `localStorage` — default **phone** (`mobile`); **wide** (`desktop`) widens `PageShell` max-widths. Bottom nav has a **Wide / Phone** toggle.
+- **Macro trend hints**: `src/lib/macroTrend.ts` + `useMacroTrendAdvice` scan **nutrition/hydration logs for the 7 calendar days before** a reference date (excludes that day). Shown on **Today** (dismissible) and **Daily Check-In** — text only; **never** changes prescriptions or progression.
 
 ## Commands
 

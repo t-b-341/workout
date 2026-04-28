@@ -3,6 +3,7 @@
 import { useMemo, useState } from 'react';
 import {
   useHydrationForDate,
+  useMacroTrendAdvice,
   useNutritionForDate,
   useSleepForDate,
   useTodaySession,
@@ -21,6 +22,7 @@ import { flushDirty, localUpsert } from '@/lib/sync';
 import { todayIso } from '@/lib/time';
 import type { HydrationLog, NutritionLog, TemplateId } from '@/lib/types';
 import { BodyweightQuickLog } from './BodyweightQuickLog';
+import { MacroTrendCallout } from './MacroTrendCallout';
 import { PageShell } from './PageShell';
 
 function clamp(n: number, min: number, max: number): number {
@@ -41,6 +43,7 @@ export function RecoveryView() {
     [date, sleep, hydration, nutrition, readiness],
   );
   const plan = useMemo(() => recoveryPlan(score.band), [score.band]);
+  const macroTrend = useMacroTrendAdvice(date);
 
   return (
     <PageShell className="p-4 space-y-4">
@@ -62,6 +65,8 @@ export function RecoveryView() {
       <BodyweightQuickLog date={date} />
       <HydrationSection date={date} existing={hydration} prefs={prefs} />
       <NutritionSection date={date} existing={nutrition} prefs={prefs} />
+
+      <MacroTrendCallout advice={macroTrend} title="Fueling trend (days before today)" />
 
       <div className="rounded-2xl bg-zinc-900 border border-zinc-800 p-4 space-y-2">
         <div className="text-sm font-medium">Today&apos;s recommendations</div>

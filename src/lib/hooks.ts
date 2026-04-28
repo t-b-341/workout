@@ -6,6 +6,7 @@ import { format } from 'date-fns';
 import { getDb } from './db';
 import { CARDIO_WEEKLY_TARGET_MIN } from './seed';
 import { isoWeekString, weekRange, todayIso } from './time';
+import { buildMacroTrendAdvice, priorDatesExclusive } from './macroTrend';
 import { filterSessionsAfterReadiness } from './sessionFilters';
 import type {
   BodyweightLog,
@@ -205,6 +206,26 @@ export function useSleepForDate(date: string): SleepLog | undefined {
     const matches = await getDb().sleep_logs.where('date').equals(date).toArray();
     return matches[0];
   }, [date]);
+}
+
+/** Macro + hydration trend on **days before** `referenceDate` (excludes that day). */
+export function useMacroTrendAdvice(referenceDate: string) {
+  return useLiveQuery(async () => {
+    const dates = priorDatesExclusive(referenceDate, 7);
+    const db = getDb();
+    const [allN, allH] = await Promise.all([
+      db.nutrition_logs.toArray(),
+      db.hydration_logs.toArray(),
+    ]);
+    const nBy = new Map(allN.map((x) => [x.date, x]));
+    const hBy = new Map(allH.map((x) => [x.date, x]));
+    const days = dates.map((d) => ({
+      date: d,
+      nutrition: nBy.get(d),
+      hydration: hBy.get(d),
+    }));
+    return buildMacroTrendAdvice(days);
+  }, [referenceDate]);
 }
 
 /** Rows waiting for `flushDirty()` (Dexie `dirty` table). */

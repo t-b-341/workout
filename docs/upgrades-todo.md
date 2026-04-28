@@ -47,6 +47,7 @@ Consolidated backlog from product, UX, engineering, and testing discussions. Reo
 
 ## UX / polish (cross-cutting)
 
+- [x] Macro / hydration **trend hints** (prior days only, no auto-progression) — `macroTrend.ts`, Today + Recovery
 - [ ] Undo snackbar for destructive actions (delete set, clear session)
 - [ ] Optional: micro-celebration on session complete / weekly goal (with reduced-motion path)
 - [ ] Optional: command palette / search — jump to lift, route, or “log BW”
