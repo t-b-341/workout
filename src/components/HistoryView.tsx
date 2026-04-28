@@ -11,6 +11,7 @@ import {
   useLifts,
 } from '@/lib/hooks';
 import { getDb } from '@/lib/db';
+import { sortSetLogsForSession } from '@/lib/sessionFilters';
 import { localDelete, localUpsert } from '@/lib/sync';
 import { fmtDate } from '@/lib/time';
 import {
@@ -24,6 +25,7 @@ import {
 } from '@/lib/stats';
 import { Sparkline, MiniBars } from './Sparkline';
 import { ReadinessSummary } from './ReadinessSummary';
+import { SessionEditSheet } from './SessionEditSheet';
 import { CARDIO_WEEKLY_TARGET_MIN, MUSCLE_GROUPS, PATTERNS } from '@/lib/seed';
 import type {
   BodyweightLog,
@@ -94,8 +96,17 @@ function SessionsList({
   lifts: Lift[];
   readiness: ReadinessLog[];
 }) {
+  const [editing, setEditing] = useState<{ session: SessionLog; sets: SetLog[] } | null>(null);
   const liftName = (id: string) => lifts.find((l) => l.id === id)?.name ?? id;
   if (sessions.length === 0) return <div className="text-zinc-500 text-sm">No sessions logged yet.</div>;
+
+  async function beginEditSession(s: SessionLog, rawSets: SetLog[]) {
+    const db = getDb();
+    const rx = await db.prescriptions.where('templateId').equals(s.templateId).toArray();
+    rx.sort((a, b) => a.order - b.order);
+    const sorted = sortSetLogsForSession([...rawSets], rx);
+    setEditing({ session: s, sets: sorted });
+  }
 
   const setsBySession = new Map<string, SetLog[]>();
   for (const s of sets) {
@@ -112,7 +123,16 @@ function SessionsList({
   }
 
   return (
-    <div className="space-y-3">
+    <>
+      {editing && (
+        <SessionEditSheet
+          key={editing.session.id}
+          session={editing.session}
+          initialSets={editing.sets}
+          onClose={() => setEditing(null)}
+        />
+      )}
+      <div className="space-y-3">
       {sessions.map((s) => {
         const ss = (setsBySession.get(s.id) ?? []).sort((a, b) => a.setIndex - b.setIndex);
         const grouped = new Map<string, SetLog[]>();
@@ -137,8 +157,22 @@ function SessionsList({
                 </div>
                 {r && <ReadinessSummary readiness={r} dense />}
               </div>
-              <DeleteSessionButton session={s} setCount={ss.length} hasReadiness={!!r} isEmpty={isEmpty} />
+              <div className="flex items-center gap-1 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => void beginEditSession(s, ss)}
+                  className="text-xs px-2 h-7 rounded-md border border-zinc-700 text-zinc-400 hover:text-amber-400 hover:border-zinc-600"
+                >
+                  Edit
+                </button>
+                <DeleteSessionButton session={s} setCount={ss.length} hasReadiness={!!r} isEmpty={isEmpty} />
+              </div>
             </div>
+            {s.notes && (
+              <div className="mt-2 text-sm text-zinc-400 border-t border-zinc-800 pt-2">
+                {s.notes}
+              </div>
+            )}
             <div className="mt-3 space-y-1">
               {Array.from(grouped.entries()).map(([liftId, ls]) => (
                 <div key={liftId} className="text-sm flex items-baseline justify-between gap-2">
@@ -163,7 +197,8 @@ function SessionsList({
           </div>
         );
       })}
-    </div>
+      </div>
+    </>
   );
 }
 

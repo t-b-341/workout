@@ -11,6 +11,23 @@ import type {
   WatchFlag,
 } from './types';
 
+function sideRankForSort(s: SetLog): number {
+  return s.side === 'L' ? 0 : s.side === 'R' ? 1 : 2;
+}
+
+/** Global chronological order for PR replay (matches multi-session days + per-side). */
+export function sortSetsChronologically(sets: SetLog[], sessions: SessionLog[]): SetLog[] {
+  const sessionDate = new Map(sessions.map((x) => [x.id, x.date]));
+  return [...sets].sort((a, b) => {
+    const da = sessionDate.get(a.sessionLogId) ?? '';
+    const db = sessionDate.get(b.sessionLogId) ?? '';
+    if (da !== db) return da < db ? -1 : da > db ? 1 : 0;
+    if (a.sessionLogId !== b.sessionLogId) return a.sessionLogId < b.sessionLogId ? -1 : 1;
+    if (a.setIndex !== b.setIndex) return a.setIndex - b.setIndex;
+    return sideRankForSort(a) - sideRankForSort(b);
+  });
+}
+
 /** Epley estimated 1RM. */
 export function est1RM(weight: number, reps: number): number {
   if (weight <= 0 || reps <= 0) return 0;
@@ -256,6 +273,51 @@ export function detectPR(
   return { repPR, e1rmPR, previousAtReps };
 }
 
+/** One row per set in the session that was a rep-PR and/or e1RM-PR at log time
+ *  (same rules as `detectPR`, replayed in global chronological order). */
+export type SessionRecapPRItem = {
+  setId: string;
+  liftId: string;
+  liftName: string;
+  weight: number;
+  reps: number;
+  repPR: boolean;
+  e1rmPR: boolean;
+};
+
+export function sessionRecapPRs(
+  sessionId: string,
+  sets: SetLog[],
+  sessions: SessionLog[],
+  lifts: Lift[],
+): SessionRecapPRItem[] {
+  const liftMap = new Map(lifts.map((l) => [l.id, l]));
+  const ordered = sortSetsChronologically(sets, sessions);
+  const prior: SetLog[] = [];
+  const out: SessionRecapPRItem[] = [];
+  for (const s of ordered) {
+    if (s.sessionLogId === sessionId) {
+      const lift = liftMap.get(s.liftId);
+      if (lift && lift.equipment !== 'cardio' && lift.equipment !== 'time') {
+        const pr = detectPR(s, s.liftId, prior, sessions);
+        if (pr) {
+          out.push({
+            setId: s.id,
+            liftId: s.liftId,
+            liftName: lift.name,
+            weight: s.weight,
+            reps: s.reps,
+            repPR: pr.repPR,
+            e1rmPR: pr.e1rmPR,
+          });
+        }
+      }
+    }
+    prior.push(s);
+  }
+  return out;
+}
+
 /** Chronological list of PRs across all lifts (one entry per (liftId, reps)
  *  PR event in time order). */
 export type PRFeedItem = {
@@ -271,14 +333,7 @@ export type PRFeedItem = {
 export function prFeed(sets: SetLog[], sessions: SessionLog[], lifts: Lift[]): PRFeedItem[] {
   const liftMap = new Map(lifts.map((l) => [l.id, l]));
   const sessionDate = new Map(sessions.map((s) => [s.id, s.date]));
-
-  // Order sets by date, then setIndex, so we observe PRs in chronological order.
-  const ordered = [...sets].sort((a, b) => {
-    const da = sessionDate.get(a.sessionLogId) ?? '';
-    const db = sessionDate.get(b.sessionLogId) ?? '';
-    if (da !== db) return da < db ? -1 : 1;
-    return a.setIndex - b.setIndex;
-  });
+  const ordered = sortSetsChronologically(sets, sessions);
 
   const bestPerLiftReps = new Map<string, number>(); // key = liftId|reps
   const out: PRFeedItem[] = [];

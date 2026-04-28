@@ -16,13 +16,19 @@ import { CardioBanner } from './CardioBanner';
 import { SessionHeader } from './SessionHeader';
 import { LiftCard } from './LiftCard';
 import { decideProgression } from '@/lib/progression';
-import { fmtDurationShort, sessionDurationMs } from '@/lib/stats';
+import {
+  fmtDurationShort,
+  sessionDurationMs,
+  sessionRecapPRs,
+  type SessionRecapPRItem,
+} from '@/lib/stats';
 import { ReadinessForm } from './ReadinessForm';
 import { ReadinessSummary } from './ReadinessSummary';
 import { getDb } from '@/lib/db';
 import { defaultTemplateForLocalDate } from '@/lib/seed';
 import { applyEffortScale, effortLabel } from '@/lib/effort';
 import { BodyweightQuickLog } from './BodyweightQuickLog';
+import { SessionRecapSheet } from './SessionRecapSheet';
 
 export function TodayView() {
   const templates = useTemplates();
@@ -152,9 +158,18 @@ function applySessionMode(p: Prescription, s: SessionLog): Prescription {
   return p;
 }
 
+type SessionRecapPayload = {
+  session: SessionLog;
+  templateName: string;
+  prs: SessionRecapPRItem[];
+  durationMs: number | null;
+  progression: { advanced: number; held: number; skipped: number };
+};
+
 function FinishSessionButton({ session, prescriptions }: { session: SessionLog; prescriptions: Prescription[] }) {
   const [busy, setBusy] = useState(false);
   const [summary, setSummary] = useState<{ advanced: number; held: number; skipped: number; durationMs: number | null } | null>(null);
+  const [recap, setRecap] = useState<SessionRecapPayload | null>(null);
   const sets = useAllSets();
 
   // Live elapsed (only while the session is in progress).
@@ -166,6 +181,7 @@ function FinishSessionButton({ session, prescriptions }: { session: SessionLog; 
   async function finish() {
     setBusy(true);
     try {
+      const wasFirstCompletion = !session.completedAt;
       const db = getDb();
       const sessionSets = await db.set_logs.where('sessionLogId').equals(session.id).toArray();
       let advanced = 0, held = 0, skipped = 0;
@@ -185,7 +201,23 @@ function FinishSessionButton({ session, prescriptions }: { session: SessionLog; 
       await localUpsert('session_logs', finalSession);
       await flushDirty();
       const durationMs = sessionDurationMs(finalSession, sessionSets);
-      setSummary({ advanced, held, skipped, durationMs });
+      const progression = { advanced, held, skipped };
+      setSummary({ ...progression, durationMs });
+
+      if (wasFirstCompletion) {
+        const tmpl = await db.templates.get(session.templateId);
+        const allSets = await db.set_logs.toArray();
+        const allSessions = await db.session_logs.toArray();
+        const lifts = await db.lifts.toArray();
+        const prs = sessionRecapPRs(session.id, allSets, allSessions, lifts);
+        setRecap({
+          session: finalSession,
+          templateName: tmpl?.name ?? session.templateId,
+          prs,
+          durationMs,
+          progression,
+        });
+      }
     } finally {
       setBusy(false);
     }
@@ -193,6 +225,17 @@ function FinishSessionButton({ session, prescriptions }: { session: SessionLog; 
 
   return (
     <div className="space-y-2 pt-2">
+      {recap && (
+        <SessionRecapSheet
+          open
+          onClose={() => setRecap(null)}
+          session={recap.session}
+          templateName={recap.templateName}
+          durationMs={recap.durationMs}
+          progression={recap.progression}
+          prs={recap.prs}
+        />
+      )}
       {liveDuration != null && (
         <div className="text-xs text-zinc-500 text-center font-mono">
           session · {fmtDurationShort(liveDuration)}
