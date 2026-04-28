@@ -16,7 +16,7 @@ import {
   usFlozToMl,
   type RecoveryPrefs,
 } from '@/lib/recoveryPrefs';
-import { localUpsert } from '@/lib/sync';
+import { flushDirty, localUpsert } from '@/lib/sync';
 import { todayIso } from '@/lib/time';
 import type { HydrationLog, NutritionLog, TemplateId } from '@/lib/types';
 import { BodyweightQuickLog } from './BodyweightQuickLog';
@@ -27,7 +27,7 @@ function clamp(n: number, min: number, max: number): number {
 
 export function RecoveryView() {
   const date = todayIso();
-  const prefs = useRecoveryPrefs();
+  const prefs = useRecoveryPrefs(); // always defined; live-updates when meta row changes
   const nutrition = useNutritionForDate(date);
   const hydration = useHydrationForDate(date);
   const sleep = useSleepForDate(date);
@@ -58,13 +58,8 @@ export function RecoveryView() {
 
       <SleepSection date={date} existing={sleep} />
       <BodyweightQuickLog date={date} />
-      {prefs && (
-        <>
-          <HydrationSection date={date} existing={hydration} prefs={prefs} />
-          <NutritionSection date={date} existing={nutrition} prefs={prefs} />
-        </>
-      )}
-      {!prefs && <div className="text-sm text-zinc-500">Loading preferences…</div>}
+      <HydrationSection date={date} existing={hydration} prefs={prefs} />
+      <NutritionSection date={date} existing={nutrition} prefs={prefs} />
 
       <div className="rounded-2xl bg-zinc-900 border border-zinc-800 p-4 space-y-2">
         <div className="text-sm font-medium">Today&apos;s recommendations</div>
@@ -125,7 +120,7 @@ function SleepSection({
             max={5}
             value={quality}
             onChange={(e) =>
-              setQuality(parseInt(e.target.value || '3', 10) as 1 | 2 | 3 | 4 | 5)
+              setQuality(clamp(parseInt(e.target.value || '3', 10), 1, 5) as 1 | 2 | 3 | 4 | 5)
             }
           />
         </label>
@@ -133,14 +128,19 @@ function SleepSection({
       <button
         type="button"
         className="h-11 px-4 rounded-lg bg-zinc-800 text-sm w-full"
-        onClick={() =>
-          localUpsert('sleep_logs', {
+        onClick={async () => {
+          const h = clamp(Number.isFinite(hours) ? hours : 0, 0, 18);
+          const q = clamp(Math.round(Number.isFinite(quality) ? quality : 3), 1, 5) as 1 | 2 | 3 | 4 | 5;
+          setHours(h);
+          setQuality(q);
+          await localUpsert('sleep_logs', {
             id: `sleep-${date}`,
             date,
-            sleepHours: hours,
-            sleepQuality: quality,
-          })
-        }
+            sleepHours: h,
+            sleepQuality: q,
+          });
+          await flushDirty().catch(() => {});
+        }}
       >
         Save sleep
       </button>
@@ -185,6 +185,10 @@ function HydrationSection({
   const pctOfTarget =
     targetMl <= 0 ? 0 : clamp(Math.round((actualMl / targetMl) * 100), 0, 150);
 
+  function targetNearPresetOz(targetMlValue: number, oz: number): boolean {
+    return Math.abs(mlToUsFloz(targetMlValue) - oz) < 1;
+  }
+
   return (
     <div className="rounded-2xl bg-zinc-900 border border-zinc-800 p-4 space-y-4">
       <div className="text-sm font-medium">Hydration</div>
@@ -215,7 +219,7 @@ function HydrationSection({
               key={oz}
               type="button"
               className={`h-8 px-2 rounded-lg text-xs ${
-                Math.round(mlToUsFloz(targetMl)) === oz ? 'bg-sky-700' : 'bg-zinc-800'
+                targetNearPresetOz(targetMl, oz) ? 'bg-sky-700' : 'bg-zinc-800'
               }`}
               onClick={() => setTargetMl(usFlozToMl(oz))}
             >
@@ -293,22 +297,23 @@ function HydrationSection({
         <button
           type="button"
           className="h-11 px-4 rounded-lg bg-zinc-800 text-sm"
-          onClick={() =>
-            localUpsert('hydration_logs', {
+          onClick={async () => {
+            await localUpsert('hydration_logs', {
               id: `hydration-${date}`,
               date,
               waterActualMl: actualMl,
               waterTargetMl: targetMl,
               electrolytes,
-            })
-          }
+            });
+            await flushDirty().catch(() => {});
+          }}
         >
           Save hydration
         </button>
         <button
           type="button"
           className="h-10 px-4 rounded-lg bg-zinc-950 border border-zinc-800 text-xs text-zinc-400"
-          onClick={() => persistPrefsTarget()}
+          onClick={() => void persistPrefsTarget()}
         >
           Save current target ({mlToUsFloz(targetMl).toFixed(0)} oz) as my default
         </button>
@@ -368,6 +373,7 @@ function NutritionSection({
       fatActualG: fA,
       mealsLoggedCount: meals,
     });
+    await flushDirty().catch(() => {});
   }
 
   async function saveTargetsAsDefaults() {
@@ -436,13 +442,13 @@ function NutritionSection({
       </label>
 
       <div className="flex flex-col gap-2">
-        <button type="button" className="h-11 px-4 rounded-lg bg-zinc-800 text-sm" onClick={() => saveLog()}>
+        <button type="button" className="h-11 px-4 rounded-lg bg-zinc-800 text-sm" onClick={() => void saveLog()}>
           Save today&apos;s nutrition
         </button>
         <button
           type="button"
           className="h-10 px-4 rounded-lg bg-zinc-950 border border-zinc-800 text-xs text-zinc-400"
-          onClick={() => saveTargetsAsDefaults()}
+          onClick={() => void saveTargetsAsDefaults()}
         >
           Save macro targets above as my defaults
         </button>
@@ -509,11 +515,13 @@ function MacroRow({
           min={0}
           max={150}
           value={pctVal}
+          disabled={target <= 0}
+          title={target <= 0 ? 'Set a target above zero to use the slider' : undefined}
           onChange={(e) => {
             const p = Number(e.target.value);
             setActual(Math.round((target * p) / 100));
           }}
-          className="w-full accent-amber-500"
+          className="w-full accent-amber-500 disabled:opacity-40 disabled:cursor-not-allowed"
           aria-label={`${macro} percent of target`}
         />
       </div>

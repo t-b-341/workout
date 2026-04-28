@@ -48,21 +48,26 @@ export const DEFAULT_RECOVERY_PREFS: RecoveryPrefs = {
 
 const META_KEY = 'recovery:prefs';
 
-export async function loadRecoveryPrefs(): Promise<RecoveryPrefs> {
-  const row = await getDb().meta.get(META_KEY);
-  const v = row?.value as Partial<RecoveryPrefs> | undefined;
-  if (!v) return { ...DEFAULT_RECOVERY_PREFS };
-  const bo = v.bottleRefillOz ?? DEFAULT_RECOVERY_PREFS.bottleRefillOz;
+/** Normalize stored meta (or missing row) into prefs. Exported for tests. */
+export function normalizeRecoveryPrefsValue(v: unknown): RecoveryPrefs {
+  const partial = v as Partial<RecoveryPrefs> | undefined;
+  if (!partial || typeof partial !== 'object') return { ...DEFAULT_RECOVERY_PREFS };
+  const bo = partial.bottleRefillOz ?? DEFAULT_RECOVERY_PREFS.bottleRefillOz;
   return {
-    hydrationTargetMl: v.hydrationTargetMl ?? DEFAULT_RECOVERY_PREFS.hydrationTargetMl,
+    hydrationTargetMl: partial.hydrationTargetMl ?? DEFAULT_RECOVERY_PREFS.hydrationTargetMl,
     bottleRefillOz: Math.min(64, Math.max(8, bo)),
     nutritionTargets: {
-      calories: v.nutritionTargets?.calories ?? DEFAULT_RECOVERY_PREFS.nutritionTargets.calories,
-      proteinG: v.nutritionTargets?.proteinG ?? DEFAULT_RECOVERY_PREFS.nutritionTargets.proteinG,
-      carbsG: v.nutritionTargets?.carbsG ?? DEFAULT_RECOVERY_PREFS.nutritionTargets.carbsG,
-      fatG: v.nutritionTargets?.fatG ?? DEFAULT_RECOVERY_PREFS.nutritionTargets.fatG,
+      calories: partial.nutritionTargets?.calories ?? DEFAULT_RECOVERY_PREFS.nutritionTargets.calories,
+      proteinG: partial.nutritionTargets?.proteinG ?? DEFAULT_RECOVERY_PREFS.nutritionTargets.proteinG,
+      carbsG: partial.nutritionTargets?.carbsG ?? DEFAULT_RECOVERY_PREFS.nutritionTargets.carbsG,
+      fatG: partial.nutritionTargets?.fatG ?? DEFAULT_RECOVERY_PREFS.nutritionTargets.fatG,
     },
   };
+}
+
+export async function loadRecoveryPrefs(): Promise<RecoveryPrefs> {
+  const row = await getDb().meta.get(META_KEY);
+  return normalizeRecoveryPrefsValue(row?.value);
 }
 
 export async function saveRecoveryPrefs(p: RecoveryPrefs) {
@@ -81,6 +86,12 @@ export async function patchRecoveryPrefs(patch: Partial<RecoveryPrefs>) {
   });
 }
 
-export function useRecoveryPrefs(): RecoveryPrefs | undefined {
-  return useLiveQuery(() => loadRecoveryPrefs(), []);
+/**
+ * Live prefs from Dexie `meta`. Uses `where('key')` so updates re-render when
+ * `patchRecoveryPrefs` / bottle size changes (async `meta.get` alone does not
+ * subscribe reliably in dexie-react-hooks).
+ */
+export function useRecoveryPrefs(): RecoveryPrefs {
+  const row = useLiveQuery(() => getDb().meta.where('key').equals(META_KEY).first());
+  return normalizeRecoveryPrefsValue(row?.value);
 }

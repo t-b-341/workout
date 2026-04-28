@@ -129,7 +129,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="min-h-dvh flex flex-col">
-      <main className="flex-1 pb-24">{children}</main>
+      <main className="flex-1 pb-28 supports-[padding:max(0px)]:pb-[max(7rem,env(safe-area-inset-bottom,0px)+4.5rem)]">
+        {children}
+      </main>
       <nav className="fixed bottom-0 inset-x-0 border-t border-zinc-800 bg-zinc-950/95 backdrop-blur supports-[padding:max(0px)]:pb-[max(env(safe-area-inset-bottom),0px)]">
         <div className="grid grid-cols-5 mx-auto max-w-2xl">
           {tabs.map((t) => {

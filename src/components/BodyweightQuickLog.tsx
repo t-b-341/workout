@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { useAllBodyweight, useBodyweightForDate } from '@/lib/hooks';
-import { localUpsert } from '@/lib/sync';
+import { flushDirty, localUpsert } from '@/lib/sync';
 import { isoWeekStringFromIsoDate } from '@/lib/time';
 
 type Props = {
@@ -42,6 +42,7 @@ export function BodyweightQuickLog({ date, subtitle }: Props) {
       isoWeek: isoWeekStringFromIsoDate(date),
       bodyweight: lb,
     });
+    await flushDirty().catch(() => {});
   }
 
   return (
@@ -64,7 +65,7 @@ export function BodyweightQuickLog({ date, subtitle }: Props) {
         <span className="text-zinc-500 text-sm">lb</span>
         <button
           type="button"
-          onClick={() => save()}
+          onClick={() => void save()}
           className="ml-auto h-11 px-4 rounded-lg bg-zinc-800 text-sm font-medium"
         >
           {todayRow ? 'Update' : 'Save'}
