@@ -12,6 +12,8 @@ type Props = {
   session: SessionLog;
   templateName: string;
   durationMs: number | null;
+  /** Strength tonnage per clock hour when session length is known. */
+  strengthLbPerHour: number | null;
   progression: { advanced: number; held: number; skipped: number };
   prs: SessionRecapPRItem[];
   highlights: SessionFinishHighlights;
@@ -39,6 +41,7 @@ export function SessionRecapSheet({
   session,
   templateName,
   durationMs,
+  strengthLbPerHour,
   progression,
   prs,
   highlights,
@@ -50,9 +53,10 @@ export function SessionRecapSheet({
         progression,
         prCount: prs.length,
         durationMs,
+        strengthLbPerHour,
         templateName,
       }),
-    [highlights, progression, prs.length, durationMs, templateName],
+    [highlights, progression, prs.length, durationMs, strengthLbPerHour, templateName],
   );
 
   useEffect(() => {
@@ -83,6 +87,10 @@ export function SessionRecapSheet({
   const restLabel =
     highlights.totalRestBetweenSetsMs > 0
       ? fmtDurationShort(highlights.totalRestBetweenSetsMs)
+      : '—';
+  const densityLabel =
+    strengthLbPerHour != null && strengthLbPerHour > 0
+      ? `${Math.round(strengthLbPerHour).toLocaleString()} lb/h`
       : '—';
 
   return (
@@ -124,6 +132,7 @@ export function SessionRecapSheet({
               <StatChip label="PRs" value={prLabel} />
               <StatChip label="Rest (logged)" value={restLabel} />
               <StatChip label="Strength volume" value={volLabel} />
+              <StatChip label="Volume / hour" value={densityLabel} className="col-span-2" />
               <StatChip label="Work logged" value={workLabel} className="col-span-2" />
             </div>
             {highlights.bestSessionE1RmLb > 0 && (

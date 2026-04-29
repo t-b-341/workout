@@ -1,4 +1,4 @@
-import { getISOWeek, getISOWeekYear, parseISO } from 'date-fns';
+import { format, getISOWeek, getISOWeekYear, parseISO, subDays } from 'date-fns';
 import type {
   BodyweightLog,
   CardioLog,
@@ -422,6 +422,8 @@ export function sessionRecapSummaryLines(opts: {
   prCount: number;
   durationMs: number | null;
   templateName: string;
+  /** Strength lb per clock hour when session length is known. */
+  strengthLbPerHour?: number | null;
 }): string[] {
   const lines: string[] = [];
   const h = opts.highlights;
@@ -429,6 +431,11 @@ export function sessionRecapSummaryLines(opts: {
 
   if (opts.durationMs != null) {
     lines.push(`Finished in ${fmtDurationShort(opts.durationMs)}.`);
+  }
+  if (opts.strengthLbPerHour != null && opts.strengthLbPerHour > 0) {
+    lines.push(
+      `About ${Math.round(opts.strengthLbPerHour).toLocaleString()} lb of strength volume per clock hour.`,
+    );
   }
   if (h.totalRestBetweenSetsMs > 0) {
     lines.push(`About ${fmtDurationShort(h.totalRestBetweenSetsMs)} rest between logged sets.`);
@@ -674,6 +681,8 @@ export function buildWeeklyReadiness(readiness: ReadinessLog[]): WeeklyReadiness
 
 // ---------- Session duration ----------
 
+const MS_PER_HOUR = 3_600_000;
+
 export function sessionDurationMs(session: SessionLog, sets: SetLog[]): number | null {
   if (!session.startedAt) return null;
   const end = session.completedAt
@@ -687,6 +696,101 @@ export function sessionDurationMs(session: SessionLog, sets: SetLog[]): number |
   const start = Date.parse(session.startedAt);
   if (Number.isNaN(start) || Number.isNaN(end)) return null;
   return Math.max(0, end - start);
+}
+
+/** Strength tonnage (lb) per clock hour when duration is known. */
+export function strengthVolumeLbPerHour(
+  strengthVolumeLb: number,
+  durationMs: number | null,
+): number | null {
+  if (durationMs == null || durationMs <= 0) return null;
+  if (strengthVolumeLb <= 0) return null;
+  return strengthVolumeLb / (durationMs / MS_PER_HOUR);
+}
+
+/** Session strength volume ÷ wall-clock session length (`startedAt` → `completedAt`). */
+export function sessionStrengthDensity(
+  session: SessionLog,
+  sets: SetLog[],
+  lifts: Lift[],
+): { strengthVolumeLb: number; durationMs: number | null; lbPerHour: number | null } {
+  const highlights = sessionFinishHighlights(session.id, sets, lifts);
+  const durationMs = sessionDurationMs(session, sets);
+  return {
+    strengthVolumeLb: highlights.strengthVolumeLb,
+    durationMs,
+    lbPerHour: strengthVolumeLbPerHour(highlights.strengthVolumeLb, durationMs),
+  };
+}
+
+/** Default span for `rollingStrengthTrainingWindow` (calendar days, inclusive of `endDate`). */
+export const DEFAULT_ROLLING_STRENGTH_WINDOW_DAYS = 28;
+
+export type RollingStrengthTrainingWindow = {
+  windowDays: number;
+  startDate: string;
+  endDate: string;
+  /** Sessions with `completedAt` whose `date` falls in the window. */
+  completedSessions: number;
+  strengthVolumeLb: number;
+  /** Sum of `sessionDurationMs` for completed sessions (only positive durations). */
+  trainingDurationMs: number;
+  /** How many completed sessions had a positive clock duration. */
+  sessionsWithDuration: number;
+  /** lb ÷ combined training hours; null if no duration or no volume. */
+  lbPerTrainingHour: number | null;
+  /** `strengthVolumeLb / windowDays` (tonnage spread across the calendar window). */
+  strengthVolumeLbPerCalendarDay: number;
+};
+
+/**
+ * Rolling window ending on `endDateIso` (YYYY-MM-DD): strength volume and density
+ * over **completed** sessions only (`completedAt` set).
+ */
+export function rollingStrengthTrainingWindow(
+  endDateIso: string,
+  windowDays: number,
+  sessions: SessionLog[],
+  sets: SetLog[],
+  lifts: Lift[],
+): RollingStrengthTrainingWindow {
+  const end = parseISO(endDateIso);
+  const start = subDays(end, windowDays - 1);
+  const startStr = format(start, 'yyyy-MM-dd');
+  const endStr = endDateIso;
+
+  let strengthVolumeLb = 0;
+  let trainingDurationMs = 0;
+  let sessionsWithDuration = 0;
+  let completedSessions = 0;
+
+  for (const s of sessions) {
+    if (!s.completedAt) continue;
+    if (s.date < startStr || s.date > endStr) continue;
+    completedSessions++;
+    const h = sessionFinishHighlights(s.id, sets, lifts);
+    strengthVolumeLb += h.strengthVolumeLb;
+    const dm = sessionDurationMs(s, sets);
+    if (dm != null && dm > 0) {
+      trainingDurationMs += dm;
+      sessionsWithDuration++;
+    }
+  }
+
+  const lbPerTrainingHour =
+    trainingDurationMs > 0 ? strengthVolumeLbPerHour(strengthVolumeLb, trainingDurationMs) : null;
+
+  return {
+    windowDays,
+    startDate: startStr,
+    endDate: endStr,
+    completedSessions,
+    strengthVolumeLb,
+    trainingDurationMs,
+    sessionsWithDuration,
+    lbPerTrainingHour,
+    strengthVolumeLbPerCalendarDay: strengthVolumeLb / windowDays,
+  };
 }
 
 export function fmtDurationShort(ms: number): string {

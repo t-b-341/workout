@@ -21,6 +21,7 @@ import {
   fmtDurationShort,
   sessionDurationMs,
   sessionFinishHighlights,
+  sessionStrengthDensity,
   sessionRecapPRs,
   type SessionFinishHighlights,
   type SessionRecapPRItem,
@@ -288,6 +289,7 @@ type SessionRecapPayload = {
   templateName: string;
   prs: SessionRecapPRItem[];
   durationMs: number | null;
+  strengthLbPerHour: number | null;
   progression: { advanced: number; held: number; skipped: number };
   highlights: SessionFinishHighlights;
 };
@@ -337,11 +339,13 @@ function FinishSessionButton({ session, prescriptions }: { session: SessionLog; 
         const lifts = await db.lifts.toArray();
         const prs = sessionRecapPRs(session.id, allSets, allSessions, lifts);
         const highlights = sessionFinishHighlights(session.id, sessionSets, lifts);
+        const { lbPerHour: strengthLbPerHour } = sessionStrengthDensity(finalSession, sessionSets, lifts);
         setRecap({
           session: finalSession,
           templateName: tmpl?.name ?? session.templateId,
           prs,
           durationMs,
+          strengthLbPerHour,
           progression,
           highlights,
         });
@@ -360,6 +364,7 @@ function FinishSessionButton({ session, prescriptions }: { session: SessionLog; 
           session={recap.session}
           templateName={recap.templateName}
           durationMs={recap.durationMs}
+          strengthLbPerHour={recap.strengthLbPerHour}
           progression={recap.progression}
           prs={recap.prs}
           highlights={recap.highlights}

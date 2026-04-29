@@ -13,7 +13,7 @@ import {
 import { getDb } from '@/lib/db';
 import { sortSetLogsForSession } from '@/lib/sessionFilters';
 import { localDelete, localUpsert } from '@/lib/sync';
-import { fmtDate } from '@/lib/time';
+import { fmtDate, todayIso } from '@/lib/time';
 import {
   bodyweightSeries,
   buildLiftHistory,
@@ -21,8 +21,10 @@ import {
   buildWeeklyPatternCoverage,
   buildWeeklyReadiness,
   buildWeeklySummaries,
+  DEFAULT_ROLLING_STRENGTH_WINDOW_DAYS,
   fmtDurationShort,
   prFeed,
+  rollingStrengthTrainingWindow,
   sessionTotalRestBetweenSetsMs,
 } from '@/lib/stats';
 import { Sparkline, MiniBars } from './Sparkline';
@@ -303,6 +305,24 @@ function WeeksList({
   const muscleWeeks = useMemo(() => buildWeeklyMuscleVolume(sessions, sets, lifts), [sessions, sets, lifts]);
   const patternWeeks = useMemo(() => buildWeeklyPatternCoverage(sessions, sets, lifts), [sessions, sets, lifts]);
   const readinessWeeks = useMemo(() => buildWeeklyReadiness(readiness), [readiness]);
+  const rollingEndDate = useMemo(() => {
+    let max = '';
+    for (const s of sessions) {
+      if (s.completedAt && s.date > max) max = s.date;
+    }
+    return max || todayIso();
+  }, [sessions]);
+  const rolling = useMemo(
+    () =>
+      rollingStrengthTrainingWindow(
+        rollingEndDate,
+        DEFAULT_ROLLING_STRENGTH_WINDOW_DAYS,
+        sessions,
+        sets,
+        lifts,
+      ),
+    [rollingEndDate, sessions, sets, lifts],
+  );
   if (weeks.length === 0) return <div className="text-zinc-500 text-sm">No data yet.</div>;
 
   // Most recent 12, chronological for the trend card.
@@ -342,6 +362,46 @@ function WeeksList({
           />
         </div>
       )}
+      <div className="rounded-2xl bg-zinc-900 border border-zinc-800 p-4 space-y-3">
+        <div>
+          <div className="font-medium">Training density</div>
+          <div className="text-xs text-zinc-500">
+            Rolling {rolling.windowDays} days ({fmtDate(rolling.startDate, 'MMM d')}–{fmtDate(rolling.endDate, 'MMM d')})
+            · completed sessions only
+          </div>
+        </div>
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+          <Stat label="Sessions" value={`${rolling.completedSessions}`} unit="" />
+          <Stat label="Strength vol" value={Math.round(rolling.strengthVolumeLb).toLocaleString()} unit="lb" />
+          <Stat
+            label="Training time"
+            value={rolling.trainingDurationMs > 0 ? fmtDurationShort(rolling.trainingDurationMs) : '—'}
+            unit=""
+          />
+          <Stat
+            label="Vol / hour"
+            value={
+              rolling.lbPerTrainingHour != null
+                ? Math.round(rolling.lbPerTrainingHour).toLocaleString()
+                : '—'
+            }
+            unit={rolling.lbPerTrainingHour != null ? 'lb/h' : ''}
+          />
+        </div>
+        <div className="text-xs text-zinc-500 text-center">
+          Calendar spread:{' '}
+          <span className="font-mono text-zinc-400">
+            {Math.round(rolling.strengthVolumeLbPerCalendarDay).toLocaleString()} lb/day
+          </span>
+        </div>
+        {rolling.completedSessions > rolling.sessionsWithDuration && rolling.completedSessions > 0 ? (
+          <div className="text-xs text-zinc-600 text-center">
+            {rolling.completedSessions - rolling.sessionsWithDuration} session
+            {rolling.completedSessions - rolling.sessionsWithDuration === 1 ? '' : 's'} missing start time — vol/h uses
+            logged clock time only.
+          </div>
+        ) : null}
+      </div>
       {weeks.map((w) => {
         const cardioPct = Math.min(100, Math.round((w.cardioMin / CARDIO_WEEKLY_TARGET_MIN) * 100));
         const flagTotal = w.watchFlagCounts.erectors + w.watchFlagCounts.elbow + w.watchFlagCounts.shoulder;

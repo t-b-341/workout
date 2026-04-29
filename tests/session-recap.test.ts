@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import {
+  rollingStrengthTrainingWindow,
   sessionFinishHighlights,
   sessionRecapPRs,
   sessionRecapSummaryLines,
+  sessionStrengthDensity,
   sessionTotalRestBetweenSetsMs,
   sortSetsChronologically,
 } from '../src/lib/stats';
@@ -287,5 +289,153 @@ describe('sessionRecapSummaryLines', () => {
     });
     expect(lines.some((l) => l.includes('45m'))).toBe(true);
     expect(lines.some((l) => /personal record/i.test(l))).toBe(true);
+  });
+
+  it('includes strength lb/h when provided', () => {
+    const lines = sessionRecapSummaryLines({
+      highlights: {
+        completedSetCount: 3,
+        strengthVolumeLb: 3000,
+        distinctLifts: 2,
+        bestSessionE1RmLb: 200,
+        topSet: { liftName: 'Bench', weight: 100, reps: 5 },
+        reduced: 0,
+        skipped: 0,
+        substituted: 0,
+        totalRestBetweenSetsMs: 0,
+      },
+      progression: { advanced: 0, held: 0, skipped: 0 },
+      prCount: 0,
+      durationMs: 60 * 60 * 1000,
+      strengthLbPerHour: 3000,
+      templateName: 'Upper A',
+    });
+    expect(lines.some((l) => /per clock hour/i.test(l))).toBe(true);
+  });
+});
+
+describe('sessionStrengthDensity', () => {
+  it('computes lb/h from wall-clock session length', () => {
+    const session: SessionLog = {
+      ...sess('s1', '2026-04-01'),
+      startedAt: '2026-04-01T10:00:00.000Z',
+      completedAt: '2026-04-01T11:00:00.000Z',
+    };
+    const sets: SetLog[] = [
+      {
+        id: '1',
+        sessionLogId: 's1',
+        liftId: 'bp',
+        prescriptionId: 'p',
+        setIndex: 0,
+        weight: 100,
+        reps: 10,
+        status: 'completed',
+      },
+    ];
+    const d = sessionStrengthDensity(session, sets, [liftBench]);
+    expect(d.strengthVolumeLb).toBe(1000);
+    expect(d.durationMs).toBe(60 * 60 * 1000);
+    expect(d.lbPerHour).toBeCloseTo(1000, 5);
+  });
+
+  it('returns null lb/h without startedAt', () => {
+    const session = sess('s1', '2026-04-01');
+    const sets: SetLog[] = [
+      {
+        id: '1',
+        sessionLogId: 's1',
+        liftId: 'bp',
+        prescriptionId: 'p',
+        setIndex: 0,
+        weight: 100,
+        reps: 5,
+        status: 'completed',
+      },
+    ];
+    const d = sessionStrengthDensity(session, sets, [liftBench]);
+    expect(d.lbPerHour).toBeNull();
+  });
+});
+
+describe('rollingStrengthTrainingWindow', () => {
+  it('sums completed sessions in inclusive calendar window', () => {
+    const sessions: SessionLog[] = [
+      {
+        ...sess('a', '2026-04-27'),
+        startedAt: '2026-04-27T12:00:00.000Z',
+        completedAt: '2026-04-27T13:00:00.000Z',
+      },
+      {
+        ...sess('b', '2026-04-28'),
+        startedAt: '2026-04-28T12:00:00.000Z',
+        completedAt: '2026-04-28T12:30:00.000Z',
+      },
+      {
+        ...sess('c', '2026-03-01'),
+        startedAt: '2026-03-01T12:00:00.000Z',
+        completedAt: '2026-03-01T13:00:00.000Z',
+      },
+    ];
+    const sets: SetLog[] = [
+      {
+        id: '1',
+        sessionLogId: 'a',
+        liftId: 'bp',
+        prescriptionId: 'p',
+        setIndex: 0,
+        weight: 100,
+        reps: 10,
+        status: 'completed',
+      },
+      {
+        id: '2',
+        sessionLogId: 'b',
+        liftId: 'bp',
+        prescriptionId: 'p',
+        setIndex: 0,
+        weight: 100,
+        reps: 5,
+        status: 'completed',
+      },
+      {
+        id: '3',
+        sessionLogId: 'c',
+        liftId: 'bp',
+        prescriptionId: 'p',
+        setIndex: 0,
+        weight: 200,
+        reps: 10,
+        status: 'completed',
+      },
+    ];
+    const r = rollingStrengthTrainingWindow('2026-04-28', 2, sessions, sets, [liftBench]);
+    expect(r.startDate).toBe('2026-04-27');
+    expect(r.endDate).toBe('2026-04-28');
+    expect(r.completedSessions).toBe(2);
+    expect(r.strengthVolumeLb).toBe(1500);
+    expect(r.trainingDurationMs).toBe(60 * 60 * 1000 + 30 * 60 * 1000);
+    expect(r.lbPerTrainingHour).toBeCloseTo(1000, 5);
+    expect(r.strengthVolumeLbPerCalendarDay).toBe(750);
+  });
+
+  it('ignores sessions without completedAt', () => {
+    const sessions: SessionLog[] = [{ ...sess('open', '2026-04-28') }];
+    const sets: SetLog[] = [
+      {
+        id: '1',
+        sessionLogId: 'open',
+        liftId: 'bp',
+        prescriptionId: 'p',
+        setIndex: 0,
+        weight: 100,
+        reps: 10,
+        status: 'completed',
+      },
+    ];
+    const r = rollingStrengthTrainingWindow('2026-04-28', 7, sessions, sets, [liftBench]);
+    expect(r.completedSessions).toBe(0);
+    expect(r.strengthVolumeLb).toBe(0);
+    expect(r.lbPerTrainingHour).toBeNull();
   });
 });
