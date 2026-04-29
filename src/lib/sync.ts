@@ -6,15 +6,19 @@ import { createClient } from './supabase/client';
 import { LIFTS, PRESCRIPTIONS, TEMPLATES } from './seed';
 import { fromRemote, toRemote } from './syncCodec';
 import type {
+  BodyMeasurementLog,
+  BodyReadinessLog,
   BodyweightLog,
   CardioLog,
   HydrationLog,
+  InjuryEpisode,
   NutritionLog,
   Prescription,
   ReadinessLog,
   SessionLog,
   SetLog,
   SleepLog,
+  StressLog,
 } from './types';
 
 type RemoteTable = DirtyRow['table'];
@@ -25,10 +29,14 @@ const TABLE_TO_LOCAL: Record<RemoteTable, keyof ReturnType<typeof getDb> & strin
   set_logs: 'set_logs',
   cardio_logs: 'cardio_logs',
   bodyweight_logs: 'bodyweight_logs',
+  body_measurement_logs: 'body_measurement_logs',
   readiness_logs: 'readiness_logs',
   nutrition_logs: 'nutrition_logs',
   hydration_logs: 'hydration_logs',
   sleep_logs: 'sleep_logs',
+  stress_logs: 'stress_logs',
+  injury_episodes: 'injury_episodes',
+  body_readiness_logs: 'body_readiness_logs',
 };
 
 const ALL_TABLES: RemoteTable[] = [
@@ -37,10 +45,14 @@ const ALL_TABLES: RemoteTable[] = [
   'set_logs',
   'cardio_logs',
   'bodyweight_logs',
+  'body_measurement_logs',
   'readiness_logs',
   'nutrition_logs',
   'hydration_logs',
   'sleep_logs',
+  'stress_logs',
+  'injury_episodes',
+  'body_readiness_logs',
 ];
 
 const WATERMARK_PREFIX = 'sync:watermark:';
@@ -102,6 +114,9 @@ async function persistRows(table: RemoteTable, rows: RowPayload[]) {
     case 'bodyweight_logs':
       await db.bodyweight_logs.bulkPut(rows.map((r) => fromRemote<BodyweightLog>(r)));
       return;
+    case 'body_measurement_logs':
+      await db.body_measurement_logs.bulkPut(rows.map((r) => fromRemote<BodyMeasurementLog>(r)));
+      return;
     case 'readiness_logs':
       await db.readiness_logs.bulkPut(rows.map((r) => fromRemote<ReadinessLog>(r)));
       return;
@@ -113,6 +128,15 @@ async function persistRows(table: RemoteTable, rows: RowPayload[]) {
       return;
     case 'sleep_logs':
       await db.sleep_logs.bulkPut(rows.map((r) => fromRemote<SleepLog>(r)));
+      return;
+    case 'stress_logs':
+      await db.stress_logs.bulkPut(rows.map((r) => fromRemote<StressLog>(r)));
+      return;
+    case 'injury_episodes':
+      await db.injury_episodes.bulkPut(rows.map((r) => fromRemote<InjuryEpisode>(r)));
+      return;
+    case 'body_readiness_logs':
+      await db.body_readiness_logs.bulkPut(rows.map((r) => fromRemote<BodyReadinessLog>(r)));
       return;
   }
 }

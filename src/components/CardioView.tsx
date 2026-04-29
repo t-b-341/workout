@@ -1,10 +1,12 @@
 'use client';
 
+import { format } from 'date-fns';
 import { useState } from 'react';
 import { CardioBanner } from './CardioBanner';
 import { PageShell } from './PageShell';
 import { useThisWeekCardio } from '@/lib/hooks';
 import { localDelete, localUpsert } from '@/lib/sync';
+import { resolveCardioTimestamps } from '@/lib/cardioTime';
 import { todayIso, fmtDate } from '@/lib/time';
 import type { CardioLog, CardioType } from '@/lib/types';
 
@@ -20,11 +22,15 @@ export function CardioView() {
 
   async function add() {
     const id = `cardio-${Date.now()}`;
+    const endedAt = new Date().toISOString();
+    const { startedAt, endedAt: endIso } = resolveCardioTimestamps(endedAt, duration, undefined);
     const row: CardioLog = {
       id,
       date: todayIso(),
       type,
       durationMin: duration,
+      startedAt,
+      endedAt: endIso,
       ...(type === 'liss' ? { speedMph: speed, gradePct: grade } : {}),
       ...(type === 'intervals' ? { avgHr: avgHr || undefined, peakHr: peakHr || undefined } : {}),
       notes: notes || undefined,
@@ -38,6 +44,10 @@ export function CardioView() {
       <CardioBanner />
 
       <div className="rounded-2xl bg-zinc-900 border border-zinc-800 p-4 space-y-3">
+        <p className="text-xs text-zinc-500">
+          For time-based rest tracking with a start/stop duration and in-session speed/grade, use the
+          cardio block on <span className="text-zinc-300">Today</span> (programmed as a lift).
+        </p>
         <div className="flex gap-2">
           <button
             onClick={() => setType('liss')}
@@ -83,6 +93,12 @@ export function CardioView() {
               <div className="text-sm font-medium">{c.type === 'liss' ? 'LISS' : 'Intervals'} · {c.durationMin} min</div>
               <div className="text-xs text-zinc-500 mt-0.5">
                 {fmtDate(c.date)}
+                {c.startedAt && c.endedAt && (
+                  <span className="text-zinc-600">
+                    {' '}
+                    · {format(new Date(c.startedAt), 'h:mm a')}–{format(new Date(c.endedAt), 'h:mm a')}
+                  </span>
+                )}
                 {c.speedMph != null && ` · ${c.speedMph} mph @ ${c.gradePct}%`}
                 {c.avgHr != null && ` · avg HR ${c.avgHr}`}
                 {c.peakHr != null && ` · peak ${c.peakHr}`}

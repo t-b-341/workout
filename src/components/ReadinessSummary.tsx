@@ -80,6 +80,15 @@ export function ReadinessSummary({
           bw {readiness.bodyweight}
         </span>
       )}
+      {readiness.hrvSkipped ? (
+        <span className={`${chipBase} bg-zinc-800 text-zinc-400`}>
+          hrv skipped
+        </span>
+      ) : readiness.hrvRmssd != null ? (
+        <span className={`${chipBase} bg-sky-900/40 text-sky-200`}>
+          hrv {readiness.hrvRmssd}
+        </span>
+      ) : null}
     </div>
   );
 

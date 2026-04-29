@@ -1,4 +1,5 @@
 import { format, subDays } from 'date-fns';
+import { kcalFromMacros } from './macros';
 import type { HydrationLog, NutritionLog } from './types';
 
 export type DayFuel = {
@@ -32,8 +33,10 @@ function proteinLow(n: NutritionLog): boolean {
 }
 
 function caloriesLow(n: NutritionLog): boolean {
-  if (n.caloriesTarget < 1200) return false;
-  return n.caloriesActual / n.caloriesTarget < CAL_LOW;
+  const tgt = kcalFromMacros(n.proteinTargetG, n.carbsTargetG, n.fatTargetG);
+  const act = kcalFromMacros(n.proteinActualG, n.carbsActualG, n.fatActualG);
+  if (tgt < 1200) return false;
+  return act / tgt < CAL_LOW;
 }
 
 function hydrationLow(h: HydrationLog): boolean {

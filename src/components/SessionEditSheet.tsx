@@ -6,6 +6,8 @@ import { getDb } from '@/lib/db';
 import { flushDirty, localDelete, localUpsert } from '@/lib/sync';
 import { fmtDate } from '@/lib/time';
 import { snapWorkingWeight } from '@/lib/progression';
+import { rpeFromRir, shouldTrackRpeForReps } from '@/lib/rpe';
+import { resolveCardioTimestamps } from '@/lib/cardioTime';
 import type {
   CardioLog,
   CardioType,
@@ -31,13 +33,27 @@ async function mirrorCardioFromSet(
   if (lift.equipment !== 'cardio') return;
   const cardioId = `cardio-${session.id}-${row.prescriptionId}-${row.setIndex}`;
   if (row.status === 'completed') {
+    const db = getDb();
+    const prev = await db.cardio_logs.get(cardioId);
+    const loggedAt = row.loggedAt ?? new Date().toISOString();
+    const { startedAt, endedAt } = resolveCardioTimestamps(loggedAt, row.reps, undefined);
     const cardioRow: CardioLog = {
       id: cardioId,
       sessionLogId: session.id,
       date: session.date,
       type: liftToCardioType(lift.id),
       durationMin: row.reps,
-      notes: prescription?.notes,
+      startedAt,
+      endedAt,
+      notes: prescription?.notes ?? prev?.notes,
+      ...(prev
+        ? {
+            speedMph: prev.speedMph,
+            gradePct: prev.gradePct,
+            avgHr: prev.avgHr,
+            peakHr: prev.peakHr,
+          }
+        : {}),
     };
     await localUpsert('cardio_logs', cardioRow);
   } else {
@@ -100,6 +116,8 @@ export function SessionEditSheet({ session, initialSets, onClose }: Props) {
           ...row,
           weight: snapWorkingWeight(w, snapRef),
           reps: r,
+          rir: shouldTrackRpeForReps(r) && row.rir != null ? row.rir : undefined,
+          rpe: shouldTrackRpeForReps(r) && row.rir != null ? rpeFromRir(row.rir) : undefined,
           status,
           reason: row.reason?.trim() || undefined,
           substituteLiftId: status === 'substituted' ? row.substituteLiftId : undefined,
@@ -223,6 +241,28 @@ export function SessionEditSheet({ session, initialSets, onClose }: Props) {
                           ))}
                         </select>
                       </label>
+                      {shouldTrackRpeForReps(row.reps) ? (
+                        <label className="text-xs text-zinc-500 shrink-0">
+                          RIR
+                          <input
+                            type="number"
+                            inputMode="decimal"
+                            min={0}
+                            max={5}
+                            step={0.5}
+                            value={row.rir ?? ''}
+                            onChange={(e) =>
+                              patchRow(row.id, { rir: parseFloat(e.target.value || '0') || 0 })
+                            }
+                            className="mt-1 block w-20 h-9 rounded-lg bg-zinc-950 border border-zinc-700 px-2 text-sm font-mono text-zinc-200"
+                          />
+                          <div className="mt-1 text-[10px] text-zinc-500">
+                            RPE {row.rir != null ? rpeFromRir(row.rir).toFixed(1) : '—'}
+                          </div>
+                        </label>
+                      ) : (
+                        <div className="text-[11px] text-zinc-500">RPE hidden for sets over 12 reps</div>
+                      )}
                     </div>
                     {row.status === 'substituted' && (
                       <label className="block text-xs text-zinc-500">

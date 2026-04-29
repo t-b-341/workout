@@ -266,6 +266,49 @@ describe('sessionTotalRestBetweenSetsMs', () => {
     ];
     expect(sessionTotalRestBetweenSetsMs('s1', sets)).toBe(0);
   });
+
+  it('subtracts logged cardio minutes from a gap (so treadmill time is not rest)', () => {
+    const lifts: Lift[] = [
+      liftBench,
+      {
+        id: 'liss',
+        name: 'LISS',
+        equipment: 'cardio',
+        loadUnit: 'none',
+        repUnit: 'minutes',
+        increment: 1,
+        muscleGroups: [],
+        pattern: 'cardio',
+      },
+    ];
+    const sets = [
+      {
+        id: '1',
+        sessionLogId: 's1',
+        liftId: 'bp',
+        prescriptionId: 'p',
+        setIndex: 0,
+        weight: 100,
+        reps: 5,
+        status: 'completed' as const,
+        loggedAt: '2026-01-01T10:00:00.000Z',
+      },
+      {
+        id: '2',
+        sessionLogId: 's1',
+        liftId: 'liss',
+        prescriptionId: 'p2',
+        setIndex: 0,
+        weight: 0,
+        reps: 30,
+        status: 'completed' as const,
+        loggedAt: '2026-01-01T10:35:00.000Z',
+      },
+    ];
+    const gapMs = 35 * 60 * 1000;
+    const cardioMs = 30 * 60 * 1000;
+    expect(sessionTotalRestBetweenSetsMs('s1', sets, lifts)).toBe(gapMs - cardioMs);
+  });
 });
 
 describe('sessionRecapSummaryLines', () => {

@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   useAllSessions,
   useAllSets,
@@ -16,11 +16,22 @@ import { platesPerSide } from '@/lib/plates';
 import { snapWorkingWeight } from '@/lib/progression';
 import { detectPR, est1RM } from '@/lib/stats';
 import { RestTimer } from './RestTimer';
+import { rpeFromRir, shouldTrackRpeForReps } from '@/lib/rpe';
+import { resolveCardioTimestamps } from '@/lib/cardioTime';
 
 type Props = {
   prescription: Prescription;
   lift: Lift;
   session: SessionLog;
+};
+
+export type CardioSetMeta = {
+  speedMph?: number;
+  gradePct?: number;
+  avgHr?: number;
+  peakHr?: number;
+  /** Set when "Start workout cardio" is pressed; used for `cardio_logs.startedAt`. */
+  timerStartedAt?: string;
 };
 
 const STATUS_LABEL: Record<SetStatus, string> = {
@@ -91,9 +102,11 @@ export function LiftCard({ prescription, lift, session }: Props) {
     side?: 'L' | 'R';
     weight: number;
     reps: number;
+    rir?: number;
     status?: SetStatus;
     substituteLiftId?: string;
     reason?: string;
+    cardioMeta?: CardioSetMeta;
   }) {
     const existing = getSet(args.setIndex, args.side);
     const id = existing?.id ?? `${session.id}-${prescription.id}-${args.setIndex}-${args.side ?? 'X'}`;
@@ -107,6 +120,8 @@ export function LiftCard({ prescription, lift, session }: Props) {
       setIndex: args.setIndex,
       weight,
       reps: args.reps,
+      rir: shouldTrackRpeForReps(args.reps) && args.rir != null ? args.rir : undefined,
+      rpe: shouldTrackRpeForReps(args.reps) && args.rir != null ? rpeFromRir(args.rir) : undefined,
       status,
       substituteLiftId: args.substituteLiftId,
       reason: args.reason,
@@ -124,13 +139,30 @@ export function LiftCard({ prescription, lift, session }: Props) {
     if (isCardio) {
       const cardioId = `cardio-${session.id}-${prescription.id}-${args.setIndex}`;
       if (status === 'completed') {
+        const ct = liftToCardioType(lift.id);
+        const { startedAt, endedAt } = resolveCardioTimestamps(
+          row.loggedAt!,
+          args.reps,
+          args.cardioMeta?.timerStartedAt,
+        );
         const cardioRow: CardioLog = {
           id: cardioId,
           sessionLogId: session.id,
           date: session.date,
-          type: liftToCardioType(lift.id),
+          type: ct,
           durationMin: args.reps,
+          startedAt,
+          endedAt,
           notes: prescription.notes,
+          ...(ct === 'liss'
+            ? {
+                speedMph: args.cardioMeta?.speedMph,
+                gradePct: args.cardioMeta?.gradePct,
+              }
+            : {
+                avgHr: args.cardioMeta?.avgHr,
+                peakHr: args.cardioMeta?.peakHr,
+              }),
         };
         await localUpsert('cardio_logs', cardioRow);
       } else {
@@ -173,6 +205,13 @@ export function LiftCard({ prescription, lift, session }: Props) {
           </div>
           {prescription.notes && (
             <div className="text-xs text-zinc-500 mt-1">{prescription.notes}</div>
+          )}
+          {isCardio && (
+            <div className="text-[11px] text-zinc-500 mt-2 rounded-lg bg-zinc-950/80 border border-zinc-800 px-2 py-1.5">
+              <span className="text-zinc-400">Rest totals:</span> logged cardio minutes are subtracted from
+              &quot;rest between sets&quot; so treadmill/bike time isn&apos;t counted as rest. Use the timer,
+              then set speed / incline (LISS) or HR (intervals).
+            </div>
           )}
           {lift.equipment === 'barbell' && prescription.weight > 0 && (() => {
             const plates = platesPerSide(prescription.weight);
@@ -243,8 +282,9 @@ export function LiftCard({ prescription, lift, session }: Props) {
                     repUnitLabel={repUnitLabel}
                     initialWeight={existing?.weight ?? prescription.weight}
                     initialReps={existing?.reps ?? prescription.repMin}
-                    onSave={(weight, reps, status) =>
-                      logSet({ setIndex: idx, side, weight, reps, status })
+                    initialRir={existing?.rir}
+                    onSave={(weight, reps, rir, status, cardioMeta) =>
+                      logSet({ setIndex: idx, side, weight, reps, rir, status, cardioMeta })
                     }
                     done={isDone}
                   />
@@ -331,6 +371,72 @@ function liftToCardioType(liftId: string): CardioType {
   return liftId.includes('interval') ? 'intervals' : 'liss';
 }
 
+function CardioDurationTimer({
+  startedAtIso,
+  onStartedAtChange,
+  onApplyMinutes,
+}: {
+  startedAtIso: string | null;
+  onStartedAtChange: (iso: string | null) => void;
+  onApplyMinutes: (minutes: number) => void;
+}) {
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    if (!startedAtIso) return;
+    const id = setInterval(() => setTick((t) => t + 1), 1000);
+    return () => clearInterval(id);
+  }, [startedAtIso]);
+
+  const elapsedSec = startedAtIso
+    ? Math.max(0, Math.floor((Date.now() - Date.parse(startedAtIso)) / 1000))
+    : 0;
+  const m = Math.floor(elapsedSec / 60);
+  const s = elapsedSec % 60;
+
+  return (
+    <div className="rounded-xl border border-emerald-500/25 bg-emerald-950/25 px-3 py-2 space-y-2">
+      <div className="text-[11px] font-medium text-emerald-200/90">Session cardio timer</div>
+      {!startedAtIso ? (
+        <button
+          type="button"
+          className="w-full h-10 rounded-lg bg-emerald-600 text-zinc-950 text-sm font-semibold"
+          onClick={() => onStartedAtChange(new Date().toISOString())}
+        >
+          Start workout cardio
+        </button>
+      ) : (
+        <div className="flex flex-wrap items-center gap-2 justify-between">
+          <span className="font-mono text-xl tabular-nums text-emerald-400">
+            {m}:{s.toString().padStart(2, '0')}
+          </span>
+          <div className="flex gap-2 shrink-0">
+            <button
+              type="button"
+              className="h-9 px-3 rounded-lg bg-zinc-700 text-sm"
+              onClick={() => onStartedAtChange(null)}
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              className="h-9 px-3 rounded-lg bg-emerald-600 text-zinc-950 text-sm font-semibold"
+              onClick={() => {
+                const min = Math.max(1, Math.round(elapsedSec / 60));
+                onApplyMinutes(min);
+              }}
+            >
+              Apply minutes
+            </button>
+          </div>
+        </div>
+      )}
+      <p className="text-[10px] text-zinc-500 leading-snug">
+        Apply updates the minutes field only; the timer keeps running until you log the set, cancel, or finish this set. End time is set when you tap Log cardio.
+      </p>
+    </div>
+  );
+}
+
 function SetRow({
   prescription,
   lift,
@@ -338,6 +444,7 @@ function SetRow({
   repUnitLabel,
   initialWeight,
   initialReps,
+  initialRir,
   onSave,
   done,
 }: {
@@ -347,17 +454,113 @@ function SetRow({
   repUnitLabel: string;
   initialWeight: number;
   initialReps: number;
-  onSave: (weight: number, reps: number, status: SetStatus) => void | Promise<void>;
+  initialRir?: number;
+  onSave: (
+    weight: number,
+    reps: number,
+    rir: number | undefined,
+    status: SetStatus,
+    cardioMeta?: CardioSetMeta,
+  ) => void | Promise<void>;
   done: boolean;
 }) {
   const [w, setW] = useState(initialWeight);
   const [r, setR] = useState(initialReps);
+  const [rir, setRir] = useState<number>(initialRir ?? 2);
+  const ct = liftToCardioType(lift.id);
+  const [speedMph, setSpeedMph] = useState(2);
+  const [gradePct, setGradePct] = useState(3);
+  const [avgHr, setAvgHr] = useState<number | ''>('');
+  const [peakHr, setPeakHr] = useState<number | ''>('');
+  const [cardioWallClockStart, setCardioWallClockStart] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (done) setCardioWallClockStart(null);
+  }, [done]);
 
   const allowNegative = lift.id === 'p1_assisted'; // assistance load
   const showWeight = lift.loadUnit !== 'none';
+  const trackRpe = shouldTrackRpeForReps(r);
+  const derivedRpe = trackRpe ? rpeFromRir(rir) : null;
+
+  function cardioMeta(): CardioSetMeta | undefined {
+    if (!isCardio) return undefined;
+    const timer = cardioWallClockStart ?? undefined;
+    if (ct === 'liss') return { speedMph, gradePct, timerStartedAt: timer };
+    return {
+      avgHr: avgHr === '' ? undefined : Number(avgHr),
+      peakHr: peakHr === '' ? undefined : Number(peakHr),
+      timerStartedAt: timer,
+    };
+  }
+
+  const minuteCardio = isCardio && lift.repUnit === 'minutes';
 
   return (
     <div className="space-y-2">
+      {minuteCardio && (
+        <CardioDurationTimer
+          startedAtIso={cardioWallClockStart}
+          onStartedAtChange={setCardioWallClockStart}
+          onApplyMinutes={(min) => setR(min)}
+        />
+      )}
+      {isCardio && ct === 'liss' && (
+        <div className="grid grid-cols-2 gap-2">
+          <label className="text-xs text-zinc-500">
+            Speed (mph)
+            <input
+              type="number"
+              inputMode="decimal"
+              step={0.1}
+              value={speedMph}
+              onChange={(e) => setSpeedMph(parseFloat(e.target.value || '0'))}
+              className="mt-1 block w-full h-10 rounded-lg bg-zinc-950 border border-zinc-800 px-2 font-mono text-sm"
+            />
+          </label>
+          <label className="text-xs text-zinc-500">
+            Incline (%)
+            <input
+              type="number"
+              inputMode="decimal"
+              step={0.5}
+              value={gradePct}
+              onChange={(e) => setGradePct(parseFloat(e.target.value || '0'))}
+              className="mt-1 block w-full h-10 rounded-lg bg-zinc-950 border border-zinc-800 px-2 font-mono text-sm"
+            />
+          </label>
+        </div>
+      )}
+      {isCardio && ct === 'intervals' && (
+        <div className="grid grid-cols-2 gap-2">
+          <label className="text-xs text-zinc-500">
+            Avg HR (optional)
+            <input
+              type="number"
+              inputMode="numeric"
+              value={avgHr === '' ? '' : avgHr}
+              onChange={(e) => {
+                const v = e.target.value;
+                setAvgHr(v === '' ? '' : parseInt(v, 10));
+              }}
+              className="mt-1 block w-full h-10 rounded-lg bg-zinc-950 border border-zinc-800 px-2 font-mono text-sm"
+            />
+          </label>
+          <label className="text-xs text-zinc-500">
+            Peak HR (optional)
+            <input
+              type="number"
+              inputMode="numeric"
+              value={peakHr === '' ? '' : peakHr}
+              onChange={(e) => {
+                const v = e.target.value;
+                setPeakHr(v === '' ? '' : parseInt(v, 10));
+              }}
+              className="mt-1 block w-full h-10 rounded-lg bg-zinc-950 border border-zinc-800 px-2 font-mono text-sm"
+            />
+          </label>
+        </div>
+      )}
       <div className="flex flex-wrap items-center gap-3">
         {showWeight && (
           <WeightStepper
@@ -370,15 +573,38 @@ function SetRow({
           />
         )}
         <RepStepper value={r} onChange={setR} unit={repUnitLabel} />
+        {trackRpe ? (
+          <label className="text-xs text-zinc-500">
+            RIR
+            <input
+              type="number"
+              inputMode="decimal"
+              min={0}
+              max={5}
+              step={0.5}
+              value={rir}
+              onChange={(e) => setRir(parseFloat(e.target.value || '0'))}
+              className="mt-1 block w-20 h-10 rounded-lg bg-zinc-950 border border-zinc-800 px-2 text-sm font-mono text-zinc-200"
+            />
+            <div className="mt-1 text-[10px] text-zinc-500">RPE {derivedRpe?.toFixed(1)}</div>
+          </label>
+        ) : (
+          <div className="text-[11px] text-zinc-500">RPE hidden for sets over 12 reps</div>
+        )}
       </div>
       <div className="flex gap-2">
         <button
-          onClick={() => onSave(w, r, 'completed')}
+          onClick={() => onSave(w, r, trackRpe ? rir : undefined, 'completed', cardioMeta())}
           className={`flex-1 h-11 rounded-xl font-medium ${done ? 'bg-emerald-700' : 'bg-emerald-600 active:bg-emerald-700'}`}
         >
           {done ? 'Update set' : (isCardio ? 'Log cardio' : 'Log set')}
         </button>
       </div>
+      {prescription.liftId === 'pp' && (
+        <div className="text-[11px] text-rose-300 font-semibold">
+          BRACE YOUR GODDAMN CORE, or you&apos;ll hurt your back again
+        </div>
+      )}
     </div>
   );
 }

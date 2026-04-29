@@ -1,5 +1,6 @@
 'use client';
 
+import { resolveCardioTimestamps } from './cardioTime';
 import { getDb } from './db';
 import { localUpsert } from './sync';
 import type { CardioLog, CardioType } from './types';
@@ -30,12 +31,17 @@ export async function backfillCardioFromSets() {
     if (existing.has(cardioId)) continue;
     const session = await db.session_logs.get(s.sessionLogId);
     if (!session) continue;
+    const times =
+      s.loggedAt != null
+        ? resolveCardioTimestamps(s.loggedAt, s.reps, undefined)
+        : undefined;
     const row: CardioLog = {
       id: cardioId,
       sessionLogId: s.sessionLogId,
       date: session.date,
       type: liftToCardioType(s.liftId),
       durationMin: s.reps,
+      ...(times ?? {}),
     };
     await localUpsert('cardio_logs', row);
   }

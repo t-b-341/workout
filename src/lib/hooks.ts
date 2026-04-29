@@ -9,15 +9,19 @@ import { isoWeekString, weekRange, todayIso } from './time';
 import { buildMacroTrendAdvice, priorDatesExclusive } from './macroTrend';
 import { filterSessionsAfterReadiness } from './sessionFilters';
 import type {
+  BodyMeasurementLog,
+  BodyReadinessLog,
   BodyweightLog,
   CardioLog,
   HydrationLog,
+  InjuryEpisode,
   NutritionLog,
   Prescription,
   ReadinessLog,
   SessionLog,
   SetLog,
   SleepLog,
+  StressLog,
   TemplateId,
 } from './types';
 
@@ -125,6 +129,20 @@ export function useAllBodyweight(): BodyweightLog[] | undefined {
   }, []);
 }
 
+export function useAllBodyMeasurements(): BodyMeasurementLog[] | undefined {
+  return useLiveQuery(async () => {
+    const all = await getDb().body_measurement_logs.toArray();
+    return all.sort((a, b) => (a.date < b.date ? -1 : 1));
+  }, []);
+}
+
+export function useBodyMeasurementsForDate(date: string): BodyMeasurementLog | undefined {
+  return useLiveQuery(async () => {
+    const matches = await getDb().body_measurement_logs.where('date').equals(date).toArray();
+    return matches[0];
+  }, [date]);
+}
+
 export function useAllSets(): SetLog[] | undefined {
   return useLiveQuery(() => getDb().set_logs.toArray(), []);
 }
@@ -194,6 +212,13 @@ export function useNutritionForDate(date: string): NutritionLog | undefined {
   }, [date]);
 }
 
+export function useAllNutrition(): NutritionLog[] | undefined {
+  return useLiveQuery(async () => {
+    const all = await getDb().nutrition_logs.toArray();
+    return all.sort((a, b) => (a.date < b.date ? 1 : -1));
+  }, []);
+}
+
 export function useHydrationForDate(date: string): HydrationLog | undefined {
   return useLiveQuery(async () => {
     const matches = await getDb().hydration_logs.where('date').equals(date).toArray();
@@ -206,6 +231,41 @@ export function useSleepForDate(date: string): SleepLog | undefined {
     const matches = await getDb().sleep_logs.where('date').equals(date).toArray();
     return matches[0];
   }, [date]);
+}
+
+export function useStressForDate(date: string): StressLog | undefined {
+  return useLiveQuery(async () => {
+    const matches = await getDb().stress_logs.where('date').equals(date).toArray();
+    return matches[0];
+  }, [date]);
+}
+
+export function useAllStress(): StressLog[] | undefined {
+  return useLiveQuery(async () => {
+    const all = await getDb().stress_logs.toArray();
+    return all.sort((a, b) => (a.date < b.date ? 1 : -1));
+  }, []);
+}
+
+export function useAllInjuryEpisodes(): InjuryEpisode[] | undefined {
+  return useLiveQuery(async () => {
+    const all = await getDb().injury_episodes.toArray();
+    return all.sort((a, b) => (a.startedAt < b.startedAt ? 1 : -1));
+  }, []);
+}
+
+export function useBodyReadinessForDate(date: string): BodyReadinessLog | undefined {
+  return useLiveQuery(async () => {
+    const matches = await getDb().body_readiness_logs.where('date').equals(date).toArray();
+    return matches[0];
+  }, [date]);
+}
+
+export function useAllBodyReadiness(): BodyReadinessLog[] | undefined {
+  return useLiveQuery(async () => {
+    const all = await getDb().body_readiness_logs.toArray();
+    return all.sort((a, b) => (a.date < b.date ? 1 : -1));
+  }, []);
 }
 
 /** Macro + hydration trend on **days before** `referenceDate` (excludes that day). */

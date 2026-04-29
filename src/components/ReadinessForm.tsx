@@ -39,6 +39,8 @@ export function ReadinessForm({
   const [motivation, setMotivation] = useState<number>(3);
   const existingBw = useThisWeekBodyweight();
   const [bw, setBw] = useState<number>(245);
+  const [hrvRmssd, setHrvRmssd] = useState<number>(45);
+  const [hrvSkipped, setHrvSkipped] = useState(false);
   const [busy, setBusy] = useState(false);
   const [recommended, setRecommended] = useState<ReadinessRecommendation | null>(null);
 
@@ -55,6 +57,9 @@ export function ReadinessForm({
         sleepHours: sleep,
         soreness,
         motivation,
+        hrvRmssd: hrvSkipped ? undefined : hrvRmssd,
+        hrvMeasuredMin: hrvSkipped ? undefined : 5,
+        hrvSkipped,
         bodyweight: showBwInput ? bw : undefined,
         createdAt: new Date().toISOString(),
       };
@@ -102,6 +107,36 @@ export function ReadinessForm({
       />
       <ReadinessScale label="Soreness" value={soreness} onChange={setSoreness} lowLabel="None" highLabel="Severe" />
       <ReadinessScale label="Motivation" value={motivation} onChange={setMotivation} lowLabel="Dead" highLabel="Fired up" />
+      <div className="rounded-xl border border-zinc-800 bg-zinc-950 p-3 space-y-2">
+        <div className="flex items-center justify-between gap-2">
+          <div className="text-sm text-zinc-300">Morning HRV (5 min)</div>
+          <button
+            type="button"
+            onClick={() => setHrvSkipped((v) => !v)}
+            className={`text-xs px-2 py-1 rounded-md ${
+              hrvSkipped ? 'bg-zinc-700 text-zinc-200' : 'bg-zinc-800 text-zinc-400'
+            }`}
+          >
+            {hrvSkipped ? 'HRV skipped' : 'Skip HRV'}
+          </button>
+        </div>
+        {!hrvSkipped ? (
+          <label className="flex items-center justify-between gap-3 text-xs text-zinc-500">
+            RMSSD
+            <input
+              type="number"
+              inputMode="decimal"
+              min={1}
+              step={0.1}
+              value={hrvRmssd}
+              onChange={(e) => setHrvRmssd(parseFloat(e.target.value || '0'))}
+              className="h-10 w-24 rounded-lg bg-zinc-900 border border-zinc-800 px-2 text-center text-sm text-zinc-200"
+            />
+          </label>
+        ) : (
+          <div className="text-xs text-zinc-500">Skipped today; recovery score will use other readiness signals.</div>
+        )}
+      </div>
 
       {showBwInput && (
         <div className="border-t border-zinc-800 pt-3">
@@ -199,6 +234,8 @@ export function ReadinessEditForm({
   const [motivation, setMotivation] = useState(readiness.motivation);
   const hadBw = readiness.bodyweight != null;
   const [bw, setBw] = useState(readiness.bodyweight ?? 0);
+  const [hrvRmssd, setHrvRmssd] = useState(readiness.hrvRmssd ?? 45);
+  const [hrvSkipped, setHrvSkipped] = useState(Boolean(readiness.hrvSkipped));
   const [busy, setBusy] = useState(false);
 
   async function persist(applyMode: boolean) {
@@ -210,6 +247,9 @@ export function ReadinessEditForm({
         sleepHours: sleep,
         soreness,
         motivation,
+        hrvRmssd: hrvSkipped ? undefined : hrvRmssd,
+        hrvMeasuredMin: hrvSkipped ? undefined : 5,
+        hrvSkipped,
         bodyweight: hadBw ? bw : undefined,
       };
       await localUpsert('readiness_logs', row);
@@ -260,6 +300,36 @@ export function ReadinessEditForm({
       />
       <ReadinessScale label="Soreness" value={soreness} onChange={setSoreness} lowLabel="None" highLabel="Severe" />
       <ReadinessScale label="Motivation" value={motivation} onChange={setMotivation} lowLabel="Dead" highLabel="Fired up" />
+      <div className="rounded-xl border border-zinc-800 bg-zinc-950 p-3 space-y-2">
+        <div className="flex items-center justify-between gap-2">
+          <div className="text-sm text-zinc-300">Morning HRV (5 min)</div>
+          <button
+            type="button"
+            onClick={() => setHrvSkipped((v) => !v)}
+            className={`text-xs px-2 py-1 rounded-md ${
+              hrvSkipped ? 'bg-zinc-700 text-zinc-200' : 'bg-zinc-800 text-zinc-400'
+            }`}
+          >
+            {hrvSkipped ? 'HRV skipped' : 'Skip HRV'}
+          </button>
+        </div>
+        {!hrvSkipped ? (
+          <label className="flex items-center justify-between gap-3 text-xs text-zinc-500">
+            RMSSD
+            <input
+              type="number"
+              inputMode="decimal"
+              min={1}
+              step={0.1}
+              value={hrvRmssd}
+              onChange={(e) => setHrvRmssd(parseFloat(e.target.value || '0'))}
+              className="h-10 w-24 rounded-lg bg-zinc-900 border border-zinc-800 px-2 text-center text-sm text-zinc-200"
+            />
+          </label>
+        ) : (
+          <div className="text-xs text-zinc-500">Skipped today; recovery score will use other readiness signals.</div>
+        )}
+      </div>
 
       {hadBw && (
         <div className="border-t border-zinc-800 pt-3">

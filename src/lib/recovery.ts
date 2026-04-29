@@ -1,3 +1,5 @@
+import { kcalFromMacros } from './macros';
+import { effectiveMealCount } from './mealTiming';
 import type {
   HydrationLog,
   NutritionLog,
@@ -37,10 +39,12 @@ export function hydrationScore(log?: HydrationLog): number {
 export function nutritionScore(log?: NutritionLog): number {
   if (!log) return 60;
   const protein = pct(log.proteinActualG, log.proteinTargetG);
-  const calories = pct(log.caloriesActual, log.caloriesTarget);
+  const calActual = kcalFromMacros(log.proteinActualG, log.carbsActualG, log.fatActualG);
+  const calTarget = kcalFromMacros(log.proteinTargetG, log.carbsTargetG, log.fatTargetG);
+  const calories = pct(calActual, calTarget);
   const carbs = pct(log.carbsActualG, log.carbsTargetG);
   const fats = pct(log.fatActualG, log.fatTargetG);
-  const mealsBonus = log.mealsLoggedCount >= 3 ? 3 : 0;
+  const mealsBonus = effectiveMealCount(log) >= 3 ? 3 : 0;
   const score = protein * 45 + calories * 30 + carbs * 15 + fats * 10;
   return Math.round(clamp(score + mealsBonus, 0, 100));
 }
@@ -50,7 +54,11 @@ export function readinessScore(log?: ReadinessLog): number {
   const sleep = clamp((log.sleepHours / 8) * 100, 0, 100);
   const soreness = clamp(((6 - log.soreness) / 5) * 100, 0, 100);
   const motivation = clamp((log.motivation / 5) * 100, 0, 100);
-  return Math.round(sleep * 0.35 + soreness * 0.35 + motivation * 0.3);
+  const base = sleep * 0.35 + soreness * 0.35 + motivation * 0.3;
+  if (log.hrvSkipped || log.hrvRmssd == null) return Math.round(base);
+  // Lightweight HRV signal (RMSSD): low suppresses readiness, high supports it.
+  const hrvScore = clamp(((log.hrvRmssd - 20) / 50) * 100, 0, 100);
+  return Math.round(base * 0.8 + hrvScore * 0.2);
 }
 
 export function recoveryBand(compositeScore: number): RecoveryBand {

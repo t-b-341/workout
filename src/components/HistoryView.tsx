@@ -6,6 +6,7 @@ import {
   useAllBodyweight,
   useAllCardio,
   useAllReadiness,
+  useAllStress,
   useSessionsAfterReadiness,
   useAllSets,
   useLifts,
@@ -23,6 +24,7 @@ import {
   buildWeeklySummaries,
   DEFAULT_ROLLING_STRENGTH_WINDOW_DAYS,
   fmtDurationShort,
+  isoWeekOf,
   prFeed,
   rollingStrengthTrainingWindow,
   sessionTotalRestBetweenSetsMs,
@@ -40,6 +42,7 @@ import type {
   ReadinessLog,
   SessionLog,
   SetLog,
+  StressLog,
 } from '@/lib/types';
 
 type Tab = 'sessions' | 'trends' | 'weeks' | 'prs' | 'muscle' | 'bodyweight';
@@ -61,8 +64,9 @@ export function HistoryView() {
   const cardio = useAllCardio();
   const bodyweights = useAllBodyweight();
   const readiness = useAllReadiness();
+  const stress = useAllStress();
 
-  if (!lifts || !sessions || !allSets || !cardio || !bodyweights || !readiness) {
+  if (!lifts || !sessions || !allSets || !cardio || !bodyweights || !readiness || !stress) {
     return <div className="p-6 text-zinc-500">Loading…</div>;
   }
 
@@ -82,7 +86,7 @@ export function HistoryView() {
 
       {tab === 'sessions' && <SessionsList sessions={sessions} sets={allSets} lifts={lifts} readiness={readiness} />}
       {tab === 'trends' && <TrendsList sessions={sessions} sets={allSets} lifts={lifts} />}
-      {tab === 'weeks' && <WeeksList sessions={sessions} sets={allSets} cardio={cardio} lifts={lifts} readiness={readiness} />}
+      {tab === 'weeks' && <WeeksList sessions={sessions} sets={allSets} cardio={cardio} lifts={lifts} readiness={readiness} stress={stress} />}
       {tab === 'prs' && <PRsList sessions={sessions} sets={allSets} lifts={lifts} />}
       {tab === 'muscle' && <MuscleList sessions={sessions} sets={allSets} lifts={lifts} />}
       {tab === 'bodyweight' && <BodyweightList logs={bodyweights} />}
@@ -148,7 +152,7 @@ function SessionsList({
         }
         const r = readinessBySession.get(s.id);
         const isEmpty = ss.length === 0 && !r;
-        const restMs = s.completedAt ? sessionTotalRestBetweenSetsMs(s.id, sets) : 0;
+        const restMs = s.completedAt ? sessionTotalRestBetweenSetsMs(s.id, sets, lifts) : 0;
         return (
           <div key={s.id} className="rounded-2xl bg-zinc-900 border border-zinc-800 p-4">
             <div className="flex items-baseline justify-between gap-2">
@@ -247,6 +251,19 @@ function LiftTrendCard({ lift, sessions, sets }: { lift: Lift; sessions: Session
     : 0;
   const deltaColor = delta > 0 ? 'text-emerald-400' : delta < 0 ? 'text-rose-400' : 'text-zinc-500';
   const deltaSign = delta > 0 ? '+' : '';
+  const liftSessionIds = new Set(points.map((p) => `${p.date}:${p.templateId}`));
+  const bySessionId = new Map(sessions.map((s) => [s.id, `${s.date}:${s.templateId}`]));
+  const rpeSamples = sets
+    .filter((s) => s.liftId === lift.id && s.status === 'completed' && s.rpe != null && s.reps <= 12)
+    .filter((s) => {
+      const key = bySessionId.get(s.sessionLogId);
+      return key ? liftSessionIds.has(key) : false;
+    })
+    .map((s) => s.rpe as number);
+  const recentRpe = rpeSamples.slice(-12);
+  const avgRecentRpe = recentRpe.length > 0
+    ? recentRpe.reduce((sum, n) => sum + n, 0) / recentRpe.length
+    : null;
 
   return (
     <details className="rounded-2xl bg-zinc-900 border border-zinc-800 group" open={points.length <= 3}>
@@ -275,6 +292,17 @@ function LiftTrendCard({ lift, sessions, sets }: { lift: Lift; sessions: Session
             <MiniBars values={volumes} height={40} />
           </div>
         )}
+        {recentRpe.length > 0 && (
+          <div>
+            <div className="text-xs uppercase tracking-wider text-zinc-500 mb-1">
+              RPE trend (last {recentRpe.length} tracked sets)
+            </div>
+            <Sparkline values={recentRpe} height={46} stroke="#f59e0b" fill="transparent" showDots={false} />
+            <div className="text-[11px] text-zinc-500 mt-1">
+              Avg recent RPE <span className="font-mono text-zinc-300">{avgRecentRpe?.toFixed(1)}</span>
+            </div>
+          </div>
+        )}
         <div className="text-xs space-y-1">
           {points.slice(-8).reverse().map((p) => (
             <div key={p.date + p.templateId} className="flex items-baseline justify-between border-t border-zinc-800 pt-1">
@@ -294,12 +322,14 @@ function WeeksList({
   cardio,
   lifts,
   readiness,
+  stress,
 }: {
   sessions: SessionLog[];
   sets: SetLog[];
   cardio: CardioLog[];
   lifts: Lift[];
   readiness: ReadinessLog[];
+  stress: StressLog[];
 }) {
   const weeks = buildWeeklySummaries(sessions, sets, cardio, lifts);
   const muscleWeeks = useMemo(() => buildWeeklyMuscleVolume(sessions, sets, lifts), [sessions, sets, lifts]);
@@ -327,6 +357,7 @@ function WeeksList({
 
   // Most recent 12, chronological for the trend card.
   const trend = readinessWeeks.slice(0, 12).reverse();
+  const stressTrend = buildWeeklyStress(stress).slice(0, 12).reverse();
 
   return (
     <div className="space-y-3">
@@ -358,6 +389,30 @@ function WeeksList({
             unit="/5"
             values={trend.map((w) => +w.avgMotivation.toFixed(1))}
             color="#34d399"
+            higherIsBetter
+          />
+        </div>
+      )}
+      {stressTrend.length > 0 && (
+        <div className="rounded-2xl bg-zinc-900 border border-zinc-800 p-4 space-y-3">
+          <div>
+            <div className="font-medium">Stress trend</div>
+            <div className="text-xs text-zinc-500">
+              Weekly averages from daily stress logs.
+            </div>
+          </div>
+          <ReadinessTrendRow
+            label="Stress"
+            unit="/5"
+            values={stressTrend.map((w) => +w.avgStress.toFixed(1))}
+            color="#f97316"
+            higherIsBetter={false}
+          />
+          <ReadinessTrendRow
+            label="Stress management"
+            unit="/5"
+            values={stressTrend.map((w) => +w.avgManagement.toFixed(1))}
+            color="#22c55e"
             higherIsBetter
           />
         </div>
@@ -483,6 +538,24 @@ function WeeksList({
       })}
     </div>
   );
+}
+
+function buildWeeklyStress(stressLogs: StressLog[]): Array<{ week: string; avgStress: number; avgManagement: number }> {
+  const byWeek = new Map<string, { stress: number[]; management: number[] }>();
+  for (const s of stressLogs) {
+    const week = isoWeekOf(s.date);
+    const row = byWeek.get(week) ?? { stress: [], management: [] };
+    row.stress.push(s.average);
+    row.management.push(s.managementEffectiveness);
+    byWeek.set(week, row);
+  }
+  return Array.from(byWeek.entries())
+    .map(([week, vals]) => ({
+      week,
+      avgStress: vals.stress.reduce((sum, n) => sum + n, 0) / vals.stress.length,
+      avgManagement: vals.management.reduce((sum, n) => sum + n, 0) / vals.management.length,
+    }))
+    .sort((a, b) => (a.week < b.week ? 1 : -1));
 }
 
 function ReadinessTrendRow({

@@ -1,14 +1,22 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { useAllSets, useLifts, usePrescriptions, useSessionsAfterReadiness, useTemplates } from '@/lib/hooks';
+import {
+  useAllReadiness,
+  useAllSets,
+  useLifts,
+  usePrescriptions,
+  useSessionsAfterReadiness,
+  useTemplates,
+} from '@/lib/hooks';
 import { localUpsert, flushDirty, pullAll } from '@/lib/sync';
-import type { Prescription, SessionLog, SessionTemplate, SetLog, TemplateId } from '@/lib/types';
+import type { Lift, Prescription, ReadinessLog, SessionLog, SessionTemplate, SetLog, TemplateId } from '@/lib/types';
 import { getDb } from '@/lib/db';
 import { defaultTemplateForLocalDate, sortTemplatesProgramOrder } from '@/lib/seed';
 import { fmtDate, todayIso } from '@/lib/time';
 import { isoWeekOf, startOfWeekIso } from '@/lib/stats';
 import { liftForSnap, snapWorkingWeight } from '@/lib/progression';
+import { prFeed } from '@/lib/stats';
 import {
   mesocyclePosition,
   saveMesoConfig,
@@ -16,6 +24,15 @@ import {
   type MesocycleConfig,
   type MesocyclePosition,
 } from '@/lib/mesocycle';
+import {
+  patchGoalSessionPrefs,
+  reorderFitnessGoals,
+  removeFitnessGoal,
+  upsertFitnessGoal,
+  useFitnessGoals,
+  useGoalSessionPrefs,
+  type FitnessGoal,
+} from '@/lib/goals';
 import { PageShell } from './PageShell';
 
 /** Editable meso fields while the form is open — numbers as strings so the
@@ -93,9 +110,10 @@ export function ProgramEditor() {
         </div>
       </div>
 
+      <GoalsPanel />
       <MesocycleSettings />
 
-      <Schedule templates={templates} />
+      <Schedule templates={templates} onSelectTemplate={(id) => setTemplateOverride(id)} />
 
       <div className="flex flex-wrap gap-2">
         {templatesProgramOrder.map((t) => (
@@ -164,6 +182,103 @@ export function ProgramEditor() {
   );
 }
 
+function GoalsPanel() {
+  const goals = useFitnessGoals();
+  const sessionGoalPrefs = useGoalSessionPrefs();
+  const [newGoal, setNewGoal] = useState('');
+  const [category, setCategory] = useState<FitnessGoal['category']>('long-term');
+  const [draggingId, setDraggingId] = useState<string | null>(null);
+
+  if (!goals || !sessionGoalPrefs) return null;
+
+  async function addGoal() {
+    const text = newGoal.trim();
+    if (!text) return;
+    await upsertFitnessGoal({
+      id: `goal-${Date.now().toString(36)}`,
+      text,
+      category,
+    });
+    setNewGoal('');
+  }
+
+  return (
+    <div className="rounded-2xl bg-zinc-900 border border-zinc-800 p-4 space-y-3">
+      <div className="font-medium">Goals</div>
+      <label className="flex items-center justify-between gap-2 rounded-lg bg-zinc-950 border border-zinc-800 px-3 py-2">
+        <span className="text-sm text-zinc-300">Use top 3 goals in session checklist</span>
+        <input
+          type="checkbox"
+          checked={sessionGoalPrefs.useTopThreeOnly}
+          onChange={(e) => void patchGoalSessionPrefs({ useTopThreeOnly: e.target.checked })}
+        />
+      </label>
+      <div className="text-xs text-zinc-500">
+        Drag goals to reorder. Session checklist follows this order.
+      </div>
+      <div className="space-y-2">
+        {goals.map((g, idx) => (
+          <div
+            key={g.id}
+            draggable
+            onDragStart={() => setDraggingId(g.id)}
+            onDragOver={(e) => e.preventDefault()}
+            onDrop={() => {
+              if (!draggingId || draggingId === g.id) return;
+              const from = goals.findIndex((x) => x.id === draggingId);
+              const to = goals.findIndex((x) => x.id === g.id);
+              void reorderFitnessGoals(from, to);
+              setDraggingId(null);
+            }}
+            onDragEnd={() => setDraggingId(null)}
+            className={`flex items-center gap-2 rounded-lg bg-zinc-950 border px-3 py-2 ${
+              draggingId === g.id ? 'border-amber-500/60' : 'border-zinc-800'
+            }`}
+          >
+            <span className="text-zinc-500 cursor-grab" aria-hidden>⋮⋮</span>
+            <span className="w-5 text-xs text-zinc-500 font-mono">{idx + 1}</span>
+            <span className="flex-1 text-sm text-zinc-200">{g.text}</span>
+            <span className="text-[10px] uppercase tracking-wider px-2 py-0.5 rounded-full bg-zinc-800 text-zinc-400">
+              {g.category}
+            </span>
+            <button
+              type="button"
+              onClick={() => void removeFitnessGoal(g.id)}
+              className="text-xs text-rose-300 hover:text-rose-200"
+            >
+              Remove
+            </button>
+          </div>
+        ))}
+      </div>
+      <div className="grid grid-cols-1 sm:grid-cols-[1fr_auto_auto] gap-2">
+        <input
+          type="text"
+          value={newGoal}
+          onChange={(e) => setNewGoal(e.target.value)}
+          placeholder="Add a goal"
+          className="h-10 rounded-lg bg-zinc-950 border border-zinc-800 px-3 text-sm"
+        />
+        <select
+          value={category}
+          onChange={(e) => setCategory(e.target.value as FitnessGoal['category'])}
+          className="h-10 rounded-lg bg-zinc-950 border border-zinc-800 px-2 text-sm"
+        >
+          <option value="long-term">Long-term</option>
+          <option value="current">Current</option>
+        </select>
+        <button
+          type="button"
+          onClick={() => void addGoal()}
+          className="h-10 px-3 rounded-lg bg-amber-500 text-zinc-950 text-sm font-medium"
+        >
+          Add
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // ---------- Schedule ----------
 
 const WEEK_OPTIONS = [4, 6, 8, 12] as const;
@@ -186,7 +301,13 @@ type ScheduleWeek = {
   meso: MesocyclePosition | null;
 };
 
-function Schedule({ templates }: { templates: SessionTemplate[] }) {
+function Schedule({
+  templates,
+  onSelectTemplate,
+}: {
+  templates: SessionTemplate[];
+  onSelectTemplate: (id: TemplateId) => void;
+}) {
   const sessions = useSessionsAfterReadiness();
   const sets = useAllSets();
   const meso = useMesoConfig();
@@ -256,7 +377,11 @@ function Schedule({ templates }: { templates: SessionTemplate[] }) {
               </div>
               <div className="divide-y divide-zinc-800">
                 {w.rows.map((r) => (
-                  <ScheduleRowItem key={`${w.weekLabel}-${r.template.id}`} row={r} />
+                  <ScheduleRowItem
+                    key={`${w.weekLabel}-${r.template.id}`}
+                    row={r}
+                    onSelectTemplate={onSelectTemplate}
+                  />
                 ))}
               </div>
             </div>
@@ -267,7 +392,13 @@ function Schedule({ templates }: { templates: SessionTemplate[] }) {
   );
 }
 
-function ScheduleRowItem({ row }: { row: ScheduleRow }) {
+function ScheduleRowItem({
+  row,
+  onSelectTemplate,
+}: {
+  row: ScheduleRow;
+  onSelectTemplate: (id: TemplateId) => void;
+}) {
   const dayName = fmtDate(row.date, 'EEE');
   const monthDay = fmtDate(row.date, 'M/d');
   const tone =
@@ -276,7 +407,11 @@ function ScheduleRowItem({ row }: { row: ScheduleRow }) {
     row.status === 'partial' ? 'bg-amber-900/10' :
     row.status === 'missed' ? 'bg-rose-950/20' : '';
   return (
-    <div className={`flex items-center gap-2 px-3 py-2 ${tone}`}>
+    <button
+      type="button"
+      onClick={() => onSelectTemplate(row.template.id)}
+      className={`w-full text-left flex items-center gap-2 px-3 py-2 ${tone} hover:bg-zinc-800/50 transition-colors`}
+    >
       <div className="w-14 shrink-0 text-xs text-zinc-500 font-mono">
         {dayName} <span className="text-zinc-600">{monthDay}</span>
       </div>
@@ -285,7 +420,7 @@ function ScheduleRowItem({ row }: { row: ScheduleRow }) {
         {row.template.name.split('—')[1]?.trim() ?? row.template.name}
       </div>
       <StatusBadge status={row.status} />
-    </div>
+    </button>
   );
 }
 
@@ -337,10 +472,10 @@ function buildSchedule(
       const session = sessionsByKey.get(`${date}:${t.id}`);
       const setCount = session ? (setCountBySession.get(session.id) ?? 0) : 0;
       let status: ScheduleRow['status'];
-      if (date === today) {
-        status = 'today';
-      } else if (session?.completedAt) {
+      if (session?.completedAt) {
         status = 'completed';
+      } else if (date === today) {
+        status = 'today';
       } else if (setCount > 0) {
         status = 'partial';
       } else if (date < today) {
@@ -379,6 +514,10 @@ function addWeeksToIsoWeek(weekLabel: string, n: number): string {
 
 function MesocycleSettings() {
   const cfg = useMesoConfig();
+  const lifts = useLifts();
+  const sessions = useSessionsAfterReadiness();
+  const sets = useAllSets();
+  const readiness = useAllReadiness();
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState<MesocycleFormDraft | null>(null);
 
@@ -387,6 +526,10 @@ function MesocycleSettings() {
   const today = todayIso();
   const here = mesocyclePosition(today, cfg);
   const startMonday = startOfWeekIso(isoWeekOf(cfg.startDate));
+  const recommendation = useMemo(
+    () => analyzeMesoLengthRecommendation(cfg, sessions ?? [], sets ?? [], readiness ?? [], lifts ?? [], today),
+    [cfg, sessions, sets, readiness, lifts, today],
+  );
 
   function startEdit() {
     if (!cfg) return;
@@ -409,13 +552,37 @@ function MesocycleSettings() {
       0,
       Math.min(4, Number.isFinite(delParsed) ? Math.floor(delParsed) : 0),
     );
-    // Normalize: snap startDate to the Monday of its ISO week.
-    const normalized: MesocycleConfig = {
-      startDate: startOfWeekIso(isoWeekOf(draft.startDate)),
+    // Length edits should never silently re-anchor the cycle.
+    const keepAnchorLengthOnly: MesocycleConfig = {
+      startDate: cfg.startDate,
       accumulation,
       deload,
     };
-    await saveMesoConfig(normalized);
+    await saveMesoConfig(keepAnchorLengthOnly);
+    setEditing(false);
+    setDraft(null);
+  }
+  async function saveAnchorOnly() {
+    if (!draft) return;
+    // Normalize anchor to Monday of selected week; leave length unchanged.
+    const normalizedAnchor = startOfWeekIso(isoWeekOf(draft.startDate));
+    await saveMesoConfig({
+      startDate: normalizedAnchor,
+      accumulation: cfg.accumulation,
+      deload: cfg.deload,
+    });
+    setEditing(false);
+    setDraft(null);
+  }
+  async function applyLength(accumulation: number, deload: number) {
+    await saveMesoConfig({
+      startDate: cfg.startDate,
+      accumulation: Math.max(1, Math.min(12, Math.floor(accumulation))),
+      deload: Math.max(0, Math.min(4, Math.floor(deload))),
+    });
+  }
+  async function applyRecommendedLength() {
+    await applyLength(recommendation.suggestedAccumulation, recommendation.suggestedDeload);
     setEditing(false);
     setDraft(null);
   }
@@ -456,6 +623,58 @@ function MesocycleSettings() {
           >Edit</button>
         )}
       </div>
+      <div className="rounded-xl border border-zinc-800 bg-zinc-950 p-3 space-y-2">
+        <div className="flex items-center justify-between gap-2 flex-wrap">
+          <div className="text-xs uppercase tracking-wider text-zinc-500">Length recommendation</div>
+          <span
+            className={`text-[10px] uppercase tracking-wider px-2 py-0.5 rounded-full font-semibold ${
+              recommendation.action === 'extend'
+                ? 'bg-emerald-700 text-emerald-100'
+                : recommendation.action === 'shorten'
+                  ? 'bg-rose-900 text-rose-200'
+                  : 'bg-zinc-800 text-zinc-300'
+            }`}
+          >
+            {recommendation.action === 'extend'
+              ? 'extend'
+              : recommendation.action === 'shorten'
+                ? 'shorten'
+                : 'keep'}
+          </span>
+        </div>
+        <div className="text-sm text-zinc-300">
+          Suggested: <span className="font-mono">{recommendation.suggestedAccumulation}+{recommendation.suggestedDeload}</span>
+          {' '}
+          ({recommendation.suggestedAccumulation + recommendation.suggestedDeload}-week block)
+        </div>
+        <div className="text-xs text-zinc-500">{recommendation.reason}</div>
+        <div className="text-[11px] text-zinc-500">
+          Signals: {recommendation.signalSummary}
+        </div>
+        <div className="flex gap-2 flex-wrap pt-1">
+          <button
+            type="button"
+            onClick={applyRecommendedLength}
+            className="h-8 px-3 rounded-lg bg-amber-500 text-zinc-950 text-xs font-medium"
+          >
+            Apply recommendation
+          </button>
+          <button
+            type="button"
+            onClick={() => applyLength(cfg.accumulation - 1, cfg.deload)}
+            className="h-8 px-3 rounded-lg bg-zinc-800 text-xs"
+          >
+            Shorten 1 week
+          </button>
+          <button
+            type="button"
+            onClick={() => applyLength(cfg.accumulation + 1, cfg.deload)}
+            className="h-8 px-3 rounded-lg bg-zinc-800 text-xs"
+          >
+            Extend 1 week
+          </button>
+        </div>
+      </div>
 
       {editing && draft && (
         <div className="border-t border-zinc-800 pt-3 grid grid-cols-1 sm:grid-cols-3 gap-3">
@@ -495,10 +714,105 @@ function MesocycleSettings() {
           </label>
           <div className="sm:col-span-3 flex gap-2 justify-end">
             <button onClick={cancel} className="h-9 px-3 rounded-lg bg-zinc-800 text-sm">Cancel</button>
-            <button onClick={save} className="h-9 px-3 rounded-lg bg-amber-500 text-zinc-950 font-medium text-sm">Save</button>
+            <button onClick={save} className="h-9 px-3 rounded-lg bg-zinc-800 text-sm">Save length only</button>
+            <button onClick={saveAnchorOnly} className="h-9 px-3 rounded-lg bg-amber-500 text-zinc-950 font-medium text-sm">
+              Save anchor date
+            </button>
           </div>
         </div>
       )}
     </div>
   );
+}
+
+type MesoLengthRecommendation = {
+  action: 'extend' | 'shorten' | 'keep';
+  suggestedAccumulation: number;
+  suggestedDeload: number;
+  reason: string;
+  signalSummary: string;
+};
+
+const MESO_HEURISTICS = {
+  // Require clear momentum to extend.
+  minPrSignalsToExtend: 3,
+  minCompletionRateToExtend: 0.85,
+  maxModifiedRateToExtend: 0.1,
+  maxAvgSorenessToExtend: 2.8,
+  minAvgMotivationToExtend: 3.2,
+  // Be more sensitive to accumulating fatigue.
+  highSorenessToShorten: 3.4,
+  lowMotivationToShorten: 2.4,
+  highModifiedRateToShorten: 0.2,
+  lowCompletionRateToShorten: 0.65,
+} as const;
+
+function analyzeMesoLengthRecommendation(
+  cfg: MesocycleConfig,
+  sessions: SessionLog[],
+  sets: SetLog[],
+  readiness: ReadinessLog[],
+  lifts: Lift[],
+  today: string,
+): MesoLengthRecommendation {
+  const cycleDays = (cfg.accumulation + cfg.deload) * 7;
+  const fromIso = addDaysIso(today, -cycleDays + 1);
+  const cycleSessions = sessions.filter((s) => s.date >= fromIso && s.date <= today);
+  const cycleSessionIds = new Set(cycleSessions.map((s) => s.id));
+  const cycleSets = sets.filter((s) => cycleSessionIds.has(s.sessionLogId));
+  const cycleReadiness = readiness.filter((r) => r.date >= fromIso && r.date <= today);
+
+  const prs = prFeed(cycleSets, cycleSessions, lifts).length;
+  const completedSessions = cycleSessions.filter((s) => Boolean(s.completedAt)).length;
+  const completionRate = cycleSessions.length > 0 ? completedSessions / cycleSessions.length : 0;
+
+  const modifiedSets = cycleSets.filter((s) => s.status !== 'completed').length;
+  const modifiedRate = cycleSets.length > 0 ? modifiedSets / cycleSets.length : 0;
+  const avgSoreness = cycleReadiness.length > 0
+    ? cycleReadiness.reduce((sum, r) => sum + r.soreness, 0) / cycleReadiness.length
+    : 0;
+  const avgMotivation = cycleReadiness.length > 0
+    ? cycleReadiness.reduce((sum, r) => sum + r.motivation, 0) / cycleReadiness.length
+    : 0;
+
+  const h = MESO_HEURISTICS;
+  const highFatigue =
+    avgSoreness >= h.highSorenessToShorten
+    || avgMotivation <= h.lowMotivationToShorten
+    || modifiedRate >= h.highModifiedRateToShorten
+    || (cycleSessions.length > 0 && completionRate <= h.lowCompletionRateToShorten);
+  const strongMomentum =
+    prs >= h.minPrSignalsToExtend
+    && completionRate >= h.minCompletionRateToExtend
+    && modifiedRate <= h.maxModifiedRateToExtend
+    && avgSoreness <= h.maxAvgSorenessToExtend
+    && avgMotivation >= h.minAvgMotivationToExtend;
+
+  if (strongMomentum && cfg.accumulation < 12) {
+    const next = cfg.accumulation + 1;
+    return {
+      action: 'extend',
+      suggestedAccumulation: next,
+      suggestedDeload: cfg.deload,
+      reason: 'Momentum looks good (PRs + strong completion + low fatigue). Extending accumulation by 1 week is likely productive.',
+      signalSummary: `${prs} PR signals, ${Math.round(completionRate * 100)}% session completion, ${Math.round(modifiedRate * 100)}% modified sets`,
+    };
+  }
+  if (highFatigue && cfg.accumulation > 1) {
+    const next = cfg.accumulation - 1;
+    return {
+      action: 'shorten',
+      suggestedAccumulation: next,
+      suggestedDeload: cfg.deload,
+      reason: 'Fatigue signals are elevated. Shortening accumulation by 1 week should reduce overshooting and improve next-block quality.',
+      signalSummary: `soreness ${avgSoreness.toFixed(1)}/5, motivation ${avgMotivation.toFixed(1)}/5, ${Math.round(modifiedRate * 100)}% modified sets`,
+    };
+  }
+  return {
+    action: 'keep',
+    suggestedAccumulation: cfg.accumulation,
+    suggestedDeload: cfg.deload,
+    reason: 'Current block length looks balanced from available cycle signals.',
+    signalSummary: `${prs} PR signals, soreness ${avgSoreness ? avgSoreness.toFixed(1) : 'n/a'}/5, motivation ${avgMotivation ? avgMotivation.toFixed(1) : 'n/a'}/5`,
+  };
 }

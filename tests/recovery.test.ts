@@ -46,6 +46,36 @@ describe('recovery scoring', () => {
     expect(good).toBeGreaterThan(poor);
   });
 
+  it('applies meal bonus from timestamps (>=3) without hitting score cap', () => {
+    const partial = {
+      id: 'n-bonus',
+      date: '2026-04-27',
+      caloriesTarget: 2500,
+      caloriesActual: 2000,
+      proteinTargetG: 200,
+      proteinActualG: 160,
+      carbsTargetG: 250,
+      carbsActualG: 200,
+      fatTargetG: 80,
+      fatActualG: 70,
+      mealsLoggedCount: 0,
+    };
+    const threeStamps = nutritionScore({
+      ...partial,
+      mealTimestamps: [
+        '2026-04-27T08:00:00.000Z',
+        '2026-04-27T12:00:00.000Z',
+        '2026-04-27T18:00:00.000Z',
+      ],
+    });
+    const twoStamps = nutritionScore({
+      ...partial,
+      mealTimestamps: ['2026-04-27T08:00:00.000Z', '2026-04-27T12:00:00.000Z'],
+    });
+    expect(threeStamps).toBeGreaterThan(twoStamps);
+    expect(threeStamps - twoStamps).toBe(3);
+  });
+
   it('weights protein and calories most in nutrition score', () => {
     const good = nutritionScore({
       id: 'n1',

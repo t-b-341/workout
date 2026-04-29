@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import type { Prescription, SessionLog, SetLog } from '@/lib/types';
-import { fmtDurationShort, sessionDurationMs } from '@/lib/stats';
+import { fmtDurationShort, sessionDurationMs, workoutWallClockElapsedMs } from '@/lib/stats';
 import {
   expectedSetSlots,
   firstOpenPrescriptionId,
@@ -32,8 +32,6 @@ export function SessionContextDock({ session, prescriptions, allSets }: Props) {
   const done = sessionSets.length;
   const openPid = firstOpenPrescriptionId(prescriptions, sessionSets);
   const lastLog = lastLoggedAtInSession(sessionSets);
-  const durationMs = sessionDurationMs(session, sessionSets);
-
   const inProgress = !!session.startedAt && !session.completedAt;
 
   useEffect(() => {
@@ -43,6 +41,10 @@ export function SessionContextDock({ session, prescriptions, allSets }: Props) {
   }, [inProgress]);
 
   void tick;
+
+  const durationMs = inProgress
+    ? workoutWallClockElapsedMs(session, Date.now())
+    : sessionDurationMs(session, sessionSets);
 
   function jumpToCurrent() {
     if (!openPid) return;

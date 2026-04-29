@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
+  useAllBodyMeasurements,
+  useAllBodyweight,
   useAllSets,
   useLifts,
   useMacroTrendAdvice,
@@ -16,11 +18,12 @@ import type { Prescription, SessionLog, SessionTemplate, SetLog, TemplateId } fr
 import { CardioBanner } from './CardioBanner';
 import { SessionHeader } from './SessionHeader';
 import { LiftCard } from './LiftCard';
-import { decideProgression } from '@/lib/progression';
+import { decideProgression, liftForSnap, snapWorkingWeight } from '@/lib/progression';
 import {
   fmtDurationShort,
   sessionDurationMs,
   sessionFinishHighlights,
+  workoutWallClockElapsedMs,
   type SessionFinishHighlights,
 } from '@/lib/stats';
 import { buildSessionRecapPayload, type SessionRecapPayload } from '@/lib/sessionRecap';
@@ -30,12 +33,21 @@ import { getDb } from '@/lib/db';
 import { defaultTemplateForLocalDate } from '@/lib/seed';
 import { applyEffortScale, effortLabel } from '@/lib/effort';
 import { BodyweightQuickLog } from './BodyweightQuickLog';
+import { BodyMeasurementsQuickLog } from './BodyMeasurementsQuickLog';
 import { SessionRecapSheet } from './SessionRecapSheet';
 import { SyncStatusBar } from './SyncStatusBar';
 import { WeekActivityStrip } from './WeekActivityStrip';
 import { SessionContextDock } from './SessionContextDock';
 import { PageShell } from './PageShell';
+import { StartWorkoutButton, WorkoutStopwatchBar } from './WorkoutSessionTimer';
+import { TrainingMindsetCard } from './TrainingMindsetCard';
 import { MacroTrendCallout } from './MacroTrendCallout';
+import {
+  setGoalCheckedForSession,
+  useFitnessGoals,
+  useGoalChecksForSession,
+  useGoalSessionPrefs,
+} from '@/lib/goals';
 
 export function TodayView() {
   const templates = useTemplates();
@@ -54,7 +66,13 @@ export function TodayView() {
   const prescriptions = usePrescriptions((activeId ?? undefined) as TemplateId | undefined);
   const readiness = useReadinessForSession(session?.id);
   const allSets = useAllSets();
+  const allBodyweight = useAllBodyweight();
+  const allMeasurements = useAllBodyMeasurements();
   const [sessionRecap, setSessionRecap] = useState<SessionRecapPayload | null>(null);
+  const weeklyFlags = useMemo(
+    () => computeWeeklyTrackingFlags(todayIso(), allBodyweight ?? [], allMeasurements ?? []),
+    [allBodyweight, allMeasurements],
+  );
 
   const openReplayRecap = useCallback(async () => {
     if (!session?.completedAt) return;
@@ -98,6 +116,8 @@ export function TodayView() {
 
   const needsReadiness =
     !readiness && !readinessSkipped && !session.startedAt && !session.completedAt;
+  const checkinFullyCompleted = Boolean(readiness);
+  const checkinSkipped = !readiness && Boolean(session.readinessCompletedAt);
 
   const showSessionDock =
     !needsReadiness &&
@@ -128,11 +148,25 @@ export function TodayView() {
         templates={templates}
         onTemplateChange={(t) => setChosenTemplateId(t.id)}
       />
+      <SessionGoalsCard sessionId={session.id} />
+      {(weeklyFlags.bodyweightOverdue || weeklyFlags.measurementsOverdue) && (
+        <WeeklyTrackingReminder
+          bodyweightOverdue={weeklyFlags.bodyweightOverdue}
+          measurementsOverdue={weeklyFlags.measurementsOverdue}
+        />
+      )}
 
       <BodyweightQuickLog
         date={todayIso()}
         subtitle="Doesn&apos;t have to be lower day — updates the BW chart for this date."
       />
+      <BodyMeasurementsQuickLog date={todayIso()} />
+      {!needsReadiness && (
+        <DailyCheckinStatusBanner
+          fullyCompleted={checkinFullyCompleted}
+          skipped={checkinSkipped}
+        />
+      )}
 
       {needsReadiness ? (
         <>
@@ -168,11 +202,22 @@ export function TodayView() {
           {readiness && (
             <ReadinessSummary readiness={readiness} session={session} allowEdit />
           )}
+          {!session.completedAt && (
+            <>
+              {!session.startedAt && <StartWorkoutButton session={session} />}
+              {session.startedAt && <WorkoutStopwatchBar session={session} />}
+              <TrainingMindsetCard />
+            </>
+          )}
           {(prescriptions ?? []).map((p) => {
             const lift = lifts.find((l) => l.id === p.liftId);
             if (!lift) return null;
             const adjusted = applyEffortScale(applySessionMode(p, session), session);
-            return <LiftCard key={p.id} prescription={adjusted} lift={lift} session={session} />;
+            const snapped = {
+              ...adjusted,
+              weight: snapWorkingWeight(adjusted.weight, liftForSnap(p.liftId)),
+            };
+            return <LiftCard key={p.id} prescription={snapped} lift={lift} session={session} />;
           })}
         </div>
       )}
@@ -209,6 +254,85 @@ export function TodayView() {
         />
       )}
     </PageShell>
+  );
+}
+
+function daysSince(latestIso: string | null, today: string): number {
+  if (!latestIso) return Number.POSITIVE_INFINITY;
+  const ms = Date.parse(`${today}T00:00:00`) - Date.parse(`${latestIso}T00:00:00`);
+  return Math.floor(ms / (24 * 60 * 60 * 1000));
+}
+
+function computeWeeklyTrackingFlags(
+  today: string,
+  bodyweight: { date: string }[],
+  measurements: { date: string }[],
+): { bodyweightOverdue: boolean; measurementsOverdue: boolean } {
+  const latestBwDate = bodyweight.length > 0 ? bodyweight[bodyweight.length - 1].date : null;
+  const latestMeasureDate = measurements.length > 0 ? measurements[measurements.length - 1].date : null;
+  return {
+    bodyweightOverdue: daysSince(latestBwDate, today) >= 7,
+    measurementsOverdue: daysSince(latestMeasureDate, today) >= 7,
+  };
+}
+
+function WeeklyTrackingReminder({
+  bodyweightOverdue,
+  measurementsOverdue,
+}: {
+  bodyweightOverdue: boolean;
+  measurementsOverdue: boolean;
+}) {
+  return (
+    <div className="rounded-2xl border border-amber-500/45 bg-amber-950/30 px-4 py-3 text-sm text-amber-100">
+      <div className="font-medium">Weekly tracking reminder</div>
+      <div className="text-amber-200/85 text-xs mt-1">
+        {bodyweightOverdue && measurementsOverdue
+          ? 'Bodyweight and body measurements are 1+ week old.'
+          : bodyweightOverdue
+            ? 'Bodyweight is 1+ week old.'
+            : 'Body measurements are 1+ week old.'}
+      </div>
+    </div>
+  );
+}
+
+function SessionGoalsCard({ sessionId }: { sessionId: string }) {
+  const goals = useFitnessGoals();
+  const checks = useGoalChecksForSession(sessionId);
+  const prefs = useGoalSessionPrefs();
+
+  if (!goals || goals.length === 0 || !checks || !prefs) return null;
+  const visibleGoals = prefs.useTopThreeOnly ? goals.slice(0, 3) : goals;
+  return (
+    <div className="rounded-2xl bg-zinc-900 border border-zinc-800 p-4 space-y-2">
+      <div className="flex items-center justify-between gap-2">
+        <div className="text-sm font-medium">Session goals</div>
+        {prefs.useTopThreeOnly && (
+          <span className="text-[10px] uppercase tracking-wider px-2 py-0.5 rounded-full bg-zinc-800 text-zinc-400">
+            top 3 pinned
+          </span>
+        )}
+      </div>
+      <div className="space-y-1.5">
+        {visibleGoals.map((goal) => {
+          const checked = Boolean(checks[goal.id]);
+          return (
+            <label key={goal.id} className="flex items-start gap-2 text-sm text-zinc-300">
+              <input
+                type="checkbox"
+                checked={checked}
+                onChange={(e) => {
+                  void setGoalCheckedForSession(sessionId, goal.id, e.target.checked);
+                }}
+                className="mt-0.5"
+              />
+              <span className={checked ? 'line-through text-zinc-500' : ''}>{goal.text}</span>
+            </label>
+          );
+        })}
+      </div>
+    </div>
   );
 }
 
@@ -312,6 +436,40 @@ function SessionCompleteBanner({
   );
 }
 
+function DailyCheckinStatusBanner({
+  fullyCompleted,
+  skipped,
+}: {
+  fullyCompleted: boolean;
+  skipped: boolean;
+}) {
+  if (!fullyCompleted && !skipped) return null;
+  if (fullyCompleted) {
+    return (
+      <div
+        role="status"
+        className="rounded-2xl border border-emerald-500/45 bg-emerald-950/40 px-4 py-3 flex items-center gap-3"
+      >
+        <div
+          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-emerald-500 text-zinc-950 text-sm font-bold"
+          aria-hidden
+        >
+          ✓
+        </div>
+        <div>
+          <div className="text-sm font-semibold text-emerald-100">Daily check-in complete</div>
+          <div className="text-xs text-emerald-200/75">You are set for today.</div>
+        </div>
+      </div>
+    );
+  }
+  return (
+    <div className="rounded-2xl border border-zinc-700 bg-zinc-900 px-4 py-3 text-sm text-zinc-300">
+      Daily check-in skipped for today.
+    </div>
+  );
+}
+
 function applySessionMode(p: Prescription, s: SessionLog): Prescription {
   if (s.deload) {
     return { ...p, weight: Math.round(p.weight * 0.6) };
@@ -334,12 +492,18 @@ function FinishSessionButton({
   const [busy, setBusy] = useState(false);
   const [summary, setSummary] = useState<{ advanced: number; held: number; skipped: number; durationMs: number | null } | null>(null);
   const sets = useAllSets();
+  const [nowTick, setNowTick] = useState(() => Date.now());
 
-  // Live elapsed (only while the session is in progress).
-  const liveDuration = useMemo(() => {
-    if (!session.startedAt || session.completedAt) return null;
-    return sessionDurationMs(session, sets ?? []);
-  }, [session, sets]);
+  useEffect(() => {
+    if (!session.startedAt || session.completedAt) return;
+    const id = setInterval(() => setNowTick(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, [session.startedAt, session.completedAt]);
+
+  const liveDuration =
+    session.startedAt && !session.completedAt
+      ? workoutWallClockElapsedMs(session, nowTick)
+      : null;
 
   async function finish() {
     setBusy(true);

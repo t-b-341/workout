@@ -155,7 +155,7 @@ const p = (
 
 export const PRESCRIPTIONS: Prescription[] = [
   // Monday — U1 (Heavy)
-  p('U1', 'pp',           10, 135, 2, 4, 8),
+  p('U1', 'pp',           10, 135, 2, 4, 8, { notes: "BRACE YOUR GODDAMN CORE, or you'll hurt your back again" }),
   p('U1', 'ohp',          20, 105, 2, 4, 8),
   p('U1', 'p1_eccentric', 30,   5, 4, 1, 1, { tempo: '5 sec eccentric', notes: 'Start 5–10# added' }),
   p('U1', 'bp',           40, 175, 3, 4, 8),
@@ -176,7 +176,7 @@ export const PRESCRIPTIONS: Prescription[] = [
   p('U2', 'liss',            90, 0,   1, 30, 30, { notes: '30 min @ 2.0 mph / 3.0% grade' }),
 
   // Friday — U3 (Moderate)
-  p('U3', 'pp',           10, 115, 2, 4, 8),
+  p('U3', 'pp',           10, 115, 2, 4, 8, { notes: "BRACE YOUR GODDAMN CORE, or you'll hurt your back again" }),
   p('U3', 'ohp',          20,  85, 3, 8, 12),
   p('U3', 'p1_bw',        30,   0, 3, 2, 2, { notes: '3×2 → 4×2 (elbows need to adjust); BW 245#' }),
   p('U3', 'bp_paused',    40, 155, 3, 4, 8),

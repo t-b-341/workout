@@ -98,6 +98,10 @@ export type SetLog = {
   setIndex: number;
   weight: number;
   reps: number;
+  /** Reps in reserve (effort) when reps <= 12. */
+  rir?: number;
+  /** Derived effort scale where 1 RIR = 9 RPE, 2 RIR = 8 RPE, etc. */
+  rpe?: number;
   status: SetStatus;
   substituteLiftId?: string;
   reason?: string;
@@ -142,6 +146,10 @@ export type CardioLog = {
   type: CardioType;
   /** Total minutes (counts toward weekly 150). */
   durationMin: number;
+  /** Wall-clock start of this cardio block (ISO). */
+  startedAt?: string;
+  /** Wall-clock end (ISO), usually when the set was logged. */
+  endedAt?: string;
   /** LISS only. */
   speedMph?: number;
   gradePct?: number;
@@ -160,6 +168,18 @@ export type BodyweightLog = {
   bodyweight: number;
 };
 
+export type BodyMeasurementLog = {
+  id: string;
+  /** ISO date YYYY-MM-DD. */
+  date: string;
+  /** Narrowest point. */
+  waist: number;
+  /** At navel. */
+  abdomen: number;
+  /** Widest point. */
+  hips: number;
+};
+
 export type ReadinessLog = {
   id: string;
   sessionLogId: string;
@@ -171,6 +191,12 @@ export type ReadinessLog = {
   soreness: number;
   /** 1 = dead, 5 = fired up. */
   motivation: number;
+  /** Optional morning HRV reading (RMSSD) from a 5-minute measurement. */
+  hrvRmssd?: number;
+  /** Minutes measured for HRV; default flow is 5 min. */
+  hrvMeasuredMin?: number;
+  /** True when HRV was intentionally skipped for this check-in. */
+  hrvSkipped?: boolean;
   /** Optional bodyweight logged alongside readiness. */
   bodyweight?: number;
   /** ISO timestamp (for ordering in case of multiple). */
@@ -189,7 +215,13 @@ export type NutritionLog = {
   carbsActualG: number;
   fatTargetG: number;
   fatActualG: number;
+  /** Kept in sync with `mealTimestamps.length` when check-ins are used. */
   mealsLoggedCount: number;
+  /**
+   * ISO timestamps from “Yes, I ate” taps; ordered ascending on save.
+   * Absent or empty when only legacy meal count exists.
+   */
+  mealTimestamps?: string[];
 };
 
 export type HydrationLog = {
@@ -212,6 +244,45 @@ export type SleepLog = {
   sleepQuality: 1 | 2 | 3 | 4 | 5;
   sleepOnsetLatencyMin?: number;
   wakeCount?: number;
+};
+
+export type InjuryKind = 'acute' | 'chronic';
+
+export type InjuryEpisode = {
+  id: string;
+  /** Stable body location (e.g. wrist-L, back-low). */
+  siteKey: string;
+  kind: InjuryKind;
+  /** Free text (session context, what happened, etc.). */
+  notes?: string;
+  /** When the issue was marked active. */
+  startedAt: string;
+  /** When you cleared the flag; omitted while still active. */
+  endedAt?: string;
+};
+
+/** Subjective “how’s your body today” for injury-aware training (1 = poor, 5 = great). */
+export type BodyReadinessLog = {
+  id: string;
+  /** ISO date YYYY-MM-DD. */
+  date: string;
+  score: 1 | 2 | 3 | 4 | 5;
+};
+
+export type StressLog = {
+  id: string;
+  /** ISO date YYYY-MM-DD. */
+  date: string;
+  /** 1-5 stress at start of day. */
+  startOfDay: 1 | 2 | 3 | 4 | 5;
+  /** 1-5 stress mid day. */
+  midDay: 1 | 2 | 3 | 4 | 5;
+  /** 1-5 stress end of day. */
+  endOfDay: 1 | 2 | 3 | 4 | 5;
+  /** Daily average of the three check-ins. */
+  average: number;
+  /** Perceived stress-management effectiveness right now (1-5). */
+  managementEffectiveness: 1 | 2 | 3 | 4 | 5;
 };
 
 export type RecoveryBand = 'push' | 'normal' | 'conservative' | 'recovery';

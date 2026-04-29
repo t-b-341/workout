@@ -322,8 +322,17 @@ export function sessionRecapPRs(
  * Sum of rest between consecutive **logged** sets in a session (`loggedAt`
  * ascending, all lifts). The first set in that order contributes no prior gap.
  * Gaps > 2h are ignored (meal / phone break).
+ *
+ * When `lifts` is passed, any gap ending on a **completed cardio** set with
+ * `repUnit === 'minutes'` has up to `reps` minutes subtracted (treated as active
+ * cardio time, not rest — e.g. treadmill block logged once at the end).
  */
-export function sessionTotalRestBetweenSetsMs(sessionId: string, sets: SetLog[]): number {
+export function sessionTotalRestBetweenSetsMs(
+  sessionId: string,
+  sets: SetLog[],
+  lifts?: Lift[],
+): number {
+  const liftMap = lifts ? new Map(lifts.map((l) => [l.id, l])) : null;
   const sessionSets = sets.filter((s) => s.sessionLogId === sessionId && s.loggedAt);
   if (sessionSets.length < 2) return 0;
   const sideRank = (s: SetLog) => (s.side === 'L' ? 0 : s.side === 'R' ? 1 : 2);
@@ -339,7 +348,19 @@ export function sessionTotalRestBetweenSetsMs(sessionId: string, sets: SetLog[])
   let total = 0;
   for (let i = 1; i < ordered.length; i++) {
     const gap = Date.parse(ordered[i].loggedAt!) - Date.parse(ordered[i - 1].loggedAt!);
-    if (gap > 0 && gap <= maxGapMs) total += gap;
+    if (gap <= 0 || gap > maxGapMs) continue;
+    let restPart = gap;
+    const cur = ordered[i];
+    const lift = liftMap?.get(cur.liftId);
+    if (
+      lift?.equipment === 'cardio'
+      && lift.repUnit === 'minutes'
+      && cur.status === 'completed'
+    ) {
+      const workMs = Math.max(0, cur.reps) * 60 * 1000;
+      restPart = Math.max(0, gap - Math.min(gap, workMs));
+    }
+    total += restPart;
   }
   return total;
 }
@@ -411,7 +432,7 @@ export function sessionFinishHighlights(
     reduced,
     skipped,
     substituted,
-    totalRestBetweenSetsMs: sessionTotalRestBetweenSetsMs(sessionId, sets),
+    totalRestBetweenSetsMs: sessionTotalRestBetweenSetsMs(sessionId, sets, lifts),
   };
 }
 
@@ -703,6 +724,19 @@ export function sessionDurationMs(session: SessionLog, sets: SetLog[]): number |
       );
   const start = Date.parse(session.startedAt);
   if (Number.isNaN(start) || Number.isNaN(end)) return null;
+  return Math.max(0, end - start);
+}
+
+/**
+ * True wall-clock session length from `startedAt` — uses `nowMs` when the
+ * session is still open (so the timer runs before any sets are logged).
+ */
+export function workoutWallClockElapsedMs(session: SessionLog, nowMs: number = Date.now()): number | null {
+  if (!session.startedAt) return null;
+  const start = Date.parse(session.startedAt);
+  if (Number.isNaN(start)) return null;
+  const end = session.completedAt ? Date.parse(session.completedAt) : nowMs;
+  if (Number.isNaN(end)) return null;
   return Math.max(0, end - start);
 }
 

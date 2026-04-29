@@ -2,6 +2,7 @@
 
 import { useLiveQuery } from 'dexie-react-hooks';
 import { getDb } from './db';
+import { kcalFromMacros } from './macros';
 
 /** US fluid ounces → milliliters (nutrition labels / gallon water). */
 export const ML_PER_US_FLOZ = 29.5735295625;
@@ -30,10 +31,10 @@ export type RecoveryPrefs = {
 };
 
 /** Default macro targets; carbs rounded from remaining kcal after protein & fat. */
-const DEFAULT_CALORIES = 2910;
 const DEFAULT_PROTEIN_G = 185;
 const DEFAULT_FAT_G = 75;
 const DEFAULT_CARBS_G = 374;
+const DEFAULT_CALORIES = kcalFromMacros(DEFAULT_PROTEIN_G, DEFAULT_CARBS_G, DEFAULT_FAT_G);
 
 export const DEFAULT_RECOVERY_PREFS: RecoveryPrefs = {
   hydrationTargetMl: DEFAULT_HYDRATION_TARGET_ML,
