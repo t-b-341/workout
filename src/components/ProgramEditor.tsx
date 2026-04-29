@@ -522,21 +522,22 @@ function MesocycleSettings() {
   const [draft, setDraft] = useState<MesocycleFormDraft | null>(null);
 
   if (!cfg) return null;
+  const mesoConfig = cfg;
 
   const today = todayIso();
-  const here = mesocyclePosition(today, cfg);
-  const startMonday = startOfWeekIso(isoWeekOf(cfg.startDate));
+  const here = mesocyclePosition(today, mesoConfig);
+  const startMonday = startOfWeekIso(isoWeekOf(mesoConfig.startDate));
   const recommendation = useMemo(
-    () => analyzeMesoLengthRecommendation(cfg, sessions ?? [], sets ?? [], readiness ?? [], lifts ?? [], today),
-    [cfg, sessions, sets, readiness, lifts, today],
+    () =>
+      analyzeMesoLengthRecommendation(mesoConfig, sessions ?? [], sets ?? [], readiness ?? [], lifts ?? [], today),
+    [mesoConfig, sessions, sets, readiness, lifts, today],
   );
 
   function startEdit() {
-    if (!cfg) return;
     setDraft({
-      startDate: cfg.startDate,
-      accumulation: String(cfg.accumulation),
-      deload: String(cfg.deload),
+      startDate: mesoConfig.startDate,
+      accumulation: String(mesoConfig.accumulation),
+      deload: String(mesoConfig.deload),
     });
     setEditing(true);
   }
@@ -554,7 +555,7 @@ function MesocycleSettings() {
     );
     // Length edits should never silently re-anchor the cycle.
     const keepAnchorLengthOnly: MesocycleConfig = {
-      startDate: cfg.startDate,
+      startDate: mesoConfig.startDate,
       accumulation,
       deload,
     };
@@ -568,15 +569,15 @@ function MesocycleSettings() {
     const normalizedAnchor = startOfWeekIso(isoWeekOf(draft.startDate));
     await saveMesoConfig({
       startDate: normalizedAnchor,
-      accumulation: cfg.accumulation,
-      deload: cfg.deload,
+      accumulation: mesoConfig.accumulation,
+      deload: mesoConfig.deload,
     });
     setEditing(false);
     setDraft(null);
   }
   async function applyLength(accumulation: number, deload: number) {
     await saveMesoConfig({
-      startDate: cfg.startDate,
+      startDate: mesoConfig.startDate,
       accumulation: Math.max(1, Math.min(12, Math.floor(accumulation))),
       deload: Math.max(0, Math.min(4, Math.floor(deload))),
     });
@@ -612,8 +613,8 @@ function MesocycleSettings() {
           <div className="text-xs text-zinc-500 mt-0.5">
             Anchor: <span className="font-mono text-zinc-400">{fmtDate(startMonday, 'EEE MMM d, yyyy')}</span>
             {' · '}
-            <span className="font-mono text-zinc-400">{cfg.accumulation}+{cfg.deload}</span>
-            {' '}({cfg.accumulation + cfg.deload}-week block)
+            <span className="font-mono text-zinc-400">{mesoConfig.accumulation}+{mesoConfig.deload}</span>
+            {' '}({mesoConfig.accumulation + mesoConfig.deload}-week block)
           </div>
         </div>
         {!editing && (
@@ -661,14 +662,14 @@ function MesocycleSettings() {
           </button>
           <button
             type="button"
-            onClick={() => applyLength(cfg.accumulation - 1, cfg.deload)}
+            onClick={() => applyLength(mesoConfig.accumulation - 1, mesoConfig.deload)}
             className="h-8 px-3 rounded-lg bg-zinc-800 text-xs"
           >
             Shorten 1 week
           </button>
           <button
             type="button"
-            onClick={() => applyLength(cfg.accumulation + 1, cfg.deload)}
+            onClick={() => applyLength(mesoConfig.accumulation + 1, mesoConfig.deload)}
             className="h-8 px-3 rounded-lg bg-zinc-800 text-xs"
           >
             Extend 1 week

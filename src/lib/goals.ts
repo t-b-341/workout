@@ -53,12 +53,14 @@ const DEFAULT_GOALS: FitnessGoal[] = [
 
 function normalizeGoals(value: unknown): FitnessGoal[] {
   const arr = Array.isArray(value) ? (value as Partial<FitnessGoal>[]) : [];
-  const cleaned = arr
-    .map((x) => ({
-      id: String(x.id ?? '').trim(),
-      text: String(x.text ?? '').trim(),
-      category: x.category === 'current' ? 'current' : 'long-term',
-    }))
+  const cleaned: FitnessGoal[] = arr
+    .map(
+      (x): FitnessGoal => ({
+        id: String(x.id ?? '').trim(),
+        text: String(x.text ?? '').trim(),
+        category: x.category === 'current' ? 'current' : 'long-term',
+      }),
+    )
     // Replace legacy combined front-squat goal with split goals below.
     .filter((x) => x.id !== 'goal-front-squat-wrist-friendly')
     .filter((x) => x.id.length > 0 && x.text.length > 0);
