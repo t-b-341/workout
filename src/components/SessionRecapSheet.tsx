@@ -17,6 +17,8 @@ type Props = {
   progression: { advanced: number; held: number; skipped: number };
   prs: SessionRecapPRItem[];
   highlights: SessionFinishHighlights;
+  /** Reopened recap — progression block hidden. */
+  replay?: boolean;
 };
 
 function sessionModeLabel(s: SessionLog): string {
@@ -45,6 +47,7 @@ export function SessionRecapSheet({
   progression,
   prs,
   highlights,
+  replay = false,
 }: Props) {
   const summaryLines = useMemo(
     () =>
@@ -55,8 +58,9 @@ export function SessionRecapSheet({
         durationMs,
         strengthLbPerHour,
         templateName,
+        omitProgression: replay,
       }),
-    [highlights, progression, prs.length, durationMs, strengthLbPerHour, templateName],
+    [highlights, progression, prs.length, durationMs, strengthLbPerHour, templateName, replay],
   );
 
   useEffect(() => {
@@ -108,9 +112,11 @@ export function SessionRecapSheet({
         className="relative w-full max-w-lg rounded-t-3xl sm:rounded-3xl border border-amber-500/20 bg-zinc-950 shadow-2xl max-h-[min(90dvh,680px)] flex flex-col overflow-hidden"
       >
         <div className="px-5 pt-6 pb-4 bg-gradient-to-b from-amber-500/10 to-transparent border-b border-zinc-800 shrink-0">
-          <p className="text-amber-400 text-sm font-medium tracking-wide uppercase">All done</p>
+          <p className="text-amber-400 text-sm font-medium tracking-wide uppercase">
+            {replay ? 'Recap' : 'All done'}
+          </p>
           <h2 id="session-recap-title" className="text-2xl font-bold text-zinc-50 mt-1">
-            Workout complete!
+            {replay ? 'Session recap' : 'Workout complete!'}
           </h2>
           <p className="text-sm text-zinc-400 mt-2">
             {templateName}
@@ -153,18 +159,30 @@ export function SessionRecapSheet({
             </ul>
           </section>
 
-          <section>
-            <h3 className="text-xs font-medium uppercase tracking-wide text-zinc-500 mb-2">
-              Progression
-            </h3>
-            <div className="text-sm text-zinc-300 space-x-2">
-              <span className="text-emerald-400">{progression.advanced} advanced</span>
-              <span className="text-zinc-600">·</span>
-              <span className="text-amber-400">{progression.held} held</span>
-              <span className="text-zinc-600">·</span>
-              <span className="text-zinc-500">{progression.skipped} skipped</span>
-            </div>
-          </section>
+          {!replay ? (
+            <section>
+              <h3 className="text-xs font-medium uppercase tracking-wide text-zinc-500 mb-2">
+                Progression
+              </h3>
+              <div className="text-sm text-zinc-300 space-x-2">
+                <span className="text-emerald-400">{progression.advanced} advanced</span>
+                <span className="text-zinc-600">·</span>
+                <span className="text-amber-400">{progression.held} held</span>
+                <span className="text-zinc-600">·</span>
+                <span className="text-zinc-500">{progression.skipped} skipped</span>
+              </div>
+            </section>
+          ) : (
+            <section>
+              <h3 className="text-xs font-medium uppercase tracking-wide text-zinc-500 mb-2">
+                Progression
+              </h3>
+              <p className="text-sm text-zinc-500 leading-snug">
+                Progression was applied when you finished. Today&apos;s prescriptions may already
+                reflect updates — use Re-run progression if you changed logged sets.
+              </p>
+            </section>
+          )}
 
           <section>
             <h3 className="text-xs font-medium uppercase tracking-wide text-zinc-500 mb-2">

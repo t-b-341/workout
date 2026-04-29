@@ -424,6 +424,8 @@ export function sessionRecapSummaryLines(opts: {
   templateName: string;
   /** Strength lb per clock hour when session length is known. */
   strengthLbPerHour?: number | null;
+  /** When true (e.g. replay), skip progression-related bullets — counts may be stale. */
+  omitProgression?: boolean;
 }): string[] {
   const lines: string[] = [];
   const h = opts.highlights;
@@ -447,7 +449,7 @@ export function sessionRecapSummaryLines(opts: {
         : `${opts.prCount} new personal records on the books.`,
     );
   }
-  if (p.advanced > 0) {
+  if (!opts.omitProgression && p.advanced > 0) {
     lines.push(
       p.advanced === 1
         ? 'One lift is scheduled heavier next session.'
@@ -477,7 +479,13 @@ export function sessionRecapSummaryLines(opts: {
     if (h.substituted) bits.push(`${h.substituted} substituted`);
     lines.push(`${bits.join(', ')} — adjustments still count.`);
   }
-  if (p.held > 0 && p.advanced === 0 && opts.prCount === 0 && lines.length < 6) {
+  if (
+    !opts.omitProgression &&
+    p.held > 0 &&
+    p.advanced === 0 &&
+    opts.prCount === 0 &&
+    lines.length < 6
+  ) {
     lines.push('Working weights held steady — solid maintenance work.');
   }
   if (lines.length === 0) {

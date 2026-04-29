@@ -312,6 +312,29 @@ describe('sessionRecapSummaryLines', () => {
     });
     expect(lines.some((l) => /per clock hour/i.test(l))).toBe(true);
   });
+
+  it('skips progression bullets when omitProgression', () => {
+    const lines = sessionRecapSummaryLines({
+      highlights: {
+        completedSetCount: 3,
+        strengthVolumeLb: 3000,
+        distinctLifts: 2,
+        bestSessionE1RmLb: 200,
+        topSet: { liftName: 'Bench', weight: 100, reps: 5 },
+        reduced: 0,
+        skipped: 0,
+        substituted: 0,
+        totalRestBetweenSetsMs: 0,
+      },
+      progression: { advanced: 2, held: 1, skipped: 0 },
+      prCount: 0,
+      durationMs: null,
+      templateName: 'Upper A',
+      omitProgression: true,
+    });
+    expect(lines.some((l) => /heavier next session/i.test(l))).toBe(false);
+    expect(lines.some((l) => /held steady/i.test(l))).toBe(false);
+  });
 });
 
 describe('sessionStrengthDensity', () => {

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   useAllSets,
   useLifts,
@@ -21,11 +21,9 @@ import {
   fmtDurationShort,
   sessionDurationMs,
   sessionFinishHighlights,
-  sessionStrengthDensity,
-  sessionRecapPRs,
   type SessionFinishHighlights,
-  type SessionRecapPRItem,
 } from '@/lib/stats';
+import { buildSessionRecapPayload, type SessionRecapPayload } from '@/lib/sessionRecap';
 import { ReadinessForm } from './ReadinessForm';
 import { ReadinessSummary } from './ReadinessSummary';
 import { getDb } from '@/lib/db';
@@ -56,6 +54,13 @@ export function TodayView() {
   const prescriptions = usePrescriptions((activeId ?? undefined) as TemplateId | undefined);
   const readiness = useReadinessForSession(session?.id);
   const allSets = useAllSets();
+  const [sessionRecap, setSessionRecap] = useState<SessionRecapPayload | null>(null);
+
+  const openReplayRecap = useCallback(async () => {
+    if (!session?.completedAt) return;
+    const p = await buildSessionRecapPayload({ session, progression: null });
+    if (p) setSessionRecap(p);
+  }, [session]);
 
   const completeHighlights = useMemo(() => {
     if (!session?.completedAt || !allSets || !lifts) return null;
@@ -111,6 +116,7 @@ export function TodayView() {
           templateName={activeTemplate.name}
           sets={allSets ?? []}
           highlights={completeHighlights}
+          onViewRecap={openReplayRecap}
         />
       )}
 
@@ -178,11 +184,29 @@ export function TodayView() {
               Effort mode active: {effortLabel(session.effortScale ?? 0)}
             </div>
           )}
-          <FinishSessionButton session={session} prescriptions={prescriptions ?? []} />
+          <FinishSessionButton
+            session={session}
+            prescriptions={prescriptions ?? []}
+            onRecap={(p) => setSessionRecap(p)}
+          />
         </>
       )}
       {showSessionDock && allSets && (
         <SessionContextDock session={session} prescriptions={prescriptions ?? []} allSets={allSets} />
+      )}
+      {sessionRecap && (
+        <SessionRecapSheet
+          open
+          onClose={() => setSessionRecap(null)}
+          session={sessionRecap.session}
+          templateName={sessionRecap.templateName}
+          durationMs={sessionRecap.durationMs}
+          strengthLbPerHour={sessionRecap.strengthLbPerHour}
+          progression={sessionRecap.progression}
+          prs={sessionRecap.prs}
+          highlights={sessionRecap.highlights}
+          replay={sessionRecap.replay}
+        />
       )}
     </PageShell>
   );
@@ -227,12 +251,15 @@ function SessionCompleteBanner({
   templateName,
   sets,
   highlights,
+  onViewRecap,
 }: {
   session: SessionLog;
   templateName: string;
   sets: SetLog[];
   highlights: SessionFinishHighlights | null;
+  onViewRecap: () => Promise<void>;
 }) {
+  const [recapBusy, setRecapBusy] = useState(false);
   const durationMs = sessionDurationMs(session, sets);
   return (
     <div
@@ -269,6 +296,17 @@ function SessionCompleteBanner({
         <p className="text-xs text-emerald-200/60 mt-1.5">
           You can still edit sets below; use <span className="text-emerald-100/90">Re-run progression</span> if you change something material.
         </p>
+        <button
+          type="button"
+          disabled={recapBusy}
+          onClick={() => {
+            setRecapBusy(true);
+            void onViewRecap().finally(() => setRecapBusy(false));
+          }}
+          className="mt-2.5 w-full sm:w-auto px-4 py-2 rounded-xl text-sm font-medium border border-emerald-500/40 text-emerald-100 hover:bg-emerald-500/10 disabled:opacity-50 transition-colors"
+        >
+          {recapBusy ? 'Opening…' : 'View recap'}
+        </button>
       </div>
     </div>
   );
@@ -284,20 +322,17 @@ function applySessionMode(p: Prescription, s: SessionLog): Prescription {
   return p;
 }
 
-type SessionRecapPayload = {
+function FinishSessionButton({
+  session,
+  prescriptions,
+  onRecap,
+}: {
   session: SessionLog;
-  templateName: string;
-  prs: SessionRecapPRItem[];
-  durationMs: number | null;
-  strengthLbPerHour: number | null;
-  progression: { advanced: number; held: number; skipped: number };
-  highlights: SessionFinishHighlights;
-};
-
-function FinishSessionButton({ session, prescriptions }: { session: SessionLog; prescriptions: Prescription[] }) {
+  prescriptions: Prescription[];
+  onRecap: (payload: SessionRecapPayload) => void;
+}) {
   const [busy, setBusy] = useState(false);
   const [summary, setSummary] = useState<{ advanced: number; held: number; skipped: number; durationMs: number | null } | null>(null);
-  const [recap, setRecap] = useState<SessionRecapPayload | null>(null);
   const sets = useAllSets();
 
   // Live elapsed (only while the session is in progress).
@@ -333,22 +368,11 @@ function FinishSessionButton({ session, prescriptions }: { session: SessionLog; 
       setSummary({ ...progression, durationMs });
 
       if (wasFirstCompletion) {
-        const tmpl = await db.templates.get(session.templateId);
-        const allSets = await db.set_logs.toArray();
-        const allSessions = await db.session_logs.toArray();
-        const lifts = await db.lifts.toArray();
-        const prs = sessionRecapPRs(session.id, allSets, allSessions, lifts);
-        const highlights = sessionFinishHighlights(session.id, sessionSets, lifts);
-        const { lbPerHour: strengthLbPerHour } = sessionStrengthDensity(finalSession, sessionSets, lifts);
-        setRecap({
+        const payload = await buildSessionRecapPayload({
           session: finalSession,
-          templateName: tmpl?.name ?? session.templateId,
-          prs,
-          durationMs,
-          strengthLbPerHour,
           progression,
-          highlights,
         });
+        if (payload) onRecap(payload);
       }
     } finally {
       setBusy(false);
@@ -357,19 +381,6 @@ function FinishSessionButton({ session, prescriptions }: { session: SessionLog; 
 
   return (
     <div className="space-y-2 pt-2">
-      {recap && (
-        <SessionRecapSheet
-          open
-          onClose={() => setRecap(null)}
-          session={recap.session}
-          templateName={recap.templateName}
-          durationMs={recap.durationMs}
-          strengthLbPerHour={recap.strengthLbPerHour}
-          progression={recap.progression}
-          prs={recap.prs}
-          highlights={recap.highlights}
-        />
-      )}
       {liveDuration != null && (
         <div className="text-xs text-zinc-500 text-center font-mono">
           session · {fmtDurationShort(liveDuration)}
