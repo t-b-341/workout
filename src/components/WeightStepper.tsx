@@ -1,6 +1,8 @@
 'use client';
 
+import { useEffect, useState } from 'react';
 import type { Lift } from '@/lib/types';
+import { clampHalfStepRir } from '@/lib/rpe';
 import { snapWorkingWeight, type SnapLiftRef } from '@/lib/progression';
 
 type Props = {
@@ -33,6 +35,23 @@ export function WeightStepper({
   const dec = () => onChange(snap(value - inc));
   const up = () => onChange(snap(value + inc));
 
+  const [focused, setFocused] = useState(false);
+  const [text, setText] = useState(String(value));
+
+  useEffect(() => {
+    if (!focused) setText(String(value));
+  }, [value, focused]);
+
+  function commit() {
+    const t = text.trim();
+    if (t === '' || t === '-' || t === '.' || t === '-.') {
+      onChange(snap(0));
+      return;
+    }
+    const n = parseFloat(t);
+    onChange(snap(Number.isFinite(n) ? n : 0));
+  }
+
   return (
     <div className="flex items-center gap-2">
       <button
@@ -42,10 +61,35 @@ export function WeightStepper({
         aria-label="decrease"
       >−</button>
       <input
-        type="number"
+        type="text"
         inputMode="decimal"
-        value={value}
-        onChange={(e) => onChange(snap(parseFloat(e.target.value || '0')))}
+        value={text}
+        onFocus={() => setFocused(true)}
+        onBlur={() => {
+          commit();
+          setFocused(false);
+        }}
+        onChange={(e) => {
+          let v = e.target.value;
+          if (!allowNegative) {
+            v = v.replace(/[^\d.]/g, '');
+            const firstDot = v.indexOf('.');
+            if (firstDot !== -1) {
+              v = v.slice(0, firstDot + 1) + v.slice(firstDot + 1).replace(/\./g, '');
+            }
+          } else {
+            v = v.replace(/[^\d.-]/g, '');
+            const minus = v.startsWith('-') ? '-' : '';
+            const rest = (v.startsWith('-') ? v.slice(1) : v).replace(/-/g, '');
+            const fd = rest.indexOf('.');
+            let body = rest;
+            if (fd !== -1) {
+              body = rest.slice(0, fd + 1) + rest.slice(fd + 1).replace(/\./g, '');
+            }
+            v = minus + body;
+          }
+          setText(v);
+        }}
         className="h-12 w-24 rounded-xl bg-zinc-900 border border-zinc-800 text-center text-lg"
       />
       <button
@@ -66,6 +110,22 @@ type RepProps = {
 };
 
 export function RepStepper({ value, onChange, unit = 'reps' }: RepProps) {
+  const [focused, setFocused] = useState(false);
+  const [text, setText] = useState(String(value));
+
+  useEffect(() => {
+    if (!focused) setText(String(value));
+  }, [value, focused]);
+
+  function commit() {
+    const t = text.trim();
+    if (t === '') onChange(0);
+    else {
+      const n = parseInt(t, 10);
+      onChange(Number.isFinite(n) ? Math.max(0, n) : 0);
+    }
+  }
+
   return (
     <div className="flex items-center gap-2">
       <button
@@ -75,10 +135,19 @@ export function RepStepper({ value, onChange, unit = 'reps' }: RepProps) {
         aria-label="decrease"
       >−</button>
       <input
-        type="number"
+        type="text"
         inputMode="numeric"
-        value={value}
-        onChange={(e) => onChange(Math.max(0, parseInt(e.target.value || '0', 10)))}
+        value={text}
+        onFocus={() => setFocused(true)}
+        onBlur={() => {
+          commit();
+          setFocused(false);
+        }}
+        onChange={(e) => {
+          const v = e.target.value;
+          if (!/^\d*$/.test(v)) return;
+          setText(v);
+        }}
         className="h-12 w-20 rounded-xl bg-zinc-900 border border-zinc-800 text-center text-lg"
       />
       <button
@@ -89,5 +158,183 @@ export function RepStepper({ value, onChange, unit = 'reps' }: RepProps) {
       >+</button>
       <span className="text-zinc-500 text-sm ml-1">{unit}</span>
     </div>
+  );
+}
+
+type RirProps = {
+  value: number;
+  onChange: (n: number) => void;
+  /** Narrower controls for dense layouts (e.g. session edit sheet). */
+  compact?: boolean;
+};
+
+export function RirStepper({ value, onChange, compact }: RirProps) {
+  const snapped = clampHalfStepRir(value);
+  const [focused, setFocused] = useState(false);
+  const [text, setText] = useState(String(snapped));
+
+  useEffect(() => {
+    if (!focused) setText(String(clampHalfStepRir(value)));
+  }, [value, focused]);
+
+  function commit() {
+    const t = text.trim();
+    if (t === '' || t === '-' || t === '.' || t === '-.') {
+      onChange(0);
+      return;
+    }
+    const n = parseFloat(t);
+    onChange(Number.isFinite(n) ? clampHalfStepRir(n) : 0);
+  }
+
+  const dec = () => onChange(clampHalfStepRir(snapped - 0.5));
+  const inc = () => onChange(clampHalfStepRir(snapped + 0.5));
+
+  const btn = compact ? 'h-9 w-9 text-xl' : 'h-12 w-12 text-2xl';
+  const inp = compact ? 'h-9 w-20 text-sm' : 'h-12 w-20 text-lg';
+
+  return (
+    <div className="flex items-center gap-2">
+      <button
+        type="button"
+        onClick={dec}
+        className={`rounded-xl bg-zinc-800 active:bg-zinc-700 font-medium ${btn}`}
+        aria-label="decrease RIR"
+      >−</button>
+      <input
+        type="text"
+        inputMode="decimal"
+        value={text}
+        onFocus={() => setFocused(true)}
+        onBlur={() => {
+          commit();
+          setFocused(false);
+        }}
+        onChange={(e) => {
+          let v = e.target.value.replace(/[^\d.]/g, '');
+          const fd = v.indexOf('.');
+          if (fd !== -1) {
+            v = v.slice(0, fd + 1) + v.slice(fd + 1).replace(/\./g, '');
+          }
+          setText(v);
+        }}
+        className={`rounded-xl bg-zinc-950 border border-zinc-800 px-2 text-center font-mono text-zinc-200 ${inp}`}
+      />
+      <button
+        type="button"
+        onClick={inc}
+        className={`rounded-xl bg-zinc-800 active:bg-zinc-700 font-medium ${btn}`}
+        aria-label="increase RIR"
+      >+</button>
+    </div>
+  );
+}
+
+/** Integers only; empty while typing; commit on blur (defaults invalid empty to `min`). */
+export function LooseIntField({
+  value,
+  onCommit,
+  min = 0,
+  max = 9999,
+  className,
+}: {
+  value: number;
+  onCommit: (n: number) => void;
+  min?: number;
+  max?: number;
+  className?: string;
+}) {
+  const [focused, setFocused] = useState(false);
+  const [text, setText] = useState(String(value));
+
+  useEffect(() => {
+    if (!focused) setText(String(value));
+  }, [value, focused]);
+
+  function commit() {
+    const t = text.trim();
+    const parsed = t === '' ? NaN : parseInt(t, 10);
+    const n = Number.isFinite(parsed) ? parsed : min;
+    onCommit(Math.min(max, Math.max(min, n)));
+  }
+
+  return (
+    <input
+      type="text"
+      inputMode="numeric"
+      value={text}
+      className={className}
+      onFocus={() => setFocused(true)}
+      onBlur={() => {
+        commit();
+        setFocused(false);
+      }}
+      onChange={(e) => setText(e.target.value.replace(/\D/g, ''))}
+    />
+  );
+}
+
+/** Decimal; empty while typing; commit on blur. */
+export function LooseDecimalField({
+  value,
+  onCommit,
+  className,
+  allowNegative,
+}: {
+  value: number;
+  onCommit: (n: number) => void;
+  className?: string;
+  allowNegative?: boolean;
+}) {
+  const [focused, setFocused] = useState(false);
+  const [text, setText] = useState(String(value));
+
+  useEffect(() => {
+    if (!focused) setText(String(value));
+  }, [value, focused]);
+
+  function commit() {
+    const t = text.trim();
+    if (t === '' || t === '-' || t === '.' || t === '-.') {
+      onCommit(0);
+      return;
+    }
+    const n = parseFloat(t);
+    onCommit(Number.isFinite(n) ? n : 0);
+  }
+
+  return (
+    <input
+      type="text"
+      inputMode="decimal"
+      value={text}
+      className={className}
+      onFocus={() => setFocused(true)}
+      onBlur={() => {
+        commit();
+        setFocused(false);
+      }}
+      onChange={(e) => {
+        let v = e.target.value;
+        if (!allowNegative) {
+          v = v.replace(/[^\d.]/g, '');
+          const firstDot = v.indexOf('.');
+          if (firstDot !== -1) {
+            v = v.slice(0, firstDot + 1) + v.slice(firstDot + 1).replace(/\./g, '');
+          }
+        } else {
+          v = v.replace(/[^\d.-]/g, '');
+          const minus = v.startsWith('-') ? '-' : '';
+          const rest = (v.startsWith('-') ? v.slice(1) : v).replace(/-/g, '');
+          const fd = rest.indexOf('.');
+          let body = rest;
+          if (fd !== -1) {
+            body = rest.slice(0, fd + 1) + rest.slice(fd + 1).replace(/\./g, '');
+          }
+          v = minus + body;
+        }
+        setText(v);
+      }}
+    />
   );
 }

@@ -17,6 +17,7 @@ import type {
   SetLog,
   SetStatus,
 } from '@/lib/types';
+import { LooseDecimalField, LooseIntField, RirStepper } from './WeightStepper';
 
 const STATUSES: SetStatus[] = ['completed', 'reduced', 'skipped', 'substituted'];
 
@@ -206,22 +207,20 @@ export function SessionEditSheet({ session, initialSets, onClose }: Props) {
                       {lift?.loadUnit !== 'none' && (
                         <label className="text-xs text-zinc-500 shrink-0">
                           Weight (lb)
-                          <input
-                            type="number"
-                            inputMode="decimal"
+                          <LooseDecimalField
                             value={row.weight}
-                            onChange={(e) => patchRow(row.id, { weight: parseFloat(e.target.value) || 0 })}
+                            onCommit={(n) => patchRow(row.id, { weight: n })}
                             className="mt-1 block w-24 h-9 rounded-lg bg-zinc-950 border border-zinc-700 px-2 text-sm font-mono text-zinc-200"
                           />
                         </label>
                       )}
                       <label className="text-xs text-zinc-500 shrink-0">
                         {lift?.repUnit === 'reps' || !lift ? 'Reps' : lift.repUnit}
-                        <input
-                          type="number"
-                          inputMode="numeric"
+                        <LooseIntField
                           value={row.reps}
-                          onChange={(e) => patchRow(row.id, { reps: parseInt(e.target.value, 10) || 0 })}
+                          min={0}
+                          max={999}
+                          onCommit={(n) => patchRow(row.id, { reps: n })}
                           className="mt-1 block w-20 h-9 rounded-lg bg-zinc-950 border border-zinc-700 px-2 text-sm font-mono text-zinc-200"
                         />
                       </label>
@@ -244,20 +243,15 @@ export function SessionEditSheet({ session, initialSets, onClose }: Props) {
                       {shouldTrackRpeForReps(row.reps) ? (
                         <label className="text-xs text-zinc-500 shrink-0">
                           RIR
-                          <input
-                            type="number"
-                            inputMode="decimal"
-                            min={0}
-                            max={5}
-                            step={0.5}
-                            value={row.rir ?? ''}
-                            onChange={(e) =>
-                              patchRow(row.id, { rir: parseFloat(e.target.value || '0') || 0 })
-                            }
-                            className="mt-1 block w-20 h-9 rounded-lg bg-zinc-950 border border-zinc-700 px-2 text-sm font-mono text-zinc-200"
-                          />
+                          <div className="mt-1">
+                            <RirStepper
+                              compact
+                              value={row.rir ?? 2}
+                              onChange={(n) => patchRow(row.id, { rir: n })}
+                            />
+                          </div>
                           <div className="mt-1 text-[10px] text-zinc-500">
-                            RPE {row.rir != null ? rpeFromRir(row.rir).toFixed(1) : '—'}
+                            RPE {rpeFromRir(row.rir ?? 2).toFixed(1)}
                           </div>
                         </label>
                       ) : (

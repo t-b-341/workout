@@ -1,7 +1,7 @@
 import { LIFTS } from './seed';
 import type { Lift, Prescription, SessionLog, SetLog } from './types';
 
-/** P1 pull-up variants: added (or assisted negative) load snaps in 2.5 lb steps — not barbell 5s. */
+/** P1 pull-up variants with added load (or eccentric negatives): snap in 2.5 lb steps. */
 export const LIFT_IDS_PULLUP_ADDED_LOAD = new Set<string>(['p1_eccentric', 'p1_assisted', 'p1_bw']);
 
 export type SnapLiftRef = Pick<Lift, 'id' | 'equipment' | 'loadUnit'>;
@@ -12,16 +12,22 @@ export function liftForSnap(liftId: string): SnapLiftRef {
   return { id: liftId, equipment: 'barbell', loadUnit: 'lb' };
 }
 
-/** Nearest 2.5 lb (any sign for assisted negatives). */
+/** Nearest 2.5 lb. */
 export function snapQuarterLb(weight: number): number {
   return Math.round(weight / 2.5) * 2.5;
+}
+
+/** Nearest 5 lb (assistance counterweight on `p1_assisted`; 0 = unassisted). */
+export function snapAssistedPullupLb(weight: number): number {
+  return Math.round(weight / 5) * 5;
 }
 
 /**
  * Snap logged / prescribed working weight for the lift.
  * - Barbell: nearest 5 lb (`snapBarbell`).
  * - Dumbbell / farmer carry: `snapDbLoad` ladder.
- * - Weighted pull-ups (`p1_*`): 2.5 lb (non‑negative except `p1_assisted` assistance negatives).
+ * - `p1_assisted`: assistance amount snaps in **5 lb** steps (50 → 0 toward unassisted); optional negatives still snap in 5s.
+ * - Other weighted pull-ups (`p1_eccentric`, `p1_bw`): 2.5 lb added load.
  * - `loadUnit === 'none'` or pure cardio/time: unchanged.
  */
 export function snapWorkingWeight(weight: number, lift: SnapLiftRef): number {
@@ -31,8 +37,8 @@ export function snapWorkingWeight(weight: number, lift: SnapLiftRef): number {
 
   if (LIFT_IDS_PULLUP_ADDED_LOAD.has(lift.id)) {
     if (lift.id === 'p1_assisted') {
-      if (weight >= 0) return Math.max(0, snapQuarterLb(weight));
-      return Math.max(-200, snapQuarterLb(weight));
+      if (weight >= 0) return Math.max(0, snapAssistedPullupLb(weight));
+      return Math.max(-200, snapAssistedPullupLb(weight));
     }
     return Math.max(0, snapQuarterLb(weight));
   }
@@ -125,14 +131,38 @@ export function decideProgression(
     }
   }
 
-  const inc = prescription.increment ?? liftIncrementOverride ?? 5;
+  const step = prescription.increment ?? liftIncrementOverride ?? 5;
   const liftMeta = liftForSnap(prescription.liftId);
-  const rawNext = prescription.weight + inc;
+
+  /** Positive weight = counterweight assistance; progress by reducing assist toward 0 (unassisted). */
+  if (prescription.liftId === 'p1_assisted' && prescription.weight > 0) {
+    const rawNext = prescription.weight - step;
+    return {
+      ...base,
+      nextWeight: snapWorkingWeight(rawNext, liftMeta),
+      advanced: true,
+      reason: `All sets hit ${prescription.repMax} reps — −${step} lb assist`,
+    };
+  }
+
+  if (prescription.liftId === 'p1_assisted' && prescription.weight <= 0) {
+    return {
+      ...base,
+      nextWeight: snapWorkingWeight(prescription.weight, liftMeta),
+      advanced: false,
+      reason:
+        prescription.weight === 0
+          ? 'Unassisted (0 lb assist) — no assist to reduce'
+          : 'Non-positive assist load — no auto progression',
+    };
+  }
+
+  const rawNext = prescription.weight + step;
   return {
     ...base,
     nextWeight: snapWorkingWeight(rawNext, liftMeta),
     advanced: true,
-    reason: `All sets hit ${prescription.repMax} reps — +${inc}`,
+    reason: `All sets hit ${prescription.repMax} reps — +${step}`,
   };
 }
 

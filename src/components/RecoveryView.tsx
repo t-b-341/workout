@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   useAllBodyweight,
   useAllNutrition,
@@ -339,16 +339,47 @@ function StressField({
   value: 1 | 2 | 3 | 4 | 5;
   onChange: (v: 1 | 2 | 3 | 4 | 5) => void;
 }) {
+  const [focused, setFocused] = useState(false);
+  const [text, setText] = useState(String(value));
+
+  useEffect(() => {
+    if (!focused) setText(String(value));
+  }, [value, focused]);
+
+  function commit() {
+    const digits = text.replace(/\D/g, '');
+    if (digits === '') {
+      setText(String(value));
+      return;
+    }
+    const n = clamp(parseInt(digits.slice(0, 2), 10), 1, 5) as 1 | 2 | 3 | 4 | 5;
+    onChange(n);
+    setText(String(n));
+  }
+
   return (
     <label className="text-xs text-zinc-500">
       {label}
       <input
         className="mt-1 h-11 w-full rounded-lg bg-zinc-950 border border-zinc-800 px-3 text-center font-mono"
-        type="number"
-        min={1}
-        max={5}
-        value={value}
-        onChange={(e) => onChange(clamp(parseInt(e.target.value || '3', 10), 1, 5) as 1 | 2 | 3 | 4 | 5)}
+        type="text"
+        inputMode="numeric"
+        autoComplete="off"
+        value={text}
+        onFocus={() => setFocused(true)}
+        onBlur={() => {
+          commit();
+          setFocused(false);
+        }}
+        onChange={(e) => {
+          let v = e.target.value.replace(/\D/g, '');
+          if (v.length > 1) v = v.slice(-1);
+          setText(v);
+          if (v !== '') {
+            const n = parseInt(v, 10);
+            if (n >= 1 && n <= 5) onChange(n as 1 | 2 | 3 | 4 | 5);
+          }
+        }}
       />
     </label>
   );
@@ -406,9 +437,13 @@ function SleepSectionForm({
             min={1}
             max={5}
             value={quality}
-            onChange={(e) =>
-              setQuality(clamp(parseInt(e.target.value || '3', 10), 1, 5) as 1 | 2 | 3 | 4 | 5)
-            }
+            onChange={(e) => {
+              const raw = e.target.value;
+              if (raw === '') return;
+              const n = parseInt(raw, 10);
+              if (!Number.isFinite(n)) return;
+              setQuality(clamp(n, 1, 5) as 1 | 2 | 3 | 4 | 5);
+            }}
           />
         </label>
       </div>

@@ -33,6 +33,7 @@ import {
   useGoalSessionPrefs,
   type FitnessGoal,
 } from '@/lib/goals';
+import { LooseDecimalField, LooseIntField } from './WeightStepper';
 import { PageShell } from './PageShell';
 
 /** Editable meso fields while the form is open — numbers as strings so the
@@ -136,35 +137,36 @@ export function ProgramEditor() {
         {(prescriptions ?? []).map((p) => (
           <div key={p.id} className="grid grid-cols-12 gap-2 px-3 py-3 items-center border-b border-zinc-800 last:border-b-0">
             <div className="col-span-4 text-sm">{liftName(p.liftId)}</div>
-            <input
-              type="number"
-              step={0.5}
+            <LooseDecimalField
               value={p.weight}
-              onChange={(e) =>
+              onCommit={(n) =>
                 update(p, {
-                  weight: snapWorkingWeight(parseFloat(e.target.value || '0'), liftForSnap(p.liftId)),
+                  weight: snapWorkingWeight(n, liftForSnap(p.liftId)),
                 })
               }
               className="col-span-2 h-10 rounded-lg bg-zinc-950 border border-zinc-800 text-center"
             />
-            <input
-              type="number"
+            <LooseIntField
               value={p.sets}
-              onChange={(e) => update(p, { sets: parseInt(e.target.value || '1', 10) })}
+              min={1}
+              max={99}
+              onCommit={(n) => update(p, { sets: n })}
               className="col-span-1 h-10 rounded-lg bg-zinc-950 border border-zinc-800 text-center"
             />
             <div className="col-span-2 flex items-center gap-1">
-              <input
-                type="number"
+              <LooseIntField
                 value={p.repMin}
-                onChange={(e) => update(p, { repMin: parseInt(e.target.value || '1', 10) })}
+                min={1}
+                max={99}
+                onCommit={(n) => update(p, { repMin: n })}
                 className="w-full h-10 rounded-lg bg-zinc-950 border border-zinc-800 text-center"
               />
               <span className="text-zinc-600">–</span>
-              <input
-                type="number"
+              <LooseIntField
                 value={p.repMax}
-                onChange={(e) => update(p, { repMax: parseInt(e.target.value || '1', 10) })}
+                min={1}
+                max={99}
+                onCommit={(n) => update(p, { repMax: n })}
                 className="w-full h-10 rounded-lg bg-zinc-950 border border-zinc-800 text-center"
               />
             </div>

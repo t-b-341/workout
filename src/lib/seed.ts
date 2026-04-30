@@ -26,22 +26,18 @@ export const LIFTS: Lift[] = [
     pattern: 'vert-push', muscleGroups: ['front-delt', 'side-delt', 'triceps'] },
   { id: 'pec_flyes', name: 'Pec Flyes', equipment: 'dumbbell', loadUnit: 'lb', repUnit: 'reps', increment: 2.5,
     pattern: 'horiz-push', muscleGroups: ['chest', 'front-delt'] },
-  { id: 'rdf', name: 'Rear Delt Flyes', equipment: 'dumbbell', loadUnit: 'lb', repUnit: 'reps', increment: 2.5,
+  { id: 'rdf', name: 'Rear Delt Plate Flyes', equipment: 'bodyweight', loadUnit: 'lb', repUnit: 'reps', increment: 5, notes: 'Supinated grip; one 10# plate per hand (substitute for DB rear-delt fly)',
     pattern: 'horiz-pull', muscleGroups: ['rear-delt', 'traps'] },
-  { id: 'hammer_curls', name: 'Hammer Curls', equipment: 'dumbbell', loadUnit: 'lb', repUnit: 'reps', increment: 2.5,
+  { id: 'supinated_barbell_curls', name: 'Supinated Barbell Curls', equipment: 'barbell', loadUnit: 'lb', repUnit: 'reps', increment: 5,
     pattern: 'horiz-pull', muscleGroups: ['biceps', 'forearms'] },
 
   // Upper - bodyweight pullup variants (P1). Added-load snap rules: `LIFT_IDS_PULLUP_ADDED_LOAD` in progression.ts.
   { id: 'p1_eccentric', name: 'P1 Weighted Eccentric', equipment: 'bodyweight', loadUnit: 'lb', repUnit: 'reps', increment: 2.5, notes: '5 sec eccentric, weighted (added load)',
     pattern: 'vert-pull', muscleGroups: ['lats', 'biceps', 'mid-back'] },
-  { id: 'p1_assisted', name: 'P1 Assisted', equipment: 'bodyweight', loadUnit: 'lb', repUnit: 'reps', increment: 2.5, notes: 'Assisted; weight = assistance lb (negative load)',
+  { id: 'p1_assisted', name: 'P1 Assisted', equipment: 'bodyweight', loadUnit: 'lb', repUnit: 'reps', increment: 5, notes: 'Counterweight assistance in 5 lb steps (down to 0 = unassisted); optional negative for eccentric overload',
     pattern: 'vert-pull', muscleGroups: ['lats', 'biceps', 'mid-back'] },
   { id: 'p1_bw', name: 'P1 (Bodyweight)', equipment: 'bodyweight', loadUnit: 'bodyweight', repUnit: 'reps', increment: 2.5, notes: 'Unassisted; tracked as added load (0 = bodyweight)',
     pattern: 'vert-pull', muscleGroups: ['lats', 'biceps', 'mid-back'] },
-
-  // Upper - carry
-  { id: 'fc', name: "Farmer's Carry (strapped)", equipment: 'carry', loadUnit: 'lb', repUnit: 'lengths', increment: 2.5, notes: 'Per-DB load × lengths (down + back = 2)',
-    pattern: 'carry', muscleGroups: ['traps', 'forearms', 'core', 'glutes'] },
 
   // Lower - barbell
   { id: 'back_squat', name: 'Back Squat', equipment: 'barbell', loadUnit: 'lb', repUnit: 'reps', increment: 5,
@@ -161,19 +157,17 @@ export const PRESCRIPTIONS: Prescription[] = [
   p('U1', 'bp',           40, 175, 3, 4, 8),
   p('U1', 'pec_flyes',    50,  17.5, 3, 12, 15),
   p('U1', 'pendlay_row',  60, 170, 3, 4, 8),
-  p('U1', 'fc',           70,  52.5, 2, 2, 2, { notes: '52.5# DBs × 2 lengths × 2 sets' }),
-  p('U1', 'rdf',          80,  15, 4, 15, 15),
+  p('U1', 'rdf',          70,  10, 4, 15, 15, { notes: '10# plates/side' }),
 
   // Wednesday — U2 (Light)
   p('U2', 'seated_db_press', 10, 40,  3, 8, 12, { notes: 'Shoot for 3×10' }),
-  p('U2', 'p1_assisted',     20, 0,   8, 2, 4, { notes: 'Assistance load tracked as positive #' }),
+  p('U2', 'p1_assisted',     20, 50,  8, 2, 4, { notes: 'Assistance (#) in 5 lb steps → 0 unassisted' }),
   p('U2', 'wgbp',            30, 125, 3, 8, 12, { notes: 'Shoot for 3×12' }),
   p('U2', 'deficit_bbr',     40, 140, 3, 4, 8),
   p('U2', 'jm_press',        50, 45,  3, 10, 12),
-  p('U2', 'hammer_curls',    60, 20,  4, 10, 12),
-  p('U2', 'rdf',             70, 15,  4, 15, 15),
-  p('U2', 'fc',              80, 52.5, 2, 2, 2, { notes: 'GPP conditioning w/ straps' }),
-  p('U2', 'liss',            90, 0,   1, 30, 30, { notes: '30 min @ 2.0 mph / 3.0% grade' }),
+  p('U2', 'supinated_barbell_curls', 60, 45, 4, 10, 12),
+  p('U2', 'rdf',             70, 10,  4, 15, 15, { notes: '10# plates/side' }),
+  p('U2', 'liss',            80, 0,   1, 30, 30, { notes: '30 min @ 2.0 mph / 3.0% grade' }),
 
   // Friday — U3 (Moderate)
   p('U3', 'pp',           10, 115, 2, 4, 8, { notes: "BRACE YOUR GODDAMN CORE, or you'll hurt your back again" }),
@@ -182,7 +176,7 @@ export const PRESCRIPTIONS: Prescription[] = [
   p('U3', 'bp_paused',    40, 155, 3, 4, 8),
   p('U3', 'pec_flyes',    50,  17.5, 3, 12, 15),
   p('U3', 'bbr',          60, 150, 3, 4, 8),
-  p('U3', 'rdf',          70,  15, 4, 15, 15, { notes: 'Shoulder insurance' }),
+  p('U3', 'rdf',          70,  10, 4, 15, 15, { notes: 'Shoulder insurance · 10# plates/side' }),
 
   // Tuesday — L1 (Heavy)
   p('L1', 'back_squat',          10, 240, 3, 6, 8, { notes: 'Shoot for 3×8' }),

@@ -10,7 +10,7 @@ import {
 } from '@/lib/hooks';
 import { localDelete, localUpsert } from '@/lib/sync';
 import type { CardioLog, CardioType, Lift, Prescription, SessionLog, SetLog, SetStatus } from '@/lib/types';
-import { WeightStepper, RepStepper } from './WeightStepper';
+import { LooseDecimalField, RepStepper, RirStepper, WeightStepper } from './WeightStepper';
 import { fmtDate } from '@/lib/time';
 import { platesPerSide } from '@/lib/plates';
 import { snapWorkingWeight } from '@/lib/progression';
@@ -509,23 +509,17 @@ function SetRow({
         <div className="grid grid-cols-2 gap-2">
           <label className="text-xs text-zinc-500">
             Speed (mph)
-            <input
-              type="number"
-              inputMode="decimal"
-              step={0.1}
+            <LooseDecimalField
               value={speedMph}
-              onChange={(e) => setSpeedMph(parseFloat(e.target.value || '0'))}
+              onCommit={setSpeedMph}
               className="mt-1 block w-full h-10 rounded-lg bg-zinc-950 border border-zinc-800 px-2 font-mono text-sm"
             />
           </label>
           <label className="text-xs text-zinc-500">
             Incline (%)
-            <input
-              type="number"
-              inputMode="decimal"
-              step={0.5}
+            <LooseDecimalField
               value={gradePct}
-              onChange={(e) => setGradePct(parseFloat(e.target.value || '0'))}
+              onCommit={setGradePct}
               className="mt-1 block w-full h-10 rounded-lg bg-zinc-950 border border-zinc-800 px-2 font-mono text-sm"
             />
           </label>
@@ -576,16 +570,9 @@ function SetRow({
         {trackRpe ? (
           <label className="text-xs text-zinc-500">
             RIR
-            <input
-              type="number"
-              inputMode="decimal"
-              min={0}
-              max={5}
-              step={0.5}
-              value={rir}
-              onChange={(e) => setRir(parseFloat(e.target.value || '0'))}
-              className="mt-1 block w-20 h-10 rounded-lg bg-zinc-950 border border-zinc-800 px-2 text-sm font-mono text-zinc-200"
-            />
+            <div className="mt-1">
+              <RirStepper value={rir} onChange={setRir} />
+            </div>
             <div className="mt-1 text-[10px] text-zinc-500">RPE {derivedRpe?.toFixed(1)}</div>
           </label>
         ) : (

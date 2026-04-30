@@ -3,6 +3,7 @@
 import { format } from 'date-fns';
 import { useState } from 'react';
 import { CardioBanner } from './CardioBanner';
+import { LooseDecimalField, LooseIntField } from './WeightStepper';
 import { PageShell } from './PageShell';
 import { useThisWeekCardio } from '@/lib/hooks';
 import { localDelete, localUpsert } from '@/lib/sync';
@@ -60,16 +61,63 @@ export function CardioView() {
         </div>
 
         <div className="grid grid-cols-2 gap-3">
-          <Field label="Duration (min)" value={duration} onChange={setDuration} step={1} />
+          <label className="flex flex-col gap-1">
+            <span className="text-xs text-zinc-500">Duration (min)</span>
+            <LooseIntField
+              value={duration}
+              min={1}
+              max={999}
+              onCommit={setDuration}
+              className="h-11 px-3 rounded-xl bg-zinc-950 border border-zinc-800"
+            />
+          </label>
           {type === 'liss' ? (
             <>
-              <Field label="Speed (mph)" value={speed} onChange={setSpeed} step={0.1} />
-              <Field label="Grade (%)"  value={grade} onChange={setGrade} step={0.5} />
+              <label className="flex flex-col gap-1">
+                <span className="text-xs text-zinc-500">Speed (mph)</span>
+                <LooseDecimalField
+                  value={speed}
+                  onCommit={setSpeed}
+                  className="h-11 px-3 rounded-xl bg-zinc-950 border border-zinc-800"
+                />
+              </label>
+              <label className="flex flex-col gap-1">
+                <span className="text-xs text-zinc-500">Grade (%)</span>
+                <LooseDecimalField
+                  value={grade}
+                  onCommit={setGrade}
+                  className="h-11 px-3 rounded-xl bg-zinc-950 border border-zinc-800"
+                />
+              </label>
             </>
           ) : (
             <>
-              <Field label="Avg HR" value={avgHr === '' ? 0 : avgHr} onChange={(n) => setAvgHr(n)} step={1} />
-              <Field label="Peak HR" value={peakHr === '' ? 0 : peakHr} onChange={(n) => setPeakHr(n)} step={1} />
+              <label className="flex flex-col gap-1">
+                <span className="text-xs text-zinc-500">Avg HR (optional)</span>
+                <input
+                  type="number"
+                  inputMode="numeric"
+                  value={avgHr === '' ? '' : avgHr}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    setAvgHr(v === '' ? '' : parseInt(v, 10));
+                  }}
+                  className="h-11 px-3 rounded-xl bg-zinc-950 border border-zinc-800"
+                />
+              </label>
+              <label className="flex flex-col gap-1">
+                <span className="text-xs text-zinc-500">Peak HR (optional)</span>
+                <input
+                  type="number"
+                  inputMode="numeric"
+                  value={peakHr === '' ? '' : peakHr}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    setPeakHr(v === '' ? '' : parseInt(v, 10));
+                  }}
+                  className="h-11 px-3 rounded-xl bg-zinc-950 border border-zinc-800"
+                />
+              </label>
             </>
           )}
         </div>
@@ -113,21 +161,5 @@ export function CardioView() {
         ))}
       </div>
     </PageShell>
-  );
-}
-
-function Field({ label, value, onChange, step }: { label: string; value: number; onChange: (n: number) => void; step: number }) {
-  return (
-    <label className="flex flex-col gap-1">
-      <span className="text-xs text-zinc-500">{label}</span>
-      <input
-        type="number"
-        inputMode="decimal"
-        step={step}
-        value={value}
-        onChange={(e) => onChange(parseFloat(e.target.value || '0'))}
-        className="h-11 px-3 rounded-xl bg-zinc-950 border border-zinc-800"
-      />
-    </label>
   );
 }

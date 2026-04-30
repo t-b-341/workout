@@ -214,6 +214,78 @@ describe('decideProgression — per-side lifts', () => {
   });
 });
 
+describe('decideProgression — p1 assisted', () => {
+  const PRESC_ID = 'U2-p1_assisted';
+
+  function assistedPresc(weight: number, overrides: Partial<Prescription> = {}) {
+    return makePrescription({
+      id: PRESC_ID,
+      templateId: 'U2' as TemplateId,
+      liftId: 'p1_assisted',
+      weight,
+      sets: 2,
+      repMin: 2,
+      repMax: 4,
+      ...overrides,
+    });
+  }
+
+  function assistedSets(reps: number, assistLb: number): SetLog[] {
+    return [0, 1].map((i) => ({
+      id: `${SESSION_ID}-${PRESC_ID}-${i}-X`,
+      sessionLogId: SESSION_ID,
+      liftId: 'p1_assisted',
+      prescriptionId: PRESC_ID,
+      setIndex: i,
+      weight: assistLb,
+      reps,
+      status: 'completed' as SetStatus,
+    }));
+  }
+
+  it('reduces assist by 5 lb when every set hits repMax', () => {
+    const dec = decideProgression(
+      assistedPresc(50),
+      assistedSets(4, 50),
+      makeSession({ templateId: 'U2' as TemplateId }),
+    );
+    expect(dec.advanced).toBe(true);
+    expect(dec.nextWeight).toBe(45);
+    expect(dec.reason).toMatch(/−5 lb assist/);
+  });
+
+  it('lands on 0 unassisted when assist is one step above zero', () => {
+    const dec = decideProgression(
+      assistedPresc(5),
+      assistedSets(4, 5),
+      makeSession({ templateId: 'U2' as TemplateId }),
+    );
+    expect(dec.advanced).toBe(true);
+    expect(dec.nextWeight).toBe(0);
+  });
+
+  it('does not advance when already at 0 assist', () => {
+    const dec = decideProgression(
+      assistedPresc(0),
+      assistedSets(4, 0),
+      makeSession({ templateId: 'U2' as TemplateId }),
+    );
+    expect(dec.advanced).toBe(false);
+    expect(dec.nextWeight).toBe(0);
+    expect(dec.reason).toMatch(/Unassisted/);
+  });
+
+  it('respects prescription.increment for assist reduction', () => {
+    const dec = decideProgression(
+      assistedPresc(50, { increment: 10 }),
+      assistedSets(4, 50),
+      makeSession({ templateId: 'U2' as TemplateId }),
+    );
+    expect(dec.nextWeight).toBe(40);
+    expect(dec.reason).toMatch(/−10 lb assist/);
+  });
+});
+
 describe('snapBarbell', () => {
   it('rounds to nearest 5', () => {
     expect(snapBarbell(137)).toBe(135);
@@ -252,9 +324,17 @@ describe('snapWorkingWeight', () => {
     expect(snapWorkingWeight(11.3, lift)).toBe(12.5);
   });
 
-  it('allows negative assistance on p1_assisted snapped to 2.5', () => {
+  it('snaps p1_assisted assistance in 5 lb steps (0–50+)', () => {
     const lift = liftForSnap('p1_assisted');
-    expect(snapWorkingWeight(-17.2, lift)).toBe(-17.5);
-    expect(snapWorkingWeight(12.4, lift)).toBe(12.5);
+    expect(snapWorkingWeight(52.4, lift)).toBe(50);
+    expect(snapWorkingWeight(47.4, lift)).toBe(45);
+    expect(snapWorkingWeight(2.4, lift)).toBe(0);
+    expect(snapWorkingWeight(0, lift)).toBe(0);
+  });
+
+  it('snaps p1_assisted negative loads in 5 lb steps', () => {
+    const lift = liftForSnap('p1_assisted');
+    expect(snapWorkingWeight(-17.2, lift)).toBe(-15);
+    expect(snapWorkingWeight(-12.4, lift)).toBe(-10);
   });
 });
