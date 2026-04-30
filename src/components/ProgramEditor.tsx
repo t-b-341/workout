@@ -9,7 +9,7 @@ import {
   useSessionsAfterReadiness,
   useTemplates,
 } from '@/lib/hooks';
-import { localUpsert, flushDirty, pullAll } from '@/lib/sync';
+import { localDelete, localUpsert, flushDirty, pullAll } from '@/lib/sync';
 import type { Lift, Prescription, ReadinessLog, SessionLog, SessionTemplate, SetLog, TemplateId } from '@/lib/types';
 import { getDb } from '@/lib/db';
 import { defaultTemplateForLocalDate, sortTemplatesProgramOrder } from '@/lib/seed';
@@ -73,6 +73,36 @@ export function ProgramEditor() {
     await localUpsert('prescriptions', { ...p, ...patch });
   }
 
+  async function addExerciseSlot() {
+    const list = prescriptions ?? [];
+    const maxOrder = list.length ? Math.max(...list.map((x) => x.order)) : 0;
+    const defaultLift = liftsSorted[0]?.id ?? 'pp';
+    const id = `${activeId}-slot-${Date.now().toString(36)}`;
+    const row: Prescription = {
+      id,
+      templateId: activeId,
+      liftId: defaultLift,
+      order: maxOrder + 10,
+      weight: snapWorkingWeight(45, liftForSnap(defaultLift)),
+      sets: 3,
+      repMin: 8,
+      repMax: 12,
+    };
+    await localUpsert('prescriptions', row);
+  }
+
+  async function removeExerciseSlot(p: Prescription) {
+    const name = (lifts ?? []).find((l) => l.id === p.liftId)?.name ?? p.liftId;
+    if (
+      !window.confirm(
+        `Remove "${name}" from this template?\n\nPast session logs stay in History; this row disappears from Program and Today.`,
+      )
+    ) {
+      return;
+    }
+    await localDelete('prescriptions', p.id);
+  }
+
   async function exportAll() {
     setExporting(true);
     try {
@@ -131,15 +161,16 @@ export function ProgramEditor() {
 
       <div className="rounded-2xl bg-zinc-900 border border-zinc-800 overflow-hidden">
         <div className="grid grid-cols-12 gap-2 px-3 py-2 text-xs uppercase tracking-wider text-zinc-500 border-b border-zinc-800">
-          <div className="col-span-4">Lift</div>
+          <div className="col-span-3">Lift</div>
           <div className="col-span-2 text-center">Weight</div>
           <div className="col-span-1 text-center">Sets</div>
           <div className="col-span-2 text-center">Rep range</div>
-          <div className="col-span-3">Notes</div>
+          <div className="col-span-2">Notes</div>
+          <div className="col-span-2 text-center">Slot</div>
         </div>
         {(prescriptions ?? []).map((p) => (
           <div key={p.id} className="grid grid-cols-12 gap-2 px-3 py-3 items-center border-b border-zinc-800 last:border-b-0">
-            <label className="col-span-4 min-w-0">
+            <label className="col-span-3 min-w-0">
               <span className="sr-only">Exercise</span>
               <select
                 value={p.liftId}
@@ -198,10 +229,28 @@ export function ProgramEditor() {
               value={p.notes ?? ''}
               onChange={(e) => update(p, { notes: e.target.value })}
               placeholder="—"
-              className="col-span-3 h-10 px-2 rounded-lg bg-zinc-950 border border-zinc-800 text-sm"
+              className="col-span-2 h-10 px-2 rounded-lg bg-zinc-950 border border-zinc-800 text-sm"
             />
+            <div className="col-span-2 flex items-center justify-center">
+              <button
+                type="button"
+                onClick={() => void removeExerciseSlot(p)}
+                className="h-9 px-2 rounded-lg border border-rose-900/60 bg-rose-950/40 text-[11px] font-medium text-rose-200 hover:bg-rose-950/70"
+              >
+                Remove
+              </button>
+            </div>
           </div>
         ))}
+        <div className="px-3 py-3 border-t border-zinc-800">
+          <button
+            type="button"
+            onClick={() => void addExerciseSlot()}
+            className="h-10 w-full rounded-lg bg-zinc-800 text-sm text-zinc-200 hover:bg-zinc-700"
+          >
+            Add exercise slot
+          </button>
+        </div>
       </div>
     </PageShell>
   );
