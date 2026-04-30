@@ -514,6 +514,14 @@ function addWeeksToIsoWeek(weekLabel: string, n: number): string {
 
 // ---------- Mesocycle settings ----------
 
+type MesoLengthRecommendation = {
+  action: 'extend' | 'shorten' | 'keep';
+  suggestedAccumulation: number;
+  suggestedDeload: number;
+  reason: string;
+  signalSummary: string;
+};
+
 function MesocycleSettings() {
   const cfg = useMesoConfig();
   const lifts = useLifts();
@@ -523,17 +531,24 @@ function MesocycleSettings() {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState<MesocycleFormDraft | null>(null);
 
+  const today = todayIso();
+  const recommendation = useMemo((): MesoLengthRecommendation => {
+    if (!cfg) {
+      return {
+        action: 'keep',
+        suggestedAccumulation: 4,
+        suggestedDeload: 1,
+        reason: 'Loading mesocycle settings…',
+        signalSummary: '—',
+      };
+    }
+    return analyzeMesoLengthRecommendation(cfg, sessions ?? [], sets ?? [], readiness ?? [], lifts ?? [], today);
+  }, [cfg, sessions, sets, readiness, lifts, today]);
+
   if (!cfg) return null;
   const mesoConfig = cfg;
-
-  const today = todayIso();
   const here = mesocyclePosition(today, mesoConfig);
   const startMonday = startOfWeekIso(isoWeekOf(mesoConfig.startDate));
-  const recommendation = useMemo(
-    () =>
-      analyzeMesoLengthRecommendation(mesoConfig, sessions ?? [], sets ?? [], readiness ?? [], lifts ?? [], today),
-    [mesoConfig, sessions, sets, readiness, lifts, today],
-  );
 
   function startEdit() {
     setDraft({
@@ -727,14 +742,6 @@ function MesocycleSettings() {
     </div>
   );
 }
-
-type MesoLengthRecommendation = {
-  action: 'extend' | 'shorten' | 'keep';
-  suggestedAccumulation: number;
-  suggestedDeload: number;
-  reason: string;
-  signalSummary: string;
-};
 
 const MESO_HEURISTICS = {
   // Require clear momentum to extend.
