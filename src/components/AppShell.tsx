@@ -135,20 +135,19 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       <main className="flex-1 w-full pb-28 supports-[padding:max(0px)]:pb-[max(7rem,env(safe-area-inset-bottom,0px)+4.5rem)]">
         {children}
       </main>
-      <nav className="fixed bottom-0 inset-x-0 border-t border-zinc-800 bg-zinc-950/95 backdrop-blur supports-[padding:max(0px)]:pb-[max(env(safe-area-inset-bottom),0px)]">
+      <nav className="fixed bottom-0 inset-x-0 z-40 border-t border-zinc-800 bg-zinc-950/95 backdrop-blur supports-[padding:max(0px)]:pb-[max(env(safe-area-inset-bottom),0px)]">
         <div className={`grid grid-cols-[1fr_1fr_1fr_1fr_1fr_auto] items-stretch gap-0 mx-auto w-full ${shell}`}>
           {tabs.map((t) => {
             const active =
               pathname === t.href ||
-              (t.href === '/history' && pathname.startsWith('/lifts')) ||
-              (t.href !== '/' && pathname.startsWith(t.href));
+              (t.href === '/history' && pathname.startsWith('/lifts'));
             return (
               <Link
                 key={t.href}
                 href={t.href}
-                className={`h-16 flex items-center justify-center text-xs sm:text-sm px-0.5 min-w-0 ${active ? 'text-amber-400' : 'text-zinc-400'}`}
+                className={`h-16 flex items-center justify-center text-xs sm:text-sm px-0.5 ${active ? 'text-amber-400' : 'text-zinc-400'}`}
               >
-                <span className="truncate text-center leading-tight">{t.label}</span>
+                <span className="min-w-0 truncate text-center leading-tight">{t.label}</span>
               </Link>
             );
           })}
