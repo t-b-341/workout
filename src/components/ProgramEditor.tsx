@@ -103,6 +103,39 @@ export function ProgramEditor() {
     await localDelete('prescriptions', p.id);
   }
 
+  async function reorderPrescriptions(fromIndex: number, toIndex: number) {
+    const list = [...(prescriptions ?? [])].sort((a, b) => a.order - b.order);
+    if (
+      fromIndex < 0 ||
+      toIndex < 0 ||
+      fromIndex >= list.length ||
+      toIndex >= list.length ||
+      fromIndex === toIndex
+    ) {
+      return;
+    }
+    const next = [...list];
+    const [removed] = next.splice(fromIndex, 1);
+    next.splice(toIndex, 0, removed);
+    await Promise.all(
+      next.map((row, i) => localUpsert('prescriptions', { ...row, order: (i + 1) * 10 })),
+    );
+  }
+
+  async function movePrescriptionUp(p: Prescription) {
+    const list = [...(prescriptions ?? [])].sort((a, b) => a.order - b.order);
+    const i = list.findIndex((x) => x.id === p.id);
+    if (i <= 0) return;
+    await reorderPrescriptions(i, i - 1);
+  }
+
+  async function movePrescriptionDown(p: Prescription) {
+    const list = [...(prescriptions ?? [])].sort((a, b) => a.order - b.order);
+    const i = list.findIndex((x) => x.id === p.id);
+    if (i < 0 || i >= list.length - 1) return;
+    await reorderPrescriptions(i, i + 1);
+  }
+
   async function exportAll() {
     setExporting(true);
     try {
@@ -159,6 +192,10 @@ export function ProgramEditor() {
         ))}
       </div>
 
+      <p className="text-xs text-zinc-500">
+        Row order is the order on Today for this day. Use ↑ ↓ next to Remove to reorder exercises.
+      </p>
+
       <div className="rounded-2xl bg-zinc-900 border border-zinc-800 overflow-hidden">
         <div className="grid grid-cols-12 gap-2 px-3 py-2 text-xs uppercase tracking-wider text-zinc-500 border-b border-zinc-800">
           <div className="col-span-3">Lift</div>
@@ -168,7 +205,7 @@ export function ProgramEditor() {
           <div className="col-span-2">Notes</div>
           <div className="col-span-2 text-center">Slot</div>
         </div>
-        {(prescriptions ?? []).map((p) => (
+        {(prescriptions ?? []).map((p, idx, arr) => (
           <div key={p.id} className="grid grid-cols-12 gap-2 px-3 py-3 items-center border-b border-zinc-800 last:border-b-0">
             <label className="col-span-3 min-w-0">
               <span className="sr-only">Exercise</span>
@@ -231,7 +268,27 @@ export function ProgramEditor() {
               placeholder="—"
               className="col-span-2 h-10 px-2 rounded-lg bg-zinc-950 border border-zinc-800 text-sm"
             />
-            <div className="col-span-2 flex items-center justify-center">
+            <div className="col-span-2 flex flex-col gap-1 items-stretch">
+              <div className="flex gap-1 justify-center">
+                <button
+                  type="button"
+                  aria-label="Move exercise up"
+                  disabled={idx === 0}
+                  onClick={() => void movePrescriptionUp(p)}
+                  className="h-9 flex-1 max-w-[3.5rem] rounded-lg border border-zinc-700 bg-zinc-950 text-sm text-zinc-200 hover:bg-zinc-800 disabled:opacity-40 disabled:pointer-events-none"
+                >
+                  ↑
+                </button>
+                <button
+                  type="button"
+                  aria-label="Move exercise down"
+                  disabled={idx === arr.length - 1}
+                  onClick={() => void movePrescriptionDown(p)}
+                  className="h-9 flex-1 max-w-[3.5rem] rounded-lg border border-zinc-700 bg-zinc-950 text-sm text-zinc-200 hover:bg-zinc-800 disabled:opacity-40 disabled:pointer-events-none"
+                >
+                  ↓
+                </button>
+              </div>
               <button
                 type="button"
                 onClick={() => void removeExerciseSlot(p)}
