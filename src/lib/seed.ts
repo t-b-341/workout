@@ -14,6 +14,8 @@ export const LIFTS: Lift[] = [
     pattern: 'horiz-push', muscleGroups: ['chest', 'front-delt', 'triceps'] },
   { id: 'wgbp', name: 'Wide-Grip Bench Press', equipment: 'barbell', loadUnit: 'lb', repUnit: 'reps', increment: 5,
     pattern: 'horiz-push', muscleGroups: ['chest', 'front-delt', 'triceps'] },
+  { id: 'cgbp', name: 'Close-Grip Bench Press', equipment: 'barbell', loadUnit: 'lb', repUnit: 'reps', increment: 5, notes: 'Close grip',
+    pattern: 'horiz-push', muscleGroups: ['chest', 'front-delt', 'triceps'] },
   { id: 'pendlay_row', name: 'Pendlay Row', equipment: 'barbell', loadUnit: 'lb', repUnit: 'reps', increment: 5,
     pattern: 'horiz-pull', muscleGroups: ['lats', 'mid-back', 'rear-delt', 'biceps'] },
   { id: 'bbr', name: 'Barbell Row', equipment: 'barbell', loadUnit: 'lb', repUnit: 'reps', increment: 5,
