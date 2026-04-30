@@ -48,6 +48,8 @@ export const LIFTS: Lift[] = [
     pattern: 'squat', muscleGroups: ['quads', 'glutes', 'low-back', 'core'] },
   { id: 'back_squat_paused', name: 'Back Squat (paused)', equipment: 'barbell', loadUnit: 'lb', repUnit: 'reps', increment: 5, notes: '3 sec pause',
     pattern: 'squat', muscleGroups: ['quads', 'glutes', 'low-back', 'core'] },
+  { id: 'front_squat', name: 'Front Squat', equipment: 'barbell', loadUnit: 'lb', repUnit: 'reps', increment: 5,
+    pattern: 'squat', muscleGroups: ['quads', 'glutes', 'core', 'mid-back'] },
   { id: 'breathing_back_squat', name: 'Breathing Back Squat', equipment: 'barbell', loadUnit: 'lb', repUnit: 'reps', increment: 5, notes: 'Bar on back, breathe between reps',
     pattern: 'squat', muscleGroups: ['quads', 'glutes', 'low-back', 'core'] },
   { id: 'dl', name: 'Deadlift', equipment: 'barbell', loadUnit: 'lb', repUnit: 'reps', increment: 5,
