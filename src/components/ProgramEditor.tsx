@@ -13,6 +13,11 @@ import { localDelete, localUpsert, flushDirty, pullAll } from '@/lib/sync';
 import type { Lift, Prescription, ReadinessLog, SessionLog, SessionTemplate, SetLog, TemplateId } from '@/lib/types';
 import { getDb } from '@/lib/db';
 import { defaultTemplateForLocalDate, sortTemplatesProgramOrder } from '@/lib/seed';
+import {
+  readTodayPlanPreference,
+  todayPlanPreferenceIsForToday,
+  writeTodayPlanPreference,
+} from '@/lib/todayPlanPreference';
 import { fmtDate, todayIso } from '@/lib/time';
 import { isoWeekOf, startOfWeekIso } from '@/lib/stats';
 import { liftForSnap, snapWorkingWeight } from '@/lib/progression';
@@ -52,8 +57,14 @@ export function ProgramEditor() {
     () => (templates?.length ? defaultTemplateForLocalDate(templates).id : 'U1'),
     [templates],
   );
+  const persistedTodayTemplateId = useMemo((): TemplateId | null => {
+    const p = readTodayPlanPreference();
+    if (!todayPlanPreferenceIsForToday(p)) return null;
+    return templates?.some((t) => t.id === p.templateId) ? p.templateId : null;
+  }, [templates]);
+  const effectiveProgramTemplateId = persistedTodayTemplateId ?? defaultTemplateId;
   const [templateOverride, setTemplateOverride] = useState<TemplateId | null>(null);
-  const activeId = templateOverride ?? defaultTemplateId;
+  const activeId = templateOverride ?? effectiveProgramTemplateId;
   const prescriptions = usePrescriptions(activeId);
   const [exporting, setExporting] = useState(false);
 
@@ -509,7 +520,7 @@ function Schedule({
               <div className="divide-y divide-zinc-800">
                 {w.rows.map((r) => (
                   <ScheduleRowItem
-                    key={`${w.weekLabel}-${r.template.id}`}
+                    key={`${w.weekLabel}-${r.template.id}-${r.date}`}
                     row={r}
                     onSelectTemplate={onSelectTemplate}
                   />
@@ -540,7 +551,12 @@ function ScheduleRowItem({
   return (
     <button
       type="button"
-      onClick={() => onSelectTemplate(row.template.id)}
+      onClick={() => {
+        if (row.status === 'today') {
+          writeTodayPlanPreference({ date: row.date, templateId: row.template.id });
+        }
+        onSelectTemplate(row.template.id);
+      }}
       className={`w-full text-left flex items-center gap-2 px-3 py-2 ${tone} hover:bg-zinc-800/50 transition-colors`}
     >
       <div className="w-14 shrink-0 text-xs text-zinc-500 font-mono">

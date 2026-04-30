@@ -19,10 +19,26 @@ function pct(actual: number, target: number): number {
   return clamp(actual / target, 0, 1.2);
 }
 
+/**
+ * Map sleep duration to 0–100. Short sleep (<7h) is penalized sharply.
+ * 7–10h is treated as adequate (no penalty vs aiming only at 8h), so extra rest
+ * is not scored worse than insufficient sleep. Beyond ~10h, apply a mild taper only.
+ */
+function sleepDurationScore(hours: number): number {
+  const adequateLow = 7;
+  const adequateHigh = 10;
+  if (hours >= adequateLow && hours <= adequateHigh) return 100;
+  if (hours < adequateLow) {
+    const shortBy = adequateLow - hours;
+    return clamp(100 - shortBy * 18, 0, 100);
+  }
+  const longBy = hours - adequateHigh;
+  return clamp(100 - longBy * 14, 55, 100);
+}
+
 export function sleepScore(log?: SleepLog): number {
   if (!log) return 60;
-  const durationDelta = Math.abs(log.sleepHours - 8);
-  const durationScore = clamp(100 - durationDelta * 18, 0, 100);
+  const durationScore = sleepDurationScore(log.sleepHours);
   const qualityScore = clamp((log.sleepQuality / 5) * 100, 0, 100);
   return Math.round(durationScore * 0.7 + qualityScore * 0.3);
 }

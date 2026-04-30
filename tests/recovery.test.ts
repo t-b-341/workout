@@ -26,6 +26,12 @@ describe('recovery scoring', () => {
     expect(sleepScore({ id: '2', date: '2026-04-27', sleepHours: 4, sleepQuality: 1 })).toBeLessThan(45);
   });
 
+  it('does not penalize adequate long sleep vs shorter mediocre sleep', () => {
+    const longGood = sleepScore({ id: 'a', date: '2026-04-27', sleepHours: 10, sleepQuality: 5 });
+    const shorterMediocre = sleepScore({ id: 'b', date: '2026-04-27', sleepHours: 8, sleepQuality: 3 });
+    expect(longGood).toBeGreaterThan(shorterMediocre);
+  });
+
   it('penalizes poor hydration markers', () => {
     const good = hydrationScore({
       id: 'h1',

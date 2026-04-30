@@ -31,6 +31,11 @@ import { ReadinessForm } from './ReadinessForm';
 import { ReadinessSummary } from './ReadinessSummary';
 import { getDb } from '@/lib/db';
 import { defaultTemplateForLocalDate } from '@/lib/seed';
+import {
+  readTodayPlanPreference,
+  todayPlanPreferenceIsForToday,
+  writeTodayPlanPreference,
+} from '@/lib/todayPlanPreference';
 import { applyEffortScale, effortLabel } from '@/lib/effort';
 import { BodyweightQuickLog } from './BodyweightQuickLog';
 import { BodyMeasurementsQuickLog } from './BodyMeasurementsQuickLog';
@@ -52,7 +57,11 @@ import {
 export function TodayView() {
   const templates = useTemplates();
   const lifts = useLifts();
-  const [chosenTemplateId, setChosenTemplateId] = useState<TemplateId | null>(null);
+  const [chosenTemplateId, setChosenTemplateId] = useState<TemplateId | null>(() => {
+    if (typeof window === 'undefined') return null;
+    const p = readTodayPlanPreference();
+    return todayPlanPreferenceIsForToday(p) ? p.templateId : null;
+  });
   const [readinessSkipped, setReadinessSkipped] = useState(false);
 
   const suggested: SessionTemplate | undefined = useMemo(() => {
@@ -60,7 +69,12 @@ export function TodayView() {
     return defaultTemplateForLocalDate(templates);
   }, [templates]);
 
-  const activeId = chosenTemplateId ?? suggested?.id ?? null;
+  const validatedChosenTemplateId = useMemo((): TemplateId | null => {
+    if (!chosenTemplateId || !templates?.length) return null;
+    return templates.some((t) => t.id === chosenTemplateId) ? chosenTemplateId : null;
+  }, [templates, chosenTemplateId]);
+
+  const activeId = validatedChosenTemplateId ?? suggested?.id ?? null;
   const activeTemplate = templates?.find((t) => t.id === activeId);
   const session = useTodaySession((activeId ?? 'U1') as TemplateId);
   const prescriptions = usePrescriptions((activeId ?? undefined) as TemplateId | undefined);
@@ -109,6 +123,11 @@ export function TodayView() {
     return () => { cancelled = true; };
   }, [activeId, session]);
 
+  useEffect(() => {
+    if (!session || session.date !== todayIso()) return;
+    writeTodayPlanPreference({ date: session.date, templateId: session.templateId });
+  }, [session]);
+
   if (!templates || !lifts || !activeTemplate) {
     return <div className="p-6 text-zinc-500">Loading…</div>;
   }
@@ -146,7 +165,10 @@ export function TodayView() {
         template={activeTemplate}
         session={session}
         templates={templates}
-        onTemplateChange={(t) => setChosenTemplateId(t.id)}
+        onTemplateChange={(t) => {
+          setChosenTemplateId(t.id);
+          writeTodayPlanPreference({ date: todayIso(), templateId: t.id });
+        }}
       />
       <SessionGoalsCard sessionId={session.id} />
       {(weeklyFlags.bodyweightOverdue || weeklyFlags.measurementsOverdue) && (
