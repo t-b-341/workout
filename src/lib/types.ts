@@ -127,6 +127,10 @@ export type SessionLog = {
   /** ISO timestamp set on first interaction. */
   startedAt?: string;
   completedAt?: string;
+  /** Stopwatch: cumulative paused milliseconds before current pause segment (if any). */
+  workoutPausedAccumMs?: number;
+  /** Stopwatch: ISO time pause began; elapsed timer freezes until cleared on resume. */
+  workoutPausedAt?: string;
   /**
    * Non-RPE effort scaler for this session:
    * -1 = easier, 0 = normal, 1 = harder.

@@ -712,24 +712,39 @@ export function buildWeeklyReadiness(readiness: ReadinessLog[]): WeeklyReadiness
 
 const MS_PER_HOUR = 3_600_000;
 
+/** Total paused milliseconds through `throughMs` (includes an open pause starting at `workoutPausedAt`). */
+export function workoutPausedDurationMs(session: SessionLog, throughMs: number): number {
+  let ms = session.workoutPausedAccumMs ?? 0;
+  if (session.workoutPausedAt) {
+    const p = Date.parse(session.workoutPausedAt);
+    if (!Number.isNaN(p)) ms += Math.max(0, throughMs - p);
+  }
+  return ms;
+}
+
 export function sessionDurationMs(session: SessionLog, sets: SetLog[]): number | null {
   if (!session.startedAt) return null;
+  const start = Date.parse(session.startedAt);
   const end = session.completedAt
     ? Date.parse(session.completedAt)
     : Math.max(
-        Date.parse(session.startedAt),
+        start,
         ...sets
           .filter((s) => s.sessionLogId === session.id && s.loggedAt)
           .map((s) => Date.parse(s.loggedAt!)),
       );
-  const start = Date.parse(session.startedAt);
   if (Number.isNaN(start) || Number.isNaN(end)) return null;
-  return Math.max(0, end - start);
+  const raw = Math.max(0, end - start);
+  if (session.completedAt) {
+    const paused = workoutPausedDurationMs(session, end);
+    return Math.max(0, raw - paused);
+  }
+  return raw;
 }
 
 /**
- * True wall-clock session length from `startedAt` — uses `nowMs` when the
- * session is still open (so the timer runs before any sets are logged).
+ * Session stopwatch elapsed time from `startedAt`, minus paused intervals.
+ * Uses `nowMs` while the session is open.
  */
 export function workoutWallClockElapsedMs(session: SessionLog, nowMs: number = Date.now()): number | null {
   if (!session.startedAt) return null;
@@ -737,7 +752,24 @@ export function workoutWallClockElapsedMs(session: SessionLog, nowMs: number = D
   if (Number.isNaN(start)) return null;
   const end = session.completedAt ? Date.parse(session.completedAt) : nowMs;
   if (Number.isNaN(end)) return null;
-  return Math.max(0, end - start);
+  const wall = Math.max(0, end - start);
+  const pausedThrough = session.completedAt ? end : nowMs;
+  const paused = workoutPausedDurationMs(session, pausedThrough);
+  return Math.max(0, wall - paused);
+}
+
+/** Fold an active pause into accum and clear `workoutPausedAt` (e.g. right before setting `completedAt`). */
+export function finalizeWorkoutPauseAtCompletion(session: SessionLog, completedAtIso: string): SessionLog {
+  const completedMs = Date.parse(completedAtIso);
+  if (Number.isNaN(completedMs)) return session;
+  let accum = session.workoutPausedAccumMs ?? 0;
+  let pausedAt = session.workoutPausedAt;
+  if (pausedAt) {
+    const p = Date.parse(pausedAt);
+    if (!Number.isNaN(p)) accum += Math.max(0, completedMs - p);
+    pausedAt = undefined;
+  }
+  return { ...session, workoutPausedAccumMs: accum, workoutPausedAt: pausedAt };
 }
 
 /** Strength tonnage (lb) per clock hour when duration is known. */

@@ -5,6 +5,29 @@ import { flushDirty, localUpsert } from '@/lib/sync';
 import { fmtDurationShort, workoutWallClockElapsedMs } from '@/lib/stats';
 import type { SessionLog } from '@/lib/types';
 
+async function pauseWorkout(session: SessionLog) {
+  if (session.completedAt || !session.startedAt || session.workoutPausedAt) return;
+  await localUpsert('session_logs', {
+    ...session,
+    workoutPausedAt: new Date().toISOString(),
+  });
+  await flushDirty().catch(() => {});
+}
+
+async function resumeWorkout(session: SessionLog) {
+  if (!session.workoutPausedAt) return;
+  const p = Date.parse(session.workoutPausedAt);
+  const next = Number.isNaN(p)
+    ? { ...session, workoutPausedAt: undefined }
+    : {
+        ...session,
+        workoutPausedAccumMs: (session.workoutPausedAccumMs ?? 0) + Math.max(0, Date.now() - p),
+        workoutPausedAt: undefined,
+      };
+  await localUpsert('session_logs', next);
+  await flushDirty().catch(() => {});
+}
+
 export function StartWorkoutButton({
   session,
 }: {
@@ -30,7 +53,8 @@ export function StartWorkoutButton({
     <div className="rounded-2xl border border-amber-500/35 bg-gradient-to-br from-amber-950/60 to-zinc-900 p-4 shadow-lg shadow-amber-950/10">
       <div className="text-sm font-medium text-zinc-100 mb-1">Ready to lift?</div>
       <p className="text-xs text-zinc-500 mb-3">
-        Starts the session stopwatch (wall time until you finish). Your first logged set also starts the timer if you haven&apos;t pressed this yet.
+        Starts the session stopwatch (active time until you finish — use Pause on the timer bar for breaks).
+        Your first logged set also starts the timer if you haven&apos;t pressed this yet.
       </p>
       <button
         type="button"
@@ -46,12 +70,15 @@ export function StartWorkoutButton({
 
 export function WorkoutStopwatchBar({ session }: { session: SessionLog }) {
   const [now, setNow] = useState(() => Date.now());
+  const [busy, setBusy] = useState(false);
+
+  const paused = Boolean(session.workoutPausedAt);
 
   useEffect(() => {
-    if (!session.startedAt || session.completedAt) return;
+    if (!session.startedAt || session.completedAt || paused) return;
     const id = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(id);
-  }, [session.startedAt, session.completedAt]);
+  }, [session.startedAt, session.completedAt, paused]);
 
   const elapsed = workoutWallClockElapsedMs(session, now);
   if (elapsed == null) return null;
@@ -60,13 +87,55 @@ export function WorkoutStopwatchBar({ session }: { session: SessionLog }) {
     <div
       role="timer"
       aria-live="polite"
-      aria-label={`Workout time elapsed ${fmtDurationShort(elapsed)}`}
+      aria-label={
+        paused
+          ? `Workout paused at ${fmtDurationShort(elapsed)}`
+          : `Workout time elapsed ${fmtDurationShort(elapsed)}`
+      }
       className="sticky top-0 z-30 -mx-4 px-4 py-2.5 border-b border-amber-500/25 bg-zinc-950/95 backdrop-blur-md supports-[backdrop-filter]:bg-zinc-950/85"
     >
-      <div className="flex items-center justify-between gap-3 max-w-lg mx-auto">
-        <span className="text-xs uppercase tracking-wider text-zinc-500">Session</span>
-        <span className="font-mono text-xl tabular-nums text-amber-400">{fmtDurationShort(elapsed)}</span>
+      <div className="flex items-center justify-between gap-2 sm:gap-3 max-w-lg mx-auto">
+        <span className="text-xs uppercase tracking-wider text-zinc-500 shrink-0">Session</span>
+        <span
+          className={`font-mono text-xl tabular-nums shrink-0 ${paused ? 'text-zinc-500' : 'text-amber-400'}`}
+        >
+          {fmtDurationShort(elapsed)}
+        </span>
+        {!paused ? (
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => {
+              setBusy(true);
+              void pauseWorkout(session).finally(() => {
+                setBusy(false);
+                setNow(Date.now());
+              });
+            }}
+            className="shrink-0 h-9 px-3 rounded-xl bg-zinc-800 text-zinc-100 text-xs font-semibold disabled:opacity-50 border border-zinc-700"
+          >
+            Pause
+          </button>
+        ) : (
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => {
+              setBusy(true);
+              void resumeWorkout(session).finally(() => {
+                setBusy(false);
+                setNow(Date.now());
+              });
+            }}
+            className="shrink-0 h-9 px-3 rounded-xl bg-amber-500 text-zinc-950 text-xs font-semibold disabled:opacity-50"
+          >
+            Resume
+          </button>
+        )}
       </div>
+      {paused && (
+        <div className="max-w-lg mx-auto mt-1 text-[11px] text-center text-zinc-500">Timer paused</div>
+      )}
     </div>
   );
 }

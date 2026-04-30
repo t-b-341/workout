@@ -20,6 +20,7 @@ import { SessionHeader } from './SessionHeader';
 import { LiftCard } from './LiftCard';
 import { decideProgression, liftForSnap, snapWorkingWeight } from '@/lib/progression';
 import {
+  finalizeWorkoutPauseAtCompletion,
   fmtDurationShort,
   sessionDurationMs,
   sessionFinishHighlights,
@@ -513,14 +514,13 @@ function FinishSessionButton({
 }) {
   const [busy, setBusy] = useState(false);
   const [summary, setSummary] = useState<{ advanced: number; held: number; skipped: number; durationMs: number | null } | null>(null);
-  const sets = useAllSets();
   const [nowTick, setNowTick] = useState(() => Date.now());
 
   useEffect(() => {
-    if (!session.startedAt || session.completedAt) return;
+    if (!session.startedAt || session.completedAt || session.workoutPausedAt) return;
     const id = setInterval(() => setNowTick(Date.now()), 1000);
     return () => clearInterval(id);
-  }, [session.startedAt, session.completedAt]);
+  }, [session.startedAt, session.completedAt, session.workoutPausedAt]);
 
   const liveDuration =
     session.startedAt && !session.completedAt
@@ -546,7 +546,10 @@ function FinishSessionButton({
         }
       }
       const completedAt = new Date().toISOString();
-      const finalSession = { ...session, completedAt };
+      const finalSession = {
+        ...finalizeWorkoutPauseAtCompletion(session, completedAt),
+        completedAt,
+      };
       await localUpsert('session_logs', finalSession);
       await flushDirty();
       const durationMs = sessionDurationMs(finalSession, sessionSets);
