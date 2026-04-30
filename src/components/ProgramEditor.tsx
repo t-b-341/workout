@@ -62,9 +62,12 @@ export function ProgramEditor() {
     [templates],
   );
 
-  if (!templates || !lifts) return <div className="p-6 text-zinc-500">Loading…</div>;
+  const liftsSorted = useMemo(() => {
+    if (!lifts?.length) return [];
+    return [...lifts].sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
+  }, [lifts]);
 
-  const liftName = (id: string) => lifts.find((l) => l.id === id)?.name ?? id;
+  if (!templates || !lifts) return <div className="p-6 text-zinc-500">Loading…</div>;
 
   async function update(p: Prescription, patch: Partial<Prescription>) {
     await localUpsert('prescriptions', { ...p, ...patch });
@@ -136,7 +139,27 @@ export function ProgramEditor() {
         </div>
         {(prescriptions ?? []).map((p) => (
           <div key={p.id} className="grid grid-cols-12 gap-2 px-3 py-3 items-center border-b border-zinc-800 last:border-b-0">
-            <div className="col-span-4 text-sm">{liftName(p.liftId)}</div>
+            <label className="col-span-4 min-w-0">
+              <span className="sr-only">Exercise</span>
+              <select
+                value={p.liftId}
+                onChange={(e) => {
+                  const liftId = e.target.value;
+                  const w = snapWorkingWeight(p.weight, liftForSnap(liftId));
+                  void update(p, { liftId, weight: w, increment: undefined });
+                }}
+                className="h-10 w-full max-w-full rounded-lg bg-zinc-950 border border-zinc-800 px-2 text-sm text-zinc-200"
+              >
+                {!liftsSorted.some((l) => l.id === p.liftId) && (
+                  <option value={p.liftId}>{p.liftId}</option>
+                )}
+                {liftsSorted.map((l) => (
+                  <option key={l.id} value={l.id}>
+                    {l.name}
+                  </option>
+                ))}
+              </select>
+            </label>
             <LooseDecimalField
               value={p.weight}
               onCommit={(n) =>
