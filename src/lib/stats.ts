@@ -273,6 +273,46 @@ export function detectPR(
   return { repPR, e1rmPR, previousAtReps };
 }
 
+/** Best-ever LISS treadmill speed (mph) and incline (%); independent maxima vs prior completed `liss` sets. */
+export function detectLissIntensityPR(
+  set: SetLog,
+  priorSets: SetLog[],
+): {
+  speedPR: boolean;
+  inclinePR: boolean;
+  prevBestSpeed?: number;
+  prevBestGrade?: number;
+} | null {
+  if (set.liftId !== 'liss') return null;
+  if (set.status !== 'completed') return null;
+
+  const candidates = priorSets.filter((s) => s.liftId === 'liss' && s.status === 'completed');
+
+  let prevBestSpeed: number | undefined;
+  let prevBestGrade: number | undefined;
+  for (const s of candidates) {
+    if (s.speedMph != null && Number.isFinite(s.speedMph) && s.speedMph > 0) {
+      prevBestSpeed = prevBestSpeed == null ? s.speedMph : Math.max(prevBestSpeed, s.speedMph);
+    }
+    if (s.gradePct != null && Number.isFinite(s.gradePct) && s.gradePct > 0) {
+      prevBestGrade = prevBestGrade == null ? s.gradePct : Math.max(prevBestGrade, s.gradePct);
+    }
+  }
+
+  let speedPR = false;
+  let inclinePR = false;
+
+  if (set.speedMph != null && Number.isFinite(set.speedMph) && set.speedMph > 0) {
+    speedPR = prevBestSpeed == null || set.speedMph > prevBestSpeed;
+  }
+  if (set.gradePct != null && Number.isFinite(set.gradePct) && set.gradePct > 0) {
+    inclinePR = prevBestGrade == null || set.gradePct > prevBestGrade;
+  }
+
+  if (!speedPR && !inclinePR) return null;
+  return { speedPR, inclinePR, prevBestSpeed, prevBestGrade };
+}
+
 /** One row per set in the session that was a rep-PR and/or e1RM-PR at log time
  *  (same rules as `detectPR`, replayed in global chronological order). */
 export type SessionRecapPRItem = {
@@ -283,6 +323,10 @@ export type SessionRecapPRItem = {
   reps: number;
   repPR: boolean;
   e1rmPR: boolean;
+  speedPR?: boolean;
+  inclinePR?: boolean;
+  speedMph?: number;
+  gradePct?: number;
 };
 
 export function sessionRecapPRs(
@@ -298,7 +342,24 @@ export function sessionRecapPRs(
   for (const s of ordered) {
     if (s.sessionLogId === sessionId) {
       const lift = liftMap.get(s.liftId);
-      if (lift && lift.equipment !== 'cardio' && lift.equipment !== 'time') {
+      if (lift?.id === 'liss') {
+        const lip = detectLissIntensityPR(s, prior);
+        if (lip && (lip.speedPR || lip.inclinePR)) {
+          out.push({
+            setId: s.id,
+            liftId: s.liftId,
+            liftName: lift.name,
+            weight: s.weight,
+            reps: s.reps,
+            repPR: false,
+            e1rmPR: false,
+            speedPR: lip.speedPR,
+            inclinePR: lip.inclinePR,
+            speedMph: s.speedMph,
+            gradePct: s.gradePct,
+          });
+        }
+      } else if (lift && lift.equipment !== 'cardio' && lift.equipment !== 'time') {
         const pr = detectPR(s, s.liftId, prior, sessions);
         if (pr) {
           out.push({

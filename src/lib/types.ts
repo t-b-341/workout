@@ -109,6 +109,10 @@ export type SetLog = {
   side?: 'L' | 'R';
   /** ISO timestamp the set was logged (for rest timer + session duration). */
   loggedAt?: string;
+  /** LISS cardio: treadmill speed when logged (mph). */
+  speedMph?: number;
+  /** LISS cardio: incline when logged (% grade). */
+  gradePct?: number;
 };
 
 export type SessionMode = 'standard' | 'light' | 'skip';

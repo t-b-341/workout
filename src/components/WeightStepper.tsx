@@ -274,6 +274,102 @@ export function LooseIntField({
   );
 }
 
+function clampStepped(value: number, step: number, min: number, max?: number): number {
+  let v = Math.max(min, value);
+  if (max != null) v = Math.min(max, v);
+  const snapped = Math.round(v / step) * step;
+  const stepDecimals = (step.toString().split('.')[1] ?? '').length;
+  return stepDecimals > 0 ? Number(snapped.toFixed(stepDecimals)) : snapped;
+}
+
+/** Decimal +/- stepper with typed middle field (commits on blur). */
+export function DecimalStepper({
+  value,
+  onChange,
+  step,
+  min,
+  max,
+  unit,
+  inputClassName,
+}: {
+  value: number;
+  onChange: (n: number) => void;
+  step: number;
+  min: number;
+  max?: number;
+  unit?: string;
+  inputClassName?: string;
+}) {
+  function clamp(n: number): number {
+    return clampStepped(n, step, min, max);
+  }
+
+  const dec = () => onChange(clamp(value - step));
+  const inc = () => onChange(clamp(value + step));
+
+  const [focused, setFocused] = useState(false);
+  const [text, setText] = useState(String(value));
+
+  useEffect(() => {
+    if (!focused) setText(String(value));
+  }, [value, focused]);
+
+  function commit() {
+    const t = text.trim();
+    if (t === '' || t === '-' || t === '.' || t === '-.') {
+      onChange(clamp(min));
+      return;
+    }
+    const n = parseFloat(t);
+    onChange(clamp(Number.isFinite(n) ? n : min));
+  }
+
+  return (
+    <div className="flex items-center gap-1.5 w-full">
+      <button
+        type="button"
+        onClick={dec}
+        className="h-10 w-10 shrink-0 rounded-lg bg-zinc-800 active:bg-zinc-700 text-lg font-medium leading-none"
+        aria-label="decrease"
+      >
+        −
+      </button>
+      <input
+        type="text"
+        inputMode="decimal"
+        value={text}
+        onFocus={() => setFocused(true)}
+        onBlur={() => {
+          commit();
+          setFocused(false);
+        }}
+        onChange={(e) => {
+          let v = e.target.value;
+          v = v.replace(/[^\d.]/g, '');
+          const firstDot = v.indexOf('.');
+          if (firstDot !== -1) {
+            v = v.slice(0, firstDot + 1) + v.slice(firstDot + 1).replace(/\./g, '');
+          }
+          setText(v);
+        }}
+        className={
+          inputClassName ??
+          'flex-1 min-w-0 h-10 rounded-lg bg-zinc-950 border border-zinc-800 px-2 font-mono text-sm text-center'
+        }
+      />
+      <button
+        type="button"
+        onClick={inc}
+        className="h-10 w-10 shrink-0 rounded-lg bg-zinc-800 active:bg-zinc-700 text-lg font-medium leading-none"
+        aria-label="increase"
+      >
+        +
+      </button>
+      {unit ? <span className="text-[10px] text-zinc-500 shrink-0 w-8">{unit}</span> : null}
+    </div>
+  );
+}
+
 /** Decimal; empty while typing; commit on blur. */
 export function LooseDecimalField({
   value,

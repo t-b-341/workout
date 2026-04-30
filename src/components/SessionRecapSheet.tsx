@@ -201,7 +201,21 @@ export function SessionRecapSheet({
                   >
                     <div className="font-medium text-zinc-200 text-sm">{row.liftName}</div>
                     <div className="text-zinc-400 text-sm mt-0.5">
-                      {row.weight} lb × {row.reps}
+                      {row.liftId === 'liss' ? (
+                        <>
+                          <span className="font-mono">{row.reps} min</span>
+                          {row.speedMph != null && row.speedMph > 0 && (
+                            <span> · {row.speedMph} mph</span>
+                          )}
+                          {row.gradePct != null && row.gradePct > 0 && (
+                            <span> · {row.gradePct}% incline</span>
+                          )}
+                        </>
+                      ) : (
+                        <>
+                          {row.weight} lb × {row.reps}
+                        </>
+                      )}
                     </div>
                     <div className="flex flex-wrap gap-1.5 mt-2">
                       {row.repPR && (
@@ -212,6 +226,16 @@ export function SessionRecapSheet({
                       {row.e1rmPR && (
                         <span className="text-[10px] uppercase tracking-wide font-medium px-2 py-0.5 rounded-md bg-violet-500/15 text-violet-300 border border-violet-500/25">
                           e1RM PR
+                        </span>
+                      )}
+                      {row.speedPR && (
+                        <span className="text-[10px] uppercase tracking-wide font-medium px-2 py-0.5 rounded-md bg-sky-500/15 text-sky-300 border border-sky-500/25">
+                          Speed PR
+                        </span>
+                      )}
+                      {row.inclinePR && (
+                        <span className="text-[10px] uppercase tracking-wide font-medium px-2 py-0.5 rounded-md bg-teal-500/15 text-teal-300 border border-teal-500/25">
+                          Incline PR
                         </span>
                       )}
                     </div>

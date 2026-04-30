@@ -3,7 +3,7 @@
 import { format } from 'date-fns';
 import { useState } from 'react';
 import { CardioBanner } from './CardioBanner';
-import { LooseDecimalField, LooseIntField } from './WeightStepper';
+import { DecimalStepper, LooseIntField } from './WeightStepper';
 import { PageShell } from './PageShell';
 import { useThisWeekCardio } from '@/lib/hooks';
 import { localDelete, localUpsert } from '@/lib/sync';
@@ -60,7 +60,7 @@ export function CardioView() {
           >Intervals</button>
         </div>
 
-        <div className="grid grid-cols-2 gap-3">
+        <div className="space-y-3">
           <label className="flex flex-col gap-1">
             <span className="text-xs text-zinc-500">Duration (min)</span>
             <LooseIntField
@@ -72,26 +72,34 @@ export function CardioView() {
             />
           </label>
           {type === 'liss' ? (
-            <>
-              <label className="flex flex-col gap-1">
-                <span className="text-xs text-zinc-500">Speed (mph)</span>
-                <LooseDecimalField
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <label className="flex flex-col gap-1 text-xs text-zinc-500">
+                Speed (mph)
+                <DecimalStepper
                   value={speed}
-                  onCommit={setSpeed}
-                  className="h-11 px-3 rounded-xl bg-zinc-950 border border-zinc-800"
+                  onChange={setSpeed}
+                  step={0.1}
+                  min={0.1}
+                  max={15}
+                  unit="mph"
+                  inputClassName="flex-1 min-w-0 h-11 rounded-xl bg-zinc-950 border border-zinc-800 px-3 font-mono text-sm text-center"
                 />
               </label>
-              <label className="flex flex-col gap-1">
-                <span className="text-xs text-zinc-500">Grade (%)</span>
-                <LooseDecimalField
+              <label className="flex flex-col gap-1 text-xs text-zinc-500">
+                Grade (%)
+                <DecimalStepper
                   value={grade}
-                  onCommit={setGrade}
-                  className="h-11 px-3 rounded-xl bg-zinc-950 border border-zinc-800"
+                  onChange={setGrade}
+                  step={0.5}
+                  min={0}
+                  max={30}
+                  unit="%"
+                  inputClassName="flex-1 min-w-0 h-11 rounded-xl bg-zinc-950 border border-zinc-800 px-3 font-mono text-sm text-center"
                 />
               </label>
-            </>
+            </div>
           ) : (
-            <>
+            <div className="grid grid-cols-2 gap-3">
               <label className="flex flex-col gap-1">
                 <span className="text-xs text-zinc-500">Avg HR (optional)</span>
                 <input
@@ -118,7 +126,7 @@ export function CardioView() {
                   className="h-11 px-3 rounded-xl bg-zinc-950 border border-zinc-800"
                 />
               </label>
-            </>
+            </div>
           )}
         </div>
         <input

@@ -17,7 +17,7 @@ import type {
   SetLog,
   SetStatus,
 } from '@/lib/types';
-import { LooseDecimalField, LooseIntField, RirStepper } from './WeightStepper';
+import { LooseDecimalField, LooseIntField, RirStepper, DecimalStepper } from './WeightStepper';
 
 const STATUSES: SetStatus[] = ['completed', 'reduced', 'skipped', 'substituted'];
 
@@ -47,14 +47,15 @@ async function mirrorCardioFromSet(
       startedAt,
       endedAt,
       notes: prescription?.notes ?? prev?.notes,
-      ...(prev
+      ...(liftToCardioType(lift.id) === 'liss'
         ? {
-            speedMph: prev.speedMph,
-            gradePct: prev.gradePct,
-            avgHr: prev.avgHr,
-            peakHr: prev.peakHr,
+            speedMph: row.speedMph ?? prev?.speedMph,
+            gradePct: row.gradePct ?? prev?.gradePct,
           }
-        : {}),
+        : {
+            avgHr: prev?.avgHr,
+            peakHr: prev?.peakHr,
+          }),
     };
     await localUpsert('cardio_logs', cardioRow);
   } else {
@@ -258,6 +259,32 @@ export function SessionEditSheet({ session, initialSets, onClose }: Props) {
                         <div className="text-[11px] text-zinc-500">RPE hidden for sets over 12 reps</div>
                       )}
                     </div>
+                    {lift?.id === 'liss' && (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 border-t border-zinc-800 pt-3">
+                        <label className="text-xs text-zinc-500 flex flex-col gap-1">
+                          Speed (mph)
+                          <DecimalStepper
+                            value={row.speedMph ?? 2}
+                            onChange={(n) => patchRow(row.id, { speedMph: n })}
+                            step={0.1}
+                            min={0.1}
+                            max={15}
+                            unit="mph"
+                          />
+                        </label>
+                        <label className="text-xs text-zinc-500 flex flex-col gap-1">
+                          Incline (%)
+                          <DecimalStepper
+                            value={row.gradePct ?? 0}
+                            onChange={(n) => patchRow(row.id, { gradePct: n })}
+                            step={0.5}
+                            min={0}
+                            max={30}
+                            unit="%"
+                          />
+                        </label>
+                      </div>
+                    )}
                     {row.status === 'substituted' && (
                       <label className="block text-xs text-zinc-500">
                         Substitute lift

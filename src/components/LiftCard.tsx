@@ -10,11 +10,11 @@ import {
 } from '@/lib/hooks';
 import { localDelete, localUpsert } from '@/lib/sync';
 import type { CardioLog, CardioType, Lift, Prescription, SessionLog, SetLog, SetStatus } from '@/lib/types';
-import { LooseDecimalField, RepStepper, RirStepper, WeightStepper } from './WeightStepper';
+import { DecimalStepper, RepStepper, RirStepper, WeightStepper } from './WeightStepper';
 import { fmtDate } from '@/lib/time';
 import { platesPerSide } from '@/lib/plates';
 import { snapWorkingWeight } from '@/lib/progression';
-import { detectPR, est1RM } from '@/lib/stats';
+import { detectPR, detectLissIntensityPR, est1RM } from '@/lib/stats';
 import { RestTimer } from './RestTimer';
 import { rpeFromRir, shouldTrackRpeForReps } from '@/lib/rpe';
 import { resolveCardioTimestamps } from '@/lib/cardioTime';
@@ -89,6 +89,13 @@ export function LiftCard({ prescription, lift, session }: Props) {
     return detectPR(set, set.liftId, prior, allSessions);
   }
 
+  function lissIntensityPrFor(set: SetLog | undefined) {
+    if (!set || !allSets) return null;
+    if (set.liftId !== 'liss') return null;
+    const prior = allSets.filter((s) => s.id !== set.id);
+    return detectLissIntensityPR(set, prior);
+  }
+
   function getSet(setIndex: number, side?: 'L' | 'R'): SetLog | undefined {
     // Treat null and undefined as the same "no side" — older synced rows may
     // have side: null from Postgres while local writes use undefined.
@@ -112,6 +119,7 @@ export function LiftCard({ prescription, lift, session }: Props) {
     const id = existing?.id ?? `${session.id}-${prescription.id}-${args.setIndex}-${args.side ?? 'X'}`;
     const status = args.status ?? 'completed';
     const weight = snapWorkingWeight(args.weight, lift);
+    const ctForRow = liftToCardioType(lift.id);
     const row: SetLog = {
       id,
       sessionLogId: session.id,
@@ -127,6 +135,12 @@ export function LiftCard({ prescription, lift, session }: Props) {
       reason: args.reason,
       side: args.side,
       loggedAt: new Date().toISOString(),
+      ...(isCardio && ctForRow === 'liss' && status === 'completed'
+        ? {
+            speedMph: args.cardioMeta?.speedMph,
+            gradePct: args.cardioMeta?.gradePct,
+          }
+        : {}),
     };
     await localUpsert('set_logs', row);
 
@@ -242,6 +256,7 @@ export function LiftCard({ prescription, lift, session }: Props) {
             const key = `${idx}-${side ?? 'X'}`;
             const isNextUnlogged = key === nextUnloggedKey;
             const pr = prFor(existing);
+            const lip = lissIntensityPrFor(existing);
             return (
               <div key={key} className="space-y-1">
                 {isNextUnlogged && mostRecentLogTs && (
@@ -260,6 +275,16 @@ export function LiftCard({ prescription, lift, session }: Props) {
                       {pr?.repPR && (
                         <span className="text-[10px] uppercase tracking-wider px-2 py-0.5 rounded-full bg-amber-500 text-zinc-950 font-semibold">
                           PR{pr.previousAtReps != null ? ` · was ${pr.previousAtReps}` : ''}
+                        </span>
+                      )}
+                      {lip?.speedPR && (
+                        <span className="text-[10px] uppercase tracking-wider px-2 py-0.5 rounded-full bg-sky-500 text-zinc-950 font-semibold">
+                          Speed PR
+                        </span>
+                      )}
+                      {lip?.inclinePR && (
+                        <span className="text-[10px] uppercase tracking-wider px-2 py-0.5 rounded-full bg-teal-400 text-zinc-950 font-semibold">
+                          Incline PR
                         </span>
                       )}
                       {pr?.e1rmPR && !pr?.repPR && existing && (
@@ -283,6 +308,8 @@ export function LiftCard({ prescription, lift, session }: Props) {
                     initialWeight={existing?.weight ?? prescription.weight}
                     initialReps={existing?.reps ?? prescription.repMin}
                     initialRir={existing?.rir}
+                    initialSpeedMph={existing?.speedMph ?? 2}
+                    initialGradePct={existing?.gradePct ?? 3}
                     onSave={(weight, reps, rir, status, cardioMeta) =>
                       logSet({ setIndex: idx, side, weight, reps, rir, status, cardioMeta })
                     }
@@ -445,6 +472,8 @@ function SetRow({
   initialWeight,
   initialReps,
   initialRir,
+  initialSpeedMph,
+  initialGradePct,
   onSave,
   done,
 }: {
@@ -455,6 +484,8 @@ function SetRow({
   initialWeight: number;
   initialReps: number;
   initialRir?: number;
+  initialSpeedMph: number;
+  initialGradePct: number;
   onSave: (
     weight: number,
     reps: number,
@@ -468,8 +499,8 @@ function SetRow({
   const [r, setR] = useState(initialReps);
   const [rir, setRir] = useState<number>(initialRir ?? 2);
   const ct = liftToCardioType(lift.id);
-  const [speedMph, setSpeedMph] = useState(2);
-  const [gradePct, setGradePct] = useState(3);
+  const [speedMph, setSpeedMph] = useState(initialSpeedMph);
+  const [gradePct, setGradePct] = useState(initialGradePct);
   const [avgHr, setAvgHr] = useState<number | ''>('');
   const [peakHr, setPeakHr] = useState<number | ''>('');
   const [cardioWallClockStart, setCardioWallClockStart] = useState<string | null>(null);
@@ -477,6 +508,11 @@ function SetRow({
   useEffect(() => {
     if (done) setCardioWallClockStart(null);
   }, [done]);
+
+  useEffect(() => {
+    setSpeedMph(initialSpeedMph);
+    setGradePct(initialGradePct);
+  }, [initialSpeedMph, initialGradePct]);
 
   const allowNegative = lift.id === 'p1_assisted'; // assistance load
   const showWeight = lift.loadUnit !== 'none';
@@ -506,21 +542,27 @@ function SetRow({
         />
       )}
       {isCardio && ct === 'liss' && (
-        <div className="grid grid-cols-2 gap-2">
-          <label className="text-xs text-zinc-500">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <label className="text-xs text-zinc-500 flex flex-col gap-1">
             Speed (mph)
-            <LooseDecimalField
+            <DecimalStepper
               value={speedMph}
-              onCommit={setSpeedMph}
-              className="mt-1 block w-full h-10 rounded-lg bg-zinc-950 border border-zinc-800 px-2 font-mono text-sm"
+              onChange={setSpeedMph}
+              step={0.1}
+              min={0.1}
+              max={15}
+              unit="mph"
             />
           </label>
-          <label className="text-xs text-zinc-500">
+          <label className="text-xs text-zinc-500 flex flex-col gap-1">
             Incline (%)
-            <LooseDecimalField
+            <DecimalStepper
               value={gradePct}
-              onCommit={setGradePct}
-              className="mt-1 block w-full h-10 rounded-lg bg-zinc-950 border border-zinc-800 px-2 font-mono text-sm"
+              onChange={setGradePct}
+              step={0.5}
+              min={0}
+              max={30}
+              unit="%"
             />
           </label>
         </div>
