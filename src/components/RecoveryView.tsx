@@ -413,7 +413,9 @@ function SleepSectionForm({
   initial: ReturnType<typeof useSleepForDate>;
 }) {
   const [hours, setHours] = useState(initial?.sleepHours ?? 8);
-  const [quality, setQuality] = useState(initial?.sleepQuality ?? 3);
+  const [qualityStr, setQualityStr] = useState(() =>
+    String(initial?.sleepQuality ?? 3),
+  );
 
   return (
     <div className="rounded-2xl bg-zinc-900 border border-zinc-800 p-4 space-y-3">
@@ -433,16 +435,19 @@ function SleepSectionForm({
           Quality (1–5)
           <input
             className="mt-1 h-11 w-full rounded-lg bg-zinc-950 border border-zinc-800 px-3"
-            type="number"
-            min={1}
-            max={5}
-            value={quality}
+            type="text"
+            inputMode="numeric"
+            autoComplete="off"
+            value={qualityStr}
             onChange={(e) => {
               const raw = e.target.value;
-              if (raw === '') return;
+              if (raw === '') {
+                setQualityStr('');
+                return;
+              }
               const n = parseInt(raw, 10);
               if (!Number.isFinite(n)) return;
-              setQuality(clamp(n, 1, 5) as 1 | 2 | 3 | 4 | 5);
+              setQualityStr(String(clamp(n, 1, 5)));
             }}
           />
         </label>
@@ -452,9 +457,15 @@ function SleepSectionForm({
         className="h-11 px-4 rounded-lg bg-zinc-800 text-sm w-full"
         onClick={async () => {
           const h = clamp(Number.isFinite(hours) ? hours : 0, 0, 18);
-          const q = clamp(Math.round(Number.isFinite(quality) ? quality : 3), 1, 5) as 1 | 2 | 3 | 4 | 5;
+          const parsed =
+            qualityStr.trim() === '' ? NaN : parseInt(qualityStr, 10);
+          const q = clamp(
+            Math.round(Number.isFinite(parsed) ? parsed : 3),
+            1,
+            5,
+          ) as 1 | 2 | 3 | 4 | 5;
           setHours(h);
-          setQuality(q);
+          setQualityStr(String(q));
           await localUpsert('sleep_logs', {
             id: `sleep-${date}`,
             date,
