@@ -154,6 +154,8 @@ export function ProgramEditor() {
   }
 
   async function exportClaudeBrief(ext: 'md' | 'txt') {
+    const liftsNow = lifts;
+    if (!liftsNow) return;
     setExportingClaude(ext);
     try {
       const db = getDb();
@@ -170,7 +172,7 @@ export function ProgramEditor() {
       const md = buildRoutineMarkdown({
         exportedAtIso: new Date().toISOString(),
         templates: templatesProgramOrder,
-        lifts,
+        lifts: liftsNow,
         prescriptions: prescriptionsAll,
         nutritionByDate: new Map(signalDates.map((d) => [d, nutritionByDate.get(d)])),
         sleepByDate: new Map(signalDates.map((d) => [d, sleepByDate.get(d)])),
