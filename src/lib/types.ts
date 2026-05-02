@@ -207,6 +207,8 @@ export type ReadinessLog = {
   hrvSkipped?: boolean;
   /** Optional bodyweight logged alongside readiness. */
   bodyweight?: number;
+  /** Minutes of mindfulness practice today (0–180); app or unguided. */
+  mindfulnessMinutes?: number;
   /** ISO timestamp (for ordering in case of multiple). */
   createdAt: string;
 };
