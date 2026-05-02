@@ -19,6 +19,11 @@ import {
   writeTodayPlanPreference,
 } from '@/lib/todayPlanPreference';
 import { fmtDate, todayIso } from '@/lib/time';
+import {
+  buildRoutineMarkdown,
+  isoDatesEndingToday,
+  RECENT_SIGNAL_DAYS_DEFAULT,
+} from '@/lib/exportRoutineMarkdown';
 import { isoWeekOf, startOfWeekIso } from '@/lib/stats';
 import { liftForSnap, snapWorkingWeight } from '@/lib/progression';
 import { prFeed } from '@/lib/stats';
@@ -67,6 +72,7 @@ export function ProgramEditor() {
   const activeId = templateOverride ?? effectiveProgramTemplateId;
   const prescriptions = usePrescriptions(activeId);
   const [exporting, setExporting] = useState(false);
+  const [exportingClaude, setExportingClaude] = useState<'idle' | 'md' | 'txt'>('idle');
 
   const templatesProgramOrder = useMemo(
     () => (templates?.length ? sortTemplatesProgramOrder(templates) : []),
@@ -147,6 +153,44 @@ export function ProgramEditor() {
     await reorderPrescriptions(i, i + 1);
   }
 
+  async function exportClaudeBrief(ext: 'md' | 'txt') {
+    setExportingClaude(ext);
+    try {
+      const db = getDb();
+      const [prescriptionsAll, nutritionAll, sleepAll, stressAll] = await Promise.all([
+        db.prescriptions.toArray(),
+        db.nutrition_logs.toArray(),
+        db.sleep_logs.toArray(),
+        db.stress_logs.toArray(),
+      ]);
+      const nutritionByDate = new Map(nutritionAll.map((n) => [n.date, n]));
+      const sleepByDate = new Map(sleepAll.map((s) => [s.date, s]));
+      const stressByDate = new Map(stressAll.map((s) => [s.date, s]));
+      const signalDates = isoDatesEndingToday(RECENT_SIGNAL_DAYS_DEFAULT);
+      const md = buildRoutineMarkdown({
+        exportedAtIso: new Date().toISOString(),
+        templates: templatesProgramOrder,
+        lifts,
+        prescriptions: prescriptionsAll,
+        nutritionByDate: new Map(signalDates.map((d) => [d, nutritionByDate.get(d)])),
+        sleepByDate: new Map(signalDates.map((d) => [d, sleepByDate.get(d)])),
+        stressByDate: new Map(signalDates.map((d) => [d, stressByDate.get(d)])),
+        signalDates,
+      });
+      const mime =
+        ext === 'md' ? 'text/markdown;charset=utf-8' : 'text/plain;charset=utf-8';
+      const blob = new Blob([md], { type: mime });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `workout-claude-${todayIso()}.${ext}`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } finally {
+      setExportingClaude('idle');
+    }
+  }
+
   async function exportAll() {
     setExporting(true);
     try {
@@ -175,14 +219,31 @@ export function ProgramEditor() {
     <PageShell variant="program" className="p-4 space-y-4">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-semibold">Program</h1>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap items-center justify-end gap-2">
           <button
             onClick={async () => { await flushDirty(); await pullAll(); }}
             className="h-10 px-3 rounded-lg bg-zinc-800 text-sm"
           >Sync</button>
           <button
+            type="button"
+            onClick={() => exportClaudeBrief('md')}
+            disabled={exportingClaude !== 'idle' || exporting}
+            className="h-10 px-3 rounded-lg bg-zinc-800 text-sm disabled:opacity-50"
+          >
+            {exportingClaude === 'md' ? 'Exporting…' : 'Claude .md'}
+          </button>
+          <button
+            type="button"
+            onClick={() => exportClaudeBrief('txt')}
+            disabled={exportingClaude !== 'idle' || exporting}
+            className="h-10 px-3 rounded-lg bg-zinc-800 text-sm disabled:opacity-50"
+          >
+            {exportingClaude === 'txt' ? 'Exporting…' : 'Claude .txt'}
+          </button>
+          <button
+            type="button"
             onClick={exportAll}
-            disabled={exporting}
+            disabled={exporting || exportingClaude !== 'idle'}
             className="h-10 px-3 rounded-lg bg-zinc-800 text-sm disabled:opacity-50"
           >{exporting ? 'Exporting…' : 'Export JSON'}</button>
         </div>
