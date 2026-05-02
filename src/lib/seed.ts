@@ -22,6 +22,8 @@ export const LIFTS: Lift[] = [
     pattern: 'horiz-pull', muscleGroups: ['lats', 'mid-back', 'rear-delt', 'biceps'] },
   { id: 'deficit_bbr', name: 'Deficit Barbell Row', equipment: 'barbell', loadUnit: 'lb', repUnit: 'reps', increment: 5,
     pattern: 'horiz-pull', muscleGroups: ['lats', 'mid-back', 'rear-delt', 'biceps'] },
+  { id: 'ubr', name: 'Upright Barbell Row', equipment: 'barbell', loadUnit: 'lb', repUnit: 'reps', increment: 5,
+    pattern: 'vert-pull', muscleGroups: ['traps', 'side-delt', 'rear-delt', 'biceps'] },
   { id: 'jm_press', name: 'JM Press', equipment: 'barbell', loadUnit: 'lb', repUnit: 'reps', increment: 5,
     pattern: 'horiz-push', muscleGroups: ['triceps', 'chest', 'front-delt'] },
 
@@ -213,6 +215,9 @@ export const DB_INCREMENTS: number[] = (() => {
 })();
 
 export const CARDIO_WEEKLY_TARGET_MIN = 150;
+
+/** Weekly meditation / mindfulness minutes (readiness log + Today card). */
+export const MINDFULNESS_WEEKLY_TARGET_MIN = 60;
 
 /** Display order for movement-pattern coverage charts. */
 export const PATTERNS: Array<import('./types').MovementPattern> = [

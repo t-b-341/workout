@@ -4,7 +4,12 @@ import { useEffect, useMemo, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { format } from 'date-fns';
 import { getDb } from './db';
-import { CARDIO_WEEKLY_TARGET_MIN } from './seed';
+import {
+  clampMindfulnessMinutes,
+  MINDFULNESS_PENDING_META_PREFIX,
+  sessionDateFromMindfulnessSessionId,
+} from './mindfulnessPending';
+import { CARDIO_WEEKLY_TARGET_MIN, MINDFULNESS_WEEKLY_TARGET_MIN } from './seed';
 import { isoWeekString, weekRange, todayIso } from './time';
 import { buildMacroTrendAdvice, priorDatesExclusive } from './macroTrend';
 import { filterSessionsAfterReadiness } from './sessionFilters';
@@ -92,6 +97,48 @@ export function useThisWeekCardio() {
     const wk = all.filter((c: CardioLog) => c.date >= startStr && c.date <= endStr);
     const total = wk.reduce((s, c) => s + (c.durationMin ?? 0), 0);
     return { total, target: CARDIO_WEEKLY_TARGET_MIN, items: wk };
+  }, []);
+}
+
+/**
+ * Mindfulness minutes this ISO week: per calendar day, max of readiness logs
+ * (multiple sessions/day) merged with any `mindfulness:pending:*` meta for that date.
+ */
+export function useThisWeekMindfulness() {
+  return useLiveQuery(async () => {
+    const db = getDb();
+    const { start, end } = weekRange();
+    const startStr = format(start, 'yyyy-MM-dd');
+    const endStr = format(end, 'yyyy-MM-dd');
+    const byDate = new Map<string, number>();
+
+    const readiness = await db.readiness_logs.toArray();
+    for (const r of readiness) {
+      if (r.date < startStr || r.date > endStr) continue;
+      const m = r.mindfulnessMinutes;
+      if (m == null || m <= 0) continue;
+      const cm = clampMindfulnessMinutes(m);
+      byDate.set(r.date, Math.max(byDate.get(r.date) ?? 0, cm));
+    }
+
+    const metaRows = await db.meta.toArray();
+    for (const row of metaRows) {
+      if (!row.key.startsWith(MINDFULNESS_PENDING_META_PREFIX)) continue;
+      const sessionId = row.key.slice(MINDFULNESS_PENDING_META_PREFIX.length);
+      const d = sessionDateFromMindfulnessSessionId(sessionId);
+      if (!d || d < startStr || d > endStr) continue;
+      const v = row.value;
+      const rawMin =
+        v && typeof v === 'object' && 'minutes' in v && typeof (v as { minutes: unknown }).minutes === 'number'
+          ? (v as { minutes: number }).minutes
+          : 0;
+      const cm = clampMindfulnessMinutes(rawMin);
+      if (cm <= 0) continue;
+      byDate.set(d, Math.max(byDate.get(d) ?? 0, cm));
+    }
+
+    const total = [...byDate.values()].reduce((a, b) => a + b, 0);
+    return { total, target: MINDFULNESS_WEEKLY_TARGET_MIN };
   }, []);
 }
 

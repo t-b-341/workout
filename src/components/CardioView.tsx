@@ -3,6 +3,7 @@
 import { format } from 'date-fns';
 import { useState } from 'react';
 import { CardioBanner } from './CardioBanner';
+import { MindfulnessWeeklyBanner } from './MindfulnessWeeklyBanner';
 import { DecimalStepper, LooseIntField } from './WeightStepper';
 import { PageShell } from './PageShell';
 import { useThisWeekCardio } from '@/lib/hooks';
@@ -43,6 +44,7 @@ export function CardioView() {
   return (
     <PageShell className="p-4 space-y-4">
       <CardioBanner />
+      <MindfulnessWeeklyBanner />
 
       <div className="rounded-2xl bg-zinc-900 border border-zinc-800 p-4 space-y-3">
         <p className="text-xs text-zinc-500">

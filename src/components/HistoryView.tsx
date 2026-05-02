@@ -33,7 +33,7 @@ import { Sparkline, MiniBars } from './Sparkline';
 import { ReadinessSummary } from './ReadinessSummary';
 import { SessionEditSheet } from './SessionEditSheet';
 import { PageShell } from './PageShell';
-import { CARDIO_WEEKLY_TARGET_MIN, MUSCLE_GROUPS, PATTERNS } from '@/lib/seed';
+import { CARDIO_WEEKLY_TARGET_MIN, MINDFULNESS_WEEKLY_TARGET_MIN, MUSCLE_GROUPS, PATTERNS } from '@/lib/seed';
 import type {
   BodyweightLog,
   CardioLog,
@@ -331,7 +331,7 @@ function WeeksList({
   readiness: ReadinessLog[];
   stress: StressLog[];
 }) {
-  const weeks = buildWeeklySummaries(sessions, sets, cardio, lifts);
+  const weeks = buildWeeklySummaries(sessions, sets, cardio, lifts, readiness);
   const muscleWeeks = useMemo(() => buildWeeklyMuscleVolume(sessions, sets, lifts), [sessions, sets, lifts]);
   const patternWeeks = useMemo(() => buildWeeklyPatternCoverage(sessions, sets, lifts), [sessions, sets, lifts]);
   const readinessWeeks = useMemo(() => buildWeeklyReadiness(readiness), [readiness]);
@@ -459,6 +459,7 @@ function WeeksList({
       </div>
       {weeks.map((w) => {
         const cardioPct = Math.min(100, Math.round((w.cardioMin / CARDIO_WEEKLY_TARGET_MIN) * 100));
+        const mindfulnessPct = Math.min(100, Math.round((w.mindfulnessMin / MINDFULNESS_WEEKLY_TARGET_MIN) * 100));
         const flagTotal = w.watchFlagCounts.erectors + w.watchFlagCounts.elbow + w.watchFlagCounts.shoulder;
         const groupRow = muscleWeeks.find((g) => g.week === w.week);
         const patternRow = patternWeeks.find((p) => p.week === w.week);
@@ -475,15 +476,37 @@ function WeeksList({
               </div>
             </div>
 
-            <div className="grid grid-cols-3 gap-2 text-center">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center">
               <Stat label="Volume" value={w.totalVolume.toLocaleString()} unit="lb" />
               <Stat label="Cardio" value={`${w.cardioMin}`} unit={`/ ${CARDIO_WEEKLY_TARGET_MIN}m`} />
+              <Stat label="Mindfulness" value={`${w.mindfulnessMin}`} unit={`/ ${MINDFULNESS_WEEKLY_TARGET_MIN}m`} />
               <Stat label="Flags" value={`${flagTotal}`} unit="" tone={flagTotal > 0 ? 'warn' : 'normal'} />
             </div>
 
-            <div>
-              <div className="h-2 rounded-full bg-zinc-800 overflow-hidden">
-                <div className={`h-full ${cardioPct >= 100 ? 'bg-emerald-500' : 'bg-amber-500'}`} style={{ width: `${cardioPct}%` }} />
+            <div className="space-y-1.5">
+              <div>
+                <div className="flex justify-between text-[10px] uppercase tracking-wider text-zinc-600 mb-0.5">
+                  <span>Cardio goal</span>
+                  <span className="font-mono">{cardioPct}%</span>
+                </div>
+                <div className="h-2 rounded-full bg-zinc-800 overflow-hidden">
+                  <div
+                    className={`h-full ${cardioPct >= 100 ? 'bg-emerald-500' : 'bg-amber-500'}`}
+                    style={{ width: `${cardioPct}%` }}
+                  />
+                </div>
+              </div>
+              <div>
+                <div className="flex justify-between text-[10px] uppercase tracking-wider text-zinc-600 mb-0.5">
+                  <span>Mindfulness goal</span>
+                  <span className="font-mono">{mindfulnessPct}%</span>
+                </div>
+                <div className="h-2 rounded-full bg-zinc-800 overflow-hidden">
+                  <div
+                    className={`h-full ${mindfulnessPct >= 100 ? 'bg-emerald-500' : 'bg-sky-500'}`}
+                    style={{ width: `${mindfulnessPct}%` }}
+                  />
+                </div>
               </div>
             </div>
 

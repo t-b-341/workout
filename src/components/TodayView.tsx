@@ -16,6 +16,7 @@ import { localUpsert, flushDirty } from '@/lib/sync';
 import { fmtDate, todayIso } from '@/lib/time';
 import type { Prescription, SessionLog, SessionTemplate, SetLog, TemplateId } from '@/lib/types';
 import { CardioBanner } from './CardioBanner';
+import { MindfulnessWeeklyBanner } from './MindfulnessWeeklyBanner';
 import { SessionHeader } from './SessionHeader';
 import { LiftCard } from './LiftCard';
 import { decideProgression, liftForSnap, snapWorkingWeight } from '@/lib/progression';
@@ -48,6 +49,7 @@ import { PageShell } from './PageShell';
 import { StartWorkoutButton, WorkoutStopwatchBar } from './WorkoutSessionTimer';
 import { TrainingMindsetCard } from './TrainingMindsetCard';
 import { MacroTrendCallout } from './MacroTrendCallout';
+import { MindfulnessTodayCard } from './MindfulnessTodayCard';
 import {
   setGoalCheckedForSession,
   useFitnessGoals,
@@ -161,6 +163,7 @@ export function TodayView() {
       )}
 
       <CardioBanner />
+      <MindfulnessWeeklyBanner />
 
       <SessionHeader
         template={activeTemplate}
@@ -172,6 +175,7 @@ export function TodayView() {
         }}
       />
       <SessionGoalsCard sessionId={session.id} />
+      <MindfulnessTodayCard session={session} readiness={readiness} />
       {(weeklyFlags.bodyweightOverdue || weeklyFlags.measurementsOverdue) && (
         <WeeklyTrackingReminder
           bodyweightOverdue={weeklyFlags.bodyweightOverdue}

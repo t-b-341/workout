@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { takePendingMindfulnessMinutes } from '@/lib/mindfulnessPending';
 import { localUpsert } from '@/lib/sync';
 import { isoWeekStringFromIsoDate } from '@/lib/time';
 import { useThisWeekBodyweight } from '@/lib/hooks';
@@ -25,80 +26,6 @@ export function recommendMode(
   return { mode: 'standard', reason: 'Green across the board — hit it.' };
 }
 
-const MINDFULNESS_MINUTES_MAX = 180;
-
-function clampMindfulnessMinutes(n: number): number {
-  return Math.min(MINDFULNESS_MINUTES_MAX, Math.max(0, Math.round(n)));
-}
-
-/** Parses draft string; blank defaults to 1 min (daily default). */
-function mindfulnessMinutesFromDraft(minutesStr: string): number {
-  const p = parseInt(minutesStr.trim(), 10);
-  return clampMindfulnessMinutes(Number.isFinite(p) ? p : 1);
-}
-
-function MindfulnessMinutesRow({
-  minutesStr,
-  setMinutesStr,
-}: {
-  minutesStr: string;
-  setMinutesStr: (s: string) => void;
-}) {
-  const bump = (delta: number) => {
-    const p = parseInt(minutesStr.trim(), 10);
-    const base = Number.isFinite(p) ? p : 1;
-    setMinutesStr(String(clampMindfulnessMinutes(base + delta)));
-  };
-
-  return (
-    <div className="rounded-xl border border-zinc-800 bg-zinc-950 p-3 space-y-2">
-      <div>
-        <div className="text-sm text-zinc-300">Mindfulness?</div>
-        <div className="text-xs text-zinc-500 mt-0.5">
-          e.g. 10 minutes, app or no app · default 1 min — +/− 1 min or type another value
-        </div>
-      </div>
-      <div className="flex items-center justify-center gap-2">
-        <button
-          type="button"
-          aria-label="One minute less"
-          onClick={() => bump(-1)}
-          className="h-11 w-11 shrink-0 rounded-lg bg-zinc-800 text-lg font-medium leading-none text-zinc-100 hover:bg-zinc-700"
-        >
-          −
-        </button>
-        <input
-          type="text"
-          inputMode="numeric"
-          autoComplete="off"
-          aria-label="Mindfulness minutes"
-          value={minutesStr}
-          onChange={(e) => {
-            const raw = e.target.value;
-            if (raw === '') {
-              setMinutesStr('');
-              return;
-            }
-            const n = parseInt(raw, 10);
-            if (!Number.isFinite(n)) return;
-            setMinutesStr(String(clampMindfulnessMinutes(n)));
-          }}
-          className="h-11 min-w-[4rem] flex-1 max-w-[6rem] rounded-lg bg-zinc-900 border border-zinc-800 px-2 text-center text-sm text-zinc-200"
-        />
-        <button
-          type="button"
-          aria-label="One minute more"
-          onClick={() => bump(1)}
-          className="h-11 w-11 shrink-0 rounded-lg bg-zinc-800 text-lg font-medium leading-none text-zinc-100 hover:bg-zinc-700"
-        >
-          +
-        </button>
-        <span className="text-xs text-zinc-500 shrink-0 w-8">min</span>
-      </div>
-    </div>
-  );
-}
-
 export function ReadinessForm({
   session,
   onComplete,
@@ -115,7 +42,6 @@ export function ReadinessForm({
   const [bw, setBw] = useState<number>(245);
   const [hrvRmssd, setHrvRmssd] = useState<number>(45);
   const [hrvSkipped, setHrvSkipped] = useState(false);
-  const [mindfulnessStr, setMindfulnessStr] = useState('1');
   const [busy, setBusy] = useState(false);
   const [recommended, setRecommended] = useState<ReadinessRecommendation | null>(null);
 
@@ -125,7 +51,8 @@ export function ReadinessForm({
     setBusy(true);
     try {
       const rec = recommendMode(sleep, soreness, motivation);
-      const mindfulnessMinutes = mindfulnessMinutesFromDraft(mindfulnessStr);
+      const takenMindfulness = await takePendingMindfulnessMinutes(session.id);
+      const mindfulnessMinutes = takenMindfulness ?? 1;
       const row: ReadinessLog = {
         id: `readiness-${session.id}`,
         sessionLogId: session.id,
@@ -184,7 +111,6 @@ export function ReadinessForm({
       />
       <ReadinessScale label="Soreness" value={soreness} onChange={setSoreness} lowLabel="None" highLabel="Severe" />
       <ReadinessScale label="Motivation" value={motivation} onChange={setMotivation} lowLabel="Dead" highLabel="Fired up" />
-      <MindfulnessMinutesRow minutesStr={mindfulnessStr} setMinutesStr={setMindfulnessStr} />
       <div className="rounded-xl border border-zinc-800 bg-zinc-950 p-3 space-y-2">
         <div className="flex items-center justify-between gap-2">
           <div className="text-sm text-zinc-300">Morning HRV (5 min)</div>
@@ -215,6 +141,10 @@ export function ReadinessForm({
           <div className="text-xs text-zinc-500">Skipped today; recovery score will use other readiness signals.</div>
         )}
       </div>
+
+      <p className="text-xs text-zinc-500">
+        Meditation / mindfulness minutes are logged in the separate card on this tab (not in this check-in).
+      </p>
 
       {showBwInput && (
         <div className="border-t border-zinc-800 pt-3">
@@ -314,16 +244,12 @@ export function ReadinessEditForm({
   const [bw, setBw] = useState(readiness.bodyweight ?? 0);
   const [hrvRmssd, setHrvRmssd] = useState(readiness.hrvRmssd ?? 45);
   const [hrvSkipped, setHrvSkipped] = useState(Boolean(readiness.hrvSkipped));
-  const [mindfulnessStr, setMindfulnessStr] = useState(() =>
-    String(readiness.mindfulnessMinutes ?? 1),
-  );
   const [busy, setBusy] = useState(false);
 
   async function persist(applyMode: boolean) {
     setBusy(true);
     try {
       const rec = recommendMode(sleep, soreness, motivation);
-      const mindfulnessMinutes = mindfulnessMinutesFromDraft(mindfulnessStr);
       const row: ReadinessLog = {
         ...readiness,
         sleepHours: sleep,
@@ -333,7 +259,6 @@ export function ReadinessEditForm({
         hrvMeasuredMin: hrvSkipped ? undefined : 5,
         hrvSkipped,
         bodyweight: hadBw ? bw : undefined,
-        mindfulnessMinutes,
       };
       await localUpsert('readiness_logs', row);
       if (hadBw) {
@@ -383,7 +308,6 @@ export function ReadinessEditForm({
       />
       <ReadinessScale label="Soreness" value={soreness} onChange={setSoreness} lowLabel="None" highLabel="Severe" />
       <ReadinessScale label="Motivation" value={motivation} onChange={setMotivation} lowLabel="Dead" highLabel="Fired up" />
-      <MindfulnessMinutesRow minutesStr={mindfulnessStr} setMinutesStr={setMindfulnessStr} />
       <div className="rounded-xl border border-zinc-800 bg-zinc-950 p-3 space-y-2">
         <div className="flex items-center justify-between gap-2">
           <div className="text-sm text-zinc-300">Morning HRV (5 min)</div>
@@ -414,6 +338,10 @@ export function ReadinessEditForm({
           <div className="text-xs text-zinc-500">Skipped today; recovery score will use other readiness signals.</div>
         )}
       </div>
+
+      <p className="text-xs text-zinc-500">
+        Meditation / mindfulness minutes are in the separate card on the Today tab.
+      </p>
 
       {hadBw && (
         <div className="border-t border-zinc-800 pt-3">

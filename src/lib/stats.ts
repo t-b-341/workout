@@ -122,6 +122,8 @@ export type WeekSummary = {
   sessionsCompleted: number;
   totalVolume: number;
   cardioMin: number;
+  /** Max-per-day mindfulness minutes summed across days in the week (readiness logs). */
+  mindfulnessMin: number;
   watchFlagCounts: Record<WatchFlag, number>;
   /** Per-lift top set this week (heaviest weight). */
   topSets: Array<{ liftId: string; liftName: string; weight: number; reps: number; date: string }>;
@@ -133,6 +135,7 @@ export function buildWeeklySummaries(
   sets: SetLog[],
   cardio: CardioLog[],
   lifts: Lift[],
+  readiness: ReadinessLog[],
 ): WeekSummary[] {
   const liftMap = new Map(lifts.map((l) => [l.id, l]));
   const setsBySession = new Map<string, SetLog[]>();
@@ -152,6 +155,7 @@ export function buildWeeklySummaries(
         sessionsCompleted: 0,
         totalVolume: 0,
         cardioMin: 0,
+        mindfulnessMin: 0,
         watchFlagCounts: { erectors: 0, elbow: 0, shoulder: 0 },
         topSets: [],
         modeCounts: { standard: 0, light: 0, skip: 0, deload: 0 },
@@ -197,6 +201,22 @@ export function buildWeeklySummaries(
   for (const c of cardio) {
     const wk = isoWeekOf(c.date);
     ensure(wk).cardioMin += c.durationMin ?? 0;
+  }
+
+  const mindByDate = new Map<string, Map<string, number>>();
+  for (const r of readiness) {
+    const m = r.mindfulnessMinutes;
+    if (m == null || m <= 0) continue;
+    const wk = isoWeekOf(r.date);
+    let byD = mindByDate.get(wk);
+    if (!byD) {
+      byD = new Map();
+      mindByDate.set(wk, byD);
+    }
+    byD.set(r.date, Math.max(byD.get(r.date) ?? 0, m));
+  }
+  for (const [wk, byD] of mindByDate) {
+    ensure(wk).mindfulnessMin = [...byD.values()].reduce((a, b) => a + b, 0);
   }
 
   return Array.from(weekMap.values()).sort((a, b) => (a.week < b.week ? 1 : -1));
