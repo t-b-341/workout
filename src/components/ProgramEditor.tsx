@@ -18,6 +18,7 @@ import {
   todayPlanPreferenceIsForToday,
   writeTodayPlanPreference,
 } from '@/lib/todayPlanPreference';
+import { buildFullLocalExport } from '@/lib/exportLocalDump';
 import { fmtDate, todayIso } from '@/lib/time';
 import {
   buildRoutineMarkdown,
@@ -196,15 +197,7 @@ export function ProgramEditor() {
   async function exportAll() {
     setExporting(true);
     try {
-      const db = getDb();
-      const dump = {
-        exportedAt: new Date().toISOString(),
-        prescriptions: await db.prescriptions.toArray(),
-        session_logs: await db.session_logs.toArray(),
-        set_logs: await db.set_logs.toArray(),
-        cardio_logs: await db.cardio_logs.toArray(),
-        bodyweight_logs: await db.bodyweight_logs.toArray(),
-      };
+      const dump = await buildFullLocalExport();
       const blob = new Blob([JSON.stringify(dump, null, 2)], { type: 'application/json' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
@@ -247,7 +240,7 @@ export function ProgramEditor() {
             onClick={exportAll}
             disabled={exporting || exportingClaude !== 'idle'}
             className="h-10 px-3 rounded-lg bg-zinc-800 text-sm disabled:opacity-50"
-          >{exporting ? 'Exporting…' : 'Export JSON'}</button>
+          >{exporting ? 'Exporting…' : 'Full JSON'}</button>
         </div>
       </div>
 
