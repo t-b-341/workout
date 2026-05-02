@@ -2,29 +2,14 @@
 
 import { useState } from 'react';
 import { takePendingMindfulnessMinutes } from '@/lib/mindfulnessPending';
+import { recommendMode, type ReadinessRecommendation } from '@/lib/recommendMode';
 import { localUpsert } from '@/lib/sync';
 import { isoWeekStringFromIsoDate } from '@/lib/time';
 import { useThisWeekBodyweight } from '@/lib/hooks';
-import type { ReadinessLog, SessionLog, SessionMode } from '@/lib/types';
+import type { ReadinessLog, SessionLog } from '@/lib/types';
 
-export type ReadinessRecommendation = {
-  mode: SessionMode;
-  reason: string;
-};
-
-export function recommendMode(
-  sleepHours: number,
-  soreness: number,
-  motivation: number,
-): ReadinessRecommendation {
-  if (motivation <= 1 || (sleepHours < 4 && soreness >= 4)) {
-    return { mode: 'skip', reason: 'Energy is in the floor — take the recovery day.' };
-  }
-  if (motivation <= 2 || soreness >= 4 || sleepHours < 5) {
-    return { mode: 'light', reason: 'Drop to a light day; keep the groove without digging the hole deeper.' };
-  }
-  return { mode: 'standard', reason: 'Green across the board — hit it.' };
-}
+export type { ReadinessRecommendation } from '@/lib/recommendMode';
+export { recommendMode } from '@/lib/recommendMode';
 
 export function ReadinessForm({
   session,
@@ -50,7 +35,10 @@ export function ReadinessForm({
   async function submit(applyMode: boolean) {
     setBusy(true);
     try {
-      const rec = recommendMode(sleep, soreness, motivation);
+      const rec = recommendMode(sleep, soreness, motivation, {
+        hrvRmssd: hrvSkipped ? undefined : hrvRmssd,
+        hrvSkipped,
+      });
       const takenMindfulness = await takePendingMindfulnessMinutes(session.id);
       const mindfulnessMinutes = takenMindfulness ?? 1;
       const row: ReadinessLog = {
@@ -168,7 +156,13 @@ export function ReadinessForm({
       {!recommended ? (
         <button
           type="button"
-          onClick={() => setRecommended(recommendMode(sleep, soreness, motivation))}
+          onClick={() =>
+            setRecommended(
+              recommendMode(sleep, soreness, motivation, {
+                hrvRmssd: hrvSkipped ? undefined : hrvRmssd,
+                hrvSkipped,
+              }),
+            )}
           className="w-full h-12 rounded-xl bg-zinc-800 font-medium"
         >Preview recommendation</button>
       ) : (
@@ -249,7 +243,10 @@ export function ReadinessEditForm({
   async function persist(applyMode: boolean) {
     setBusy(true);
     try {
-      const rec = recommendMode(sleep, soreness, motivation);
+      const rec = recommendMode(sleep, soreness, motivation, {
+        hrvRmssd: hrvSkipped ? undefined : hrvRmssd,
+        hrvSkipped,
+      });
       const row: ReadinessLog = {
         ...readiness,
         sleepHours: sleep,
@@ -278,7 +275,10 @@ export function ReadinessEditForm({
     }
   }
 
-  const preview = recommendMode(sleep, soreness, motivation);
+  const preview = recommendMode(sleep, soreness, motivation, {
+    hrvRmssd: hrvSkipped ? undefined : hrvRmssd,
+    hrvSkipped,
+  });
 
   return (
     <div className="rounded-2xl bg-zinc-900 border border-zinc-800 p-4 space-y-4">

@@ -310,6 +310,10 @@ export type RecoveryScore = {
   hydrationScore: number;
   nutritionScore: number;
   readinessScore: number;
+  /** Included when `buildRecoveryScore` was called with a stress log for that day. */
+  stressScore?: number;
+  /** Included when that day’s readiness log had `mindfulnessMinutes` set. */
+  mindfulnessScore?: number;
   compositeScore: number;
   band: RecoveryBand;
 };

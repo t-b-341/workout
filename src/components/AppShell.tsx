@@ -13,6 +13,7 @@ import {
   subscribeRealtime,
 } from '@/lib/sync';
 import { backfillCardioFromSets } from '@/lib/backfill';
+import { fireDueTrackerReminders, isTrackerRemindersEnabled } from '@/lib/trackerReminders';
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -102,6 +103,24 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       .catch(() => {
         // SW failure is non-fatal — we still work online.
       });
+  }, [ready]);
+
+  // Daily tracker reminders (7 / 14 / 20 local): poll while the app can run, plus catch-up on resume.
+  useEffect(() => {
+    if (!ready) return;
+    const tick = () => {
+      if (isTrackerRemindersEnabled()) void fireDueTrackerReminders();
+    };
+    tick();
+    const id = setInterval(tick, 45_000);
+    const onVis = () => {
+      if (document.visibilityState === 'visible') tick();
+    };
+    document.addEventListener('visibilitychange', onVis);
+    return () => {
+      clearInterval(id);
+      document.removeEventListener('visibilitychange', onVis);
+    };
   }, [ready]);
 
   if (error) {

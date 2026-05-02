@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { SessionLog, SessionMode, SessionTemplate, WatchFlag } from '@/lib/types';
 import { localUpsert } from '@/lib/sync';
 import { fmtDate } from '@/lib/time';
@@ -24,6 +24,18 @@ export function SessionHeader({
   onTemplateChange: (t: SessionTemplate) => void;
 }) {
   const [showModes, setShowModes] = useState(false);
+  const [reasonDraft, setReasonDraft] = useState(session.reason ?? '');
+
+  useEffect(() => {
+    setReasonDraft(session.reason ?? '');
+  }, [session.id, session.reason]);
+
+  async function saveReasonNote() {
+    const trimmed = reasonDraft.trim();
+    const next = trimmed.length > 0 ? trimmed : undefined;
+    if (next === session.reason) return;
+    await localUpsert('session_logs', { ...session, reason: next });
+  }
 
   async function setMode(mode: SessionMode) {
     await localUpsert('session_logs', { ...session, mode });
@@ -112,6 +124,17 @@ export function SessionHeader({
           Light day active — main lifts shown at −20%. Progression won&apos;t advance even if you hit the top of the range.
         </div>
       )}
+      <label className="block text-xs text-zinc-500">
+        Session note (why this mode?)
+        <textarea
+          value={reasonDraft}
+          onChange={(e) => setReasonDraft(e.target.value)}
+          onBlur={() => void saveReasonNote()}
+          rows={2}
+          placeholder="Optional — e.g. poor sleep, joint tweak, time crunch…"
+          className="mt-1 w-full rounded-lg bg-zinc-950 border border-zinc-800 px-3 py-2 text-sm text-zinc-200 placeholder:text-zinc-600 resize-y min-h-[2.5rem]"
+        />
+      </label>
       <div className="rounded-xl border border-zinc-800 bg-zinc-900 p-3 space-y-2">
         <div className="text-xs text-zinc-400">
           Effort scaling (no RPE needed): choose how hard today should feel.

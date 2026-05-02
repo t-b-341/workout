@@ -8,6 +8,7 @@ import type {
   RecoveryPlan,
   RecoveryScore,
   SleepLog,
+  StressLog,
 } from './types';
 
 function clamp(value: number, min: number, max: number): number {
@@ -36,11 +37,40 @@ function sleepDurationScore(hours: number): number {
   return clamp(100 - longBy * 14, 55, 100);
 }
 
+/**
+ * Fragmentation from optional latency + wakes. Omitted fields = neutral (excluded from average).
+ * - Wake count: −12 per wake, floor 45.
+ * - Onset latency: up to −35 by 90+ minutes, floor 60.
+ */
+function sleepFragmentationScore(log: SleepLog): number {
+  const parts: number[] = [];
+  if (log.wakeCount != null && Number.isFinite(log.wakeCount)) {
+    const w = Math.max(0, log.wakeCount);
+    parts.push(clamp(100 - w * 12, 45, 100));
+  }
+  if (log.sleepOnsetLatencyMin != null && Number.isFinite(log.sleepOnsetLatencyMin)) {
+    const lat = Math.max(0, log.sleepOnsetLatencyMin);
+    const t = clamp(lat / 90, 0, 1);
+    parts.push(clamp(100 - t * 35, 60, 100));
+  }
+  if (parts.length === 0) return 100;
+  return parts.reduce((a, b) => a + b, 0) / parts.length;
+}
+
 export function sleepScore(log?: SleepLog): number {
   if (!log) return 60;
   const durationScore = sleepDurationScore(log.sleepHours);
   const qualityScore = clamp((log.sleepQuality / 5) * 100, 0, 100);
-  return Math.round(durationScore * 0.7 + qualityScore * 0.3);
+  const fragScore = sleepFragmentationScore(log);
+  return Math.round(durationScore * 0.62 + qualityScore * 0.28 + fragScore * 0.1);
+}
+
+/** 1 = clearest … 8 = darkest; unknown → no penalty. Monotonic penalty, capped. */
+function urineColorPenalty(color?: HydrationLog['urineColor']): number {
+  if (color == null) return 0;
+  if (color <= 2) return 0;
+  if (color >= 7) return 10;
+  return (color - 2) * 2;
 }
 
 export function hydrationScore(log?: HydrationLog): number {
@@ -48,7 +78,7 @@ export function hydrationScore(log?: HydrationLog): number {
   const water = pct(log.waterActualMl, log.waterTargetMl);
   const waterScore = clamp(water * 100, 0, 100);
   const electrolyteBonus = log.electrolytes ? 5 : 0;
-  const colorPenalty = log.urineColor && log.urineColor >= 7 ? 10 : 0;
+  const colorPenalty = urineColorPenalty(log.urineColor);
   return Math.round(clamp(waterScore + electrolyteBonus - colorPenalty, 0, 100));
 }
 
@@ -117,24 +147,58 @@ export function recoveryPlan(band: RecoveryBand): RecoveryPlan {
   };
 }
 
+/** Lower daily stress average (1–5) and stronger self-rated management → higher score. */
+export function stressScore(log: StressLog): number {
+  const avg = log.average;
+  const fromAvg = clamp(((6 - avg) / 5) * 100, 0, 100);
+  const mgmt = clamp((log.managementEffectiveness / 5) * 100, 0, 100);
+  return Math.round(fromAvg * 0.82 + mgmt * 0.18);
+}
+
+/** Logged mindfulness minutes (capped); omitted readiness field → excluded from composite. */
+export function mindfulnessScore(minutes: number): number {
+  const m = Math.max(0, minutes);
+  return Math.round(clamp(55 + (Math.min(m, 30) / 30) * 45, 0, 100));
+}
+
 export function buildRecoveryScore(input: {
   date: string;
   sleep?: SleepLog;
   hydration?: HydrationLog;
   nutrition?: NutritionLog;
   readiness?: ReadinessLog;
+  /** When present, composite uses a 5-way blend including `stressScore`. */
+  stress?: StressLog;
 }): RecoveryScore {
   const s = sleepScore(input.sleep);
   const h = hydrationScore(input.hydration);
   const n = nutritionScore(input.nutrition);
   const r = readinessScore(input.readiness);
-  const compositeScore = Math.round(s * 0.4 + h * 0.2 + n * 0.25 + r * 0.15);
+  const st = input.stress != null ? stressScore(input.stress) : undefined;
+  const mind =
+    input.readiness?.mindfulnessMinutes != null
+      ? mindfulnessScore(input.readiness.mindfulnessMinutes)
+      : undefined;
+
+  let compositeScore: number;
+  if (st != null && mind != null) {
+    compositeScore = Math.round(s * 0.33 + h * 0.17 + n * 0.21 + r * 0.12 + st * 0.11 + mind * 0.06);
+  } else if (st != null) {
+    compositeScore = Math.round(s * 0.35 + h * 0.18 + n * 0.22 + r * 0.13 + st * 0.12);
+  } else if (mind != null) {
+    compositeScore = Math.round(s * 0.36 + h * 0.18 + n * 0.24 + r * 0.14 + mind * 0.08);
+  } else {
+    compositeScore = Math.round(s * 0.4 + h * 0.2 + n * 0.25 + r * 0.15);
+  }
+
   return {
     date: input.date,
     sleepScore: s,
     hydrationScore: h,
     nutritionScore: n,
     readinessScore: r,
+    ...(st != null ? { stressScore: st } : {}),
+    ...(mind != null ? { mindfulnessScore: mind } : {}),
     compositeScore,
     band: recoveryBand(compositeScore),
   };

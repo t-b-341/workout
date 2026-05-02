@@ -30,6 +30,7 @@ import { BodyweightQuickLog } from './BodyweightQuickLog';
 import { InjuryTrackingPanel } from './InjuryTrackingPanel';
 import { MacroTrendCallout } from './MacroTrendCallout';
 import { PageShell } from './PageShell';
+import { TrackerReminderCard } from './TrackerReminderCard';
 
 function clamp(n: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, n));
@@ -198,8 +199,8 @@ export function RecoveryView() {
   const readiness = useReadinessForSession(session?.id);
 
   const score = useMemo(
-    () => buildRecoveryScore({ date, sleep, hydration, nutrition, readiness }),
-    [date, sleep, hydration, nutrition, readiness],
+    () => buildRecoveryScore({ date, sleep, hydration, nutrition, readiness, stress }),
+    [date, sleep, hydration, nutrition, readiness, stress],
   );
   const plan = useMemo(() => recoveryPlan(score.band), [score.band]);
   const performanceRecommendations = useMemo(
@@ -225,8 +226,12 @@ export function RecoveryView() {
           <Stat label="Hydration" value={score.hydrationScore} />
           <Stat label="Nutrition" value={score.nutritionScore} />
           <Stat label="Readiness" value={score.readinessScore} />
+          <Stat label="Stress" value={score.stressScore ?? '—'} />
+          <Stat label="Mindfulness" value={score.mindfulnessScore ?? '—'} />
         </div>
       </div>
+
+      <TrackerReminderCard />
 
       <SleepSection date={date} existing={sleep} />
       <StressSection date={date} existing={stress} />
@@ -385,7 +390,7 @@ function StressField({
   );
 }
 
-function Stat({ label, value }: { label: string; value: number }) {
+function Stat({ label, value }: { label: string; value: number | string }) {
   return (
     <div className="rounded-lg bg-zinc-950 border border-zinc-800 p-2">
       <div className="text-xs text-zinc-500">{label}</div>

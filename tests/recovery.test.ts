@@ -2,9 +2,11 @@ import { describe, expect, it } from 'vitest';
 import {
   buildRecoveryScore,
   hydrationScore,
+  mindfulnessScore,
   nutritionScore,
   recoveryBand,
   sleepScore,
+  stressScore,
 } from '../src/lib/recovery';
 
 describe('recovery scoring', () => {
@@ -12,6 +14,87 @@ describe('recovery scoring', () => {
     const score = buildRecoveryScore({ date: '2026-04-27' });
     expect(score.compositeScore).toBe(60);
     expect(score.band).toBe('conservative');
+    expect(score.stressScore).toBeUndefined();
+  });
+
+  it('includes mindfulness in composite when readiness logs minutes', () => {
+    const readinessLow = {
+      id: 'r',
+      sessionLogId: 's1',
+      date: '2026-04-27',
+      sleepHours: 8,
+      soreness: 2,
+      motivation: 3,
+      hrvSkipped: true,
+      mindfulnessMinutes: 0,
+      createdAt: '2026-04-27T12:00:00.000Z',
+    };
+    const readinessHigh = { ...readinessLow, mindfulnessMinutes: 30 };
+    expect(mindfulnessScore(30)).toBeGreaterThan(mindfulnessScore(0));
+
+    const base = { date: '2026-04-27' };
+    const withLow = buildRecoveryScore({ ...base, readiness: readinessLow });
+    const withHigh = buildRecoveryScore({ ...base, readiness: readinessHigh });
+    expect(withHigh.mindfulnessScore).toBeDefined();
+    expect(withLow.mindfulnessScore).toBeDefined();
+    expect(withHigh.compositeScore).toBeGreaterThan(withLow.compositeScore);
+  });
+
+  it('blends stress and mindfulness when both are present', () => {
+    const stress = {
+      id: 's',
+      date: '2026-04-27',
+      startOfDay: 3 as const,
+      midDay: 3 as const,
+      endOfDay: 3 as const,
+      average: 3,
+      managementEffectiveness: 3 as const,
+    };
+    const readiness = {
+      id: 'r',
+      sessionLogId: 's1',
+      date: '2026-04-27',
+      sleepHours: 8,
+      soreness: 2,
+      motivation: 3,
+      hrvSkipped: true,
+      mindfulnessMinutes: 15,
+      createdAt: '2026-04-27T12:00:00.000Z',
+    };
+    const both = buildRecoveryScore({ date: '2026-04-27', stress, readiness });
+    const stressOnly = buildRecoveryScore({ date: '2026-04-27', stress });
+    expect(both.stressScore).toBeDefined();
+    expect(both.mindfulnessScore).toBeDefined();
+    expect(stressOnly.mindfulnessScore).toBeUndefined();
+    expect(both.compositeScore).not.toBe(stressOnly.compositeScore);
+  });
+
+  it('includes stress in composite when stress log present', () => {
+    const stressLow = {
+      id: 's',
+      date: '2026-04-27',
+      startOfDay: 1 as const,
+      midDay: 1 as const,
+      endOfDay: 1 as const,
+      average: 1,
+      managementEffectiveness: 5 as const,
+    };
+    const stressHigh = {
+      id: 's',
+      date: '2026-04-27',
+      startOfDay: 5 as const,
+      midDay: 5 as const,
+      endOfDay: 5 as const,
+      average: 5,
+      managementEffectiveness: 1 as const,
+    };
+    expect(stressScore(stressLow)).toBeGreaterThan(stressScore(stressHigh));
+
+    const base = { date: '2026-04-27' };
+    const withLow = buildRecoveryScore({ ...base, stress: stressLow });
+    const withHigh = buildRecoveryScore({ ...base, stress: stressHigh });
+    expect(withLow.stressScore).toBeDefined();
+    expect(withLow.compositeScore).toBeGreaterThan(withHigh.compositeScore);
   });
 
   it('maps composite thresholds to correct bands', () => {
@@ -32,6 +115,14 @@ describe('recovery scoring', () => {
     expect(longGood).toBeGreaterThan(shorterMediocre);
   });
 
+  it('penalizes high wake count and long sleep latency when quality and duration match', () => {
+    const base = { id: 's', date: '2026-04-27', sleepHours: 8, sleepQuality: 5 };
+    const clean = sleepScore({ ...base });
+    const fragmented = sleepScore({ ...base, wakeCount: 4, sleepOnsetLatencyMin: 75 });
+    expect(clean).toBeGreaterThan(fragmented);
+    expect(sleepScore({ ...base, wakeCount: 0 })).toBe(clean);
+  });
+
   it('penalizes poor hydration markers', () => {
     const good = hydrationScore({
       id: 'h1',
@@ -50,6 +141,22 @@ describe('recovery scoring', () => {
       urineColor: 8,
     });
     expect(good).toBeGreaterThan(poor);
+  });
+
+  it('graduates urine color penalty (clearest = none; 7–8 = max)', () => {
+    const base = {
+      id: 'h',
+      date: '2026-04-27',
+      waterTargetMl: 3000,
+      waterActualMl: 3000,
+      electrolytes: false,
+    };
+    const clear = hydrationScore({ ...base, urineColor: 1 });
+    const mid = hydrationScore({ ...base, urineColor: 5 });
+    const dark = hydrationScore({ ...base, urineColor: 8 });
+    expect(clear).toBeGreaterThan(mid);
+    expect(mid).toBeGreaterThan(dark);
+    expect(hydrationScore({ ...base, urineColor: 7 })).toBe(hydrationScore({ ...base, urineColor: 8 }));
   });
 
   it('applies meal bonus from timestamps (>=3) without hitting score cap', () => {

@@ -50,6 +50,7 @@ import { StartWorkoutButton, WorkoutStopwatchBar } from './WorkoutSessionTimer';
 import { TrainingMindsetCard } from './TrainingMindsetCard';
 import { MacroTrendCallout } from './MacroTrendCallout';
 import { MindfulnessTodayCard } from './MindfulnessTodayCard';
+import { DayNotesCard } from './DayNotesCard';
 import {
   setGoalCheckedForSession,
   useFitnessGoals,
@@ -176,6 +177,7 @@ export function TodayView() {
       />
       <SessionGoalsCard sessionId={session.id} />
       <MindfulnessTodayCard session={session} readiness={readiness} />
+      <DayNotesCard date={todayIso()} />
       {(weeklyFlags.bodyweightOverdue || weeklyFlags.measurementsOverdue) && (
         <WeeklyTrackingReminder
           bodyweightOverdue={weeklyFlags.bodyweightOverdue}

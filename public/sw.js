@@ -15,7 +15,7 @@
 // Bump CACHE_VERSION to force clients to drop the old shell cache after
 // a deploy that changes shell behavior.
 
-const CACHE_VERSION = 'v1';
+const CACHE_VERSION = 'v2';
 const SHELL = `workout-shell-${CACHE_VERSION}`;
 const STATIC = `workout-static-${CACHE_VERSION}`;
 const RUNTIME = `workout-runtime-${CACHE_VERSION}`;
@@ -115,4 +115,24 @@ async function networkFirstShell(request) {
 // new SW install if we ever wire that up from the AppShell.
 self.addEventListener('message', (event) => {
   if (event.data === 'SKIP_WAITING') self.skipWaiting();
+});
+
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  const target = event.notification.data?.url || '/recovery';
+  const fullUrl = new URL(target, self.location.origin).href;
+  event.waitUntil(
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((windowClients) => {
+      for (const client of windowClients) {
+        try {
+          if (new URL(client.url).origin === self.location.origin && 'focus' in client) {
+            return client.focus();
+          }
+        } catch {
+          /* ignore bad client.url */
+        }
+      }
+      if (self.clients.openWindow) return self.clients.openWindow(fullUrl);
+    }),
+  );
 });

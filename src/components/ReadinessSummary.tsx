@@ -1,10 +1,11 @@
 'use client';
 
 import { useState } from 'react';
-import { recommendMode, ReadinessEditForm } from './ReadinessForm';
+import { recommendMode } from '@/lib/recommendMode';
+import { ReadinessEditForm } from './ReadinessForm';
 import type { ReadinessLog, SessionLog } from '@/lib/types';
 
-/** Color thresholds mirror recommendMode() in ReadinessForm so the chips
+/** Color thresholds mirror `recommendMode()` in `recommendMode.ts` so the chips
  *  visually agree with the suggested mode. */
 function sleepTone(h: number): string {
   if (h < 5) return 'bg-rose-900/60 text-rose-200';
@@ -59,7 +60,10 @@ export function ReadinessSummary({
     );
   }
 
-  const rec = recommendMode(readiness.sleepHours, readiness.soreness, readiness.motivation);
+  const rec = recommendMode(readiness.sleepHours, readiness.soreness, readiness.motivation, {
+    hrvRmssd: readiness.hrvRmssd,
+    hrvSkipped: readiness.hrvSkipped,
+  });
   const chipBase = dense
     ? 'px-2 py-0.5 rounded-md text-[11px] font-mono'
     : 'px-2.5 py-1 rounded-lg text-xs font-mono';
