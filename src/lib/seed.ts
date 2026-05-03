@@ -60,12 +60,10 @@ export const LIFTS: Lift[] = [
     pattern: 'hinge', muscleGroups: ['hamstrings', 'glutes', 'low-back', 'traps', 'lats'] },
   { id: 'rdl', name: 'RDL', equipment: 'barbell', loadUnit: 'lb', repUnit: 'reps', increment: 5,
     pattern: 'hinge', muscleGroups: ['hamstrings', 'glutes', 'low-back'] },
+  { id: 'bss', name: 'Bulgarian Split Squat', equipment: 'barbell', loadUnit: 'lb', repUnit: 'reps', increment: 5,
+    pattern: 'squat', muscleGroups: ['quads', 'glutes', 'hamstrings'], notes: 'Barbell on back; progress in 5 lb steps from empty short bar (~45#)' },
 
   // Lower - dumbbell
-  { id: 'bss', name: 'Bulgarian Split Squat', equipment: 'dumbbell', loadUnit: 'lb', repUnit: 'reps', increment: 2.5,
-    pattern: 'squat', muscleGroups: ['quads', 'glutes', 'hamstrings'] },
-
-  // Core / time-based
   { id: 'planks', name: 'Planks', equipment: 'time', loadUnit: 'none', repUnit: 'seconds', increment: 5, notes: '+5 sec/wk per set',
     pattern: 'core', muscleGroups: ['core'] },
   { id: 'ab_rollouts', name: 'Ab Rollouts', equipment: 'bodyweight', loadUnit: 'none', repUnit: 'reps', increment: 1, notes: 'Full ROM; progress reps per set',
@@ -189,13 +187,13 @@ export const PRESCRIPTIONS: Prescription[] = [
   // Tuesday — L1 (Heavy)
   p('L1', 'back_squat',          10, 240, 3, 6, 8, { notes: 'Shoot for 3×8' }),
   p('L1', 'dl',                  20, 325, 3, 3, 6),
-  p('L1', 'bss',                 30,  22.5, 2, 6, 8, { perSide: true, notes: 'Shoot for 8; learning' }),
+  p('L1', 'bss',                 30, 45, 2, 6, 8, { notes: 'Barbell; shoot for 8; learning' }),
   p('L1', 'breathing_back_squat',40, 165, 1, 15, 20, { notes: 'Bar on back; breathe between reps' }),
   p('L1', 'liss',                50,   0, 1, 30, 30, { notes: '30 min @ 2.0 mph / 3.0% grade' }),
 
   // Thursday — L2 (Light)
   p('L2', 'rdl',             10, 205, 3, 8, 12, { notes: 'Hinge movement' }),
-  p('L2', 'bss',             20,  22.5, 3, 10, 10, { perSide: true, notes: 'Light-day squat stim; learning' }),
+  p('L2', 'bss',             20, 45, 3, 10, 10, { notes: 'Barbell; light-day squat stim' }),
   p('L2', 'planks',          30,   0, 3, 30, 30, { notes: '+5 sec/wk per set' }),
   p('L2', 'ab_rollouts',     40,   0, 4, 3, 3, { notes: 'Full ROM; progress reps' }),
   p('L2', 'echo_intervals',  50,   0, 1, 16, 16, { notes: '8 × (30s sprint / 90s slow); HR target 170 sprints' }),
@@ -204,7 +202,7 @@ export const PRESCRIPTIONS: Prescription[] = [
   // Saturday — L3 (Moderate)
   p('L3', 'back_squat_paused', 10, 205, 3, 3, 6),
   p('L3', 'ddl',               20, 300, 3, 3, 6),
-  p('L3', 'bss',               30,  22.5, 2, 6, 8, { perSide: true, notes: 'Shoot for 8; learning' }),
+  p('L3', 'bss',               30, 45, 2, 6, 8, { notes: 'Barbell; shoot for 8; learning' }),
   p('L3', 'liss',              40,   0, 1, 60, 60, { notes: '60 min @ 2.0 mph / 3.0% grade' }),
 ];
 

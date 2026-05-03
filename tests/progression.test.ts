@@ -170,7 +170,7 @@ describe('decideProgression — per-side lifts', () => {
     return sides.flatMap((side, i) => ({
       id: `${SESSION_ID}-${PRESCRIPTION_ID}-${Math.floor(i / 2)}-${side}`,
       sessionLogId: SESSION_ID,
-      liftId: 'bss',
+      liftId: 'per_side_probe',
       prescriptionId: PRESCRIPTION_ID,
       setIndex: Math.floor(i / 2),
       weight: 22.5,
@@ -181,7 +181,7 @@ describe('decideProgression — per-side lifts', () => {
   }
 
   const presc = makePrescription({
-    liftId: 'bss',
+    liftId: 'per_side_probe',
     weight: 22.5,
     sets: 2,
     repMin: 6,
@@ -315,6 +315,12 @@ describe('snapWorkingWeight', () => {
     const lift = liftForSnap('bp');
     expect(snapWorkingWeight(142, lift)).toBe(140);
     expect(snapWorkingWeight(143, lift)).toBe(145);
+  });
+
+  it('snaps Bulgarian split squat (barbell) to nearest 5 lb', () => {
+    const lift = liftForSnap('bss');
+    expect(snapWorkingWeight(47, lift)).toBe(45);
+    expect(snapWorkingWeight(48, lift)).toBe(50);
   });
 
   it('snaps P1 weighted pull-up added load in 2.5 steps', () => {
