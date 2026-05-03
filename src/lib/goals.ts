@@ -51,7 +51,7 @@ const DEFAULT_GOALS: FitnessGoal[] = [
   },
 ];
 
-function normalizeGoals(value: unknown): FitnessGoal[] {
+export function normalizeGoals(value: unknown): FitnessGoal[] {
   const arr = Array.isArray(value) ? (value as Partial<FitnessGoal>[]) : [];
   const cleaned: FitnessGoal[] = arr
     .map(
@@ -65,9 +65,7 @@ function normalizeGoals(value: unknown): FitnessGoal[] {
     .filter((x) => x.id !== 'goal-front-squat-wrist-friendly')
     .filter((x) => x.id.length > 0 && x.text.length > 0);
   if (cleaned.length === 0) return DEFAULT_GOALS;
-  const byId = new Set(cleaned.map((g) => g.id));
-  const missingDefaults = DEFAULT_GOALS.filter((g) => !byId.has(g.id));
-  return [...cleaned, ...missingDefaults];
+  return cleaned;
 }
 
 function normalizeChecks(value: unknown): GoalChecksBySession {
