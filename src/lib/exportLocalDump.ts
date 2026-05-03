@@ -21,7 +21,11 @@ import type {
 } from './types';
 
 /** Keys this app uses in `localStorage` (UI prefs only; not secrets). */
-const KNOWN_LOCALSTORAGE_KEYS = ['workout:layout-mode', 'workout:todayPlan:v1'] as const;
+const KNOWN_LOCALSTORAGE_KEYS = [
+  'workout:layout-mode',
+  'workout:todayPlan:v1',
+  'workout:sundayMondayEarlyUnlock:v1',
+] as const;
 
 export type FullLocalExport = {
   kind: 'workout-full-local-v1';

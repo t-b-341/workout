@@ -85,10 +85,24 @@ export function HistoryView() {
       </div>
 
       {tab === 'sessions' && <SessionsList sessions={sessions} sets={allSets} lifts={lifts} readiness={readiness} />}
-      {tab === 'trends' && <TrendsList sessions={sessions} sets={allSets} lifts={lifts} />}
-      {tab === 'weeks' && <WeeksList sessions={sessions} sets={allSets} cardio={cardio} lifts={lifts} readiness={readiness} stress={stress} />}
+      {tab === 'trends' && (
+        <TrendsList sessions={sessions} sets={allSets} lifts={lifts} bodyweights={bodyweights} readiness={readiness} />
+      )}
+      {tab === 'weeks' && (
+        <WeeksList
+          sessions={sessions}
+          sets={allSets}
+          cardio={cardio}
+          lifts={lifts}
+          readiness={readiness}
+          stress={stress}
+          bodyweights={bodyweights}
+        />
+      )}
       {tab === 'prs' && <PRsList sessions={sessions} sets={allSets} lifts={lifts} />}
-      {tab === 'muscle' && <MuscleList sessions={sessions} sets={allSets} lifts={lifts} />}
+      {tab === 'muscle' && (
+        <MuscleList sessions={sessions} sets={allSets} lifts={lifts} bodyweights={bodyweights} readiness={readiness} />
+      )}
       {tab === 'bodyweight' && <BodyweightList logs={bodyweights} />}
     </PageShell>
   );
@@ -217,7 +231,19 @@ function SessionsList({
   );
 }
 
-function TrendsList({ sessions, sets, lifts }: { sessions: SessionLog[]; sets: SetLog[]; lifts: Lift[] }) {
+function TrendsList({
+  sessions,
+  sets,
+  lifts,
+  bodyweights,
+  readiness,
+}: {
+  sessions: SessionLog[];
+  sets: SetLog[];
+  lifts: Lift[];
+  bodyweights: BodyweightLog[];
+  readiness: ReadinessLog[];
+}) {
   const seenLiftIds = new Set(sets.map((s) => s.liftId));
   const liftsWithData = lifts
     .filter((l) => seenLiftIds.has(l.id) && l.equipment !== 'cardio' && l.equipment !== 'time')
@@ -230,14 +256,33 @@ function TrendsList({ sessions, sets, lifts }: { sessions: SessionLog[]; sets: S
   return (
     <div className="space-y-3">
       {liftsWithData.map((lift) => (
-        <LiftTrendCard key={lift.id} lift={lift} sessions={sessions} sets={sets} />
+        <LiftTrendCard
+          key={lift.id}
+          lift={lift}
+          sessions={sessions}
+          sets={sets}
+          bodyweights={bodyweights}
+          readiness={readiness}
+        />
       ))}
     </div>
   );
 }
 
-function LiftTrendCard({ lift, sessions, sets }: { lift: Lift; sessions: SessionLog[]; sets: SetLog[] }) {
-  const points = buildLiftHistory(lift.id, sets, sessions);
+function LiftTrendCard({
+  lift,
+  sessions,
+  sets,
+  bodyweights,
+  readiness,
+}: {
+  lift: Lift;
+  sessions: SessionLog[];
+  sets: SetLog[];
+  bodyweights: BodyweightLog[];
+  readiness: ReadinessLog[];
+}) {
+  const points = buildLiftHistory(lift.id, sets, sessions, bodyweights, readiness);
   if (points.length === 0) return null;
 
   const recent = points.slice(-12);
@@ -323,6 +368,7 @@ function WeeksList({
   lifts,
   readiness,
   stress,
+  bodyweights,
 }: {
   sessions: SessionLog[];
   sets: SetLog[];
@@ -330,9 +376,13 @@ function WeeksList({
   lifts: Lift[];
   readiness: ReadinessLog[];
   stress: StressLog[];
+  bodyweights: BodyweightLog[];
 }) {
-  const weeks = buildWeeklySummaries(sessions, sets, cardio, lifts, readiness);
-  const muscleWeeks = useMemo(() => buildWeeklyMuscleVolume(sessions, sets, lifts), [sessions, sets, lifts]);
+  const weeks = buildWeeklySummaries(sessions, sets, cardio, lifts, readiness, bodyweights);
+  const muscleWeeks = useMemo(
+    () => buildWeeklyMuscleVolume(sessions, sets, lifts, bodyweights, readiness),
+    [sessions, sets, lifts, bodyweights, readiness],
+  );
   const patternWeeks = useMemo(() => buildWeeklyPatternCoverage(sessions, sets, lifts), [sessions, sets, lifts]);
   const readinessWeeks = useMemo(() => buildWeeklyReadiness(readiness), [readiness]);
   const rollingEndDate = useMemo(() => {
@@ -350,8 +400,10 @@ function WeeksList({
         sessions,
         sets,
         lifts,
+        bodyweights,
+        readiness,
       ),
-    [rollingEndDate, sessions, sets, lifts],
+    [rollingEndDate, sessions, sets, lifts, bodyweights, readiness],
   );
   if (weeks.length === 0) return <div className="text-zinc-500 text-sm">No data yet.</div>;
 
@@ -706,8 +758,23 @@ function PRsList({ sessions, sets, lifts }: { sessions: SessionLog[]; sets: SetL
   );
 }
 
-function MuscleList({ sessions, sets, lifts }: { sessions: SessionLog[]; sets: SetLog[]; lifts: Lift[] }) {
-  const muscleWeeks = useMemo(() => buildWeeklyMuscleVolume(sessions, sets, lifts), [sessions, sets, lifts]);
+function MuscleList({
+  sessions,
+  sets,
+  lifts,
+  bodyweights,
+  readiness,
+}: {
+  sessions: SessionLog[];
+  sets: SetLog[];
+  lifts: Lift[];
+  bodyweights: BodyweightLog[];
+  readiness: ReadinessLog[];
+}) {
+  const muscleWeeks = useMemo(
+    () => buildWeeklyMuscleVolume(sessions, sets, lifts, bodyweights, readiness),
+    [sessions, sets, lifts, bodyweights, readiness],
+  );
   const patternWeeks = useMemo(() => buildWeeklyPatternCoverage(sessions, sets, lifts), [sessions, sets, lifts]);
   if (muscleWeeks.length === 0) {
     return <div className="text-zinc-500 text-sm">Log a session to start tracking weekly muscle volume.</div>;

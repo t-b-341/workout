@@ -189,13 +189,45 @@ describe('sessionFinishHighlights', () => {
         status: 'completed',
       },
     ];
-    const h = sessionFinishHighlights('s1', sets, lifts);
+    const h = sessionFinishHighlights(sess('s1', '2026-01-01'), sets, lifts);
     expect(h.completedSetCount).toBe(2);
     expect(h.strengthVolumeLb).toBe(1000);
     expect(h.distinctLifts).toBe(1);
     expect(h.topSet?.weight).toBe(100);
     expect(h.topSet?.reps).toBe(5);
     expect(h.totalRestBetweenSetsMs).toBe(0);
+  });
+
+  it('uses bodyweight minus assistance for p1_assisted volume', () => {
+    const liftPull: Lift = {
+      id: 'p1_assisted',
+      name: 'P1 Assisted',
+      equipment: 'bodyweight',
+      loadUnit: 'lb',
+      repUnit: 'reps',
+      increment: 5,
+      muscleGroups: ['lats'],
+      pattern: 'vert-pull',
+    };
+    const lifts = [liftPull];
+    const sets: SetLog[] = [
+      {
+        id: '1',
+        sessionLogId: 's1',
+        liftId: 'p1_assisted',
+        prescriptionId: 'p',
+        setIndex: 0,
+        weight: 50,
+        reps: 4,
+        status: 'completed',
+      },
+    ];
+    const bodyweight = [
+      { id: 'bw1', date: '2026-01-01', isoWeek: '2026-W01', bodyweight: 200 },
+    ];
+    const h = sessionFinishHighlights(sess('s1', '2026-01-01'), sets, lifts, bodyweight, []);
+    expect(h.strengthVolumeLb).toBe((200 - 50) * 4);
+    expect(h.topSet?.weight).toBe(150);
   });
 });
 

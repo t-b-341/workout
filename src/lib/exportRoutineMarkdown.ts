@@ -5,11 +5,37 @@
 
 import { format, subDays } from 'date-fns';
 import { sortTemplatesProgramOrder } from '@/lib/seed';
+import { isoWeekOf, startOfWeekIso } from '@/lib/stats';
+import { addDaysIso, fmtDate } from '@/lib/time';
 import type { Lift, NutritionLog, Prescription, SessionTemplate, SleepLog, StressLog } from '@/lib/types';
 
 const DOW_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
 export const RECENT_SIGNAL_DAYS_DEFAULT = 14;
+
+/** Nutrition / sleep / stress rows to include before the upcoming training week. */
+export const UPCOMING_WEEK_CONTEXT_SIGNAL_DAYS = 7;
+
+/** Next Mon–Sun block **after** the ISO week that contains `todayIso`. */
+export function upcomingTrainingIsoWeekRange(todayIsoDate: string): {
+  monday: string;
+  sunday: string;
+  isoWeekLabel: string;
+} {
+  const thisMonday = startOfWeekIso(isoWeekOf(todayIsoDate));
+  const monday = addDaysIso(thisMonday, 7);
+  const sunday = addDaysIso(monday, 6);
+  return { monday, sunday, isoWeekLabel: isoWeekOf(monday) };
+}
+
+/** `count` calendar days immediately before `firstDayIso`, oldest → newest. */
+export function isoDatesBeforeWeek(firstDayIso: string, count: number): string[] {
+  const out: string[] = [];
+  for (let i = count; i >= 1; i--) {
+    out.push(addDaysIso(firstDayIso, -i));
+  }
+  return out;
+}
 
 /** Narrative aligned with `decideProgression` + load snapping in `progression.ts`. */
 export const PROGRESSION_RULES_MARKDOWN = `
@@ -92,7 +118,58 @@ export type RoutineMarkdownInput = {
   stressByDate: Map<string, StressLog | undefined>;
   /** Calendar days of nutrition/sleep/stress tables (oldest → newest). */
   signalDates: string[];
+  scope?: 'full' | 'upcoming_week';
+  /** Required when `scope === 'upcoming_week'`. */
+  upcomingWeek?: {
+    monday: string;
+    sunday: string;
+    isoWeekLabel: string;
+    templateDateById: Map<string, string>;
+    mesoNote?: string;
+  };
 };
+
+export type UpcomingWeekRoutineMarkdownInput = Omit<
+  RoutineMarkdownInput,
+  'signalDates' | 'scope' | 'upcomingWeek'
+> & {
+  todayIso: string;
+  mesoNote?: string;
+  /** Default `UPCOMING_WEEK_CONTEXT_SIGNAL_DAYS`. */
+  contextSignalDays?: number;
+};
+
+/** Narrow Claude / LLM brief: next training week on the calendar + short pre-week context signals. */
+export function buildUpcomingWeekRoutineMarkdown(input: UpcomingWeekRoutineMarkdownInput): string {
+  const { monday, sunday, isoWeekLabel } = upcomingTrainingIsoWeekRange(input.todayIso);
+  const sortedTemplates = sortTemplatesProgramOrder(input.templates);
+  const templateDateById = new Map<string, string>();
+  for (const t of sortedTemplates) {
+    templateDateById.set(t.id, addDaysIso(monday, t.dayOfWeek - 1));
+  }
+  const contextSignalDays = input.contextSignalDays ?? UPCOMING_WEEK_CONTEXT_SIGNAL_DAYS;
+  const signalDates = isoDatesBeforeWeek(monday, contextSignalDays);
+  const pickSignals = <T,>(m: Map<string, T | undefined>) =>
+    new Map(signalDates.map((d) => [d, m.get(d)] as const));
+  return buildRoutineMarkdown({
+    exportedAtIso: input.exportedAtIso,
+    templates: input.templates,
+    lifts: input.lifts,
+    prescriptions: input.prescriptions,
+    nutritionByDate: pickSignals(input.nutritionByDate),
+    sleepByDate: pickSignals(input.sleepByDate),
+    stressByDate: pickSignals(input.stressByDate),
+    signalDates,
+    scope: 'upcoming_week',
+    upcomingWeek: {
+      monday,
+      sunday,
+      isoWeekLabel,
+      templateDateById,
+      mesoNote: input.mesoNote,
+    },
+  });
+}
 
 export function buildRoutineMarkdown(input: RoutineMarkdownInput): string {
   const {
@@ -105,6 +182,11 @@ export function buildRoutineMarkdown(input: RoutineMarkdownInput): string {
     stressByDate,
     signalDates,
   } = input;
+  const scope = input.scope ?? 'full';
+  const upcomingWeek = input.upcomingWeek;
+  if (scope === 'upcoming_week' && !upcomingWeek) {
+    throw new Error('buildRoutineMarkdown: upcomingWeek is required when scope is upcoming_week');
+  }
 
   const byLift = liftMap(lifts);
   const sortedTemplates = sortTemplatesProgramOrder(templates);
@@ -132,10 +214,28 @@ export function buildRoutineMarkdown(input: RoutineMarkdownInput): string {
   }
 
   const lines: string[] = [];
-  lines.push('# Workout program export (for Claude)');
+  lines.push(
+    scope === 'upcoming_week'
+      ? '# Upcoming week in training (for Claude)'
+      : '# Workout program export (for Claude)',
+  );
   lines.push('');
   lines.push(`Generated: ${exportedAtIso}`);
   lines.push('');
+  if (scope === 'upcoming_week' && upcomingWeek) {
+    lines.push(
+      `**Next training week:** ${fmtDate(upcomingWeek.monday, 'EEE MMM d')} – ${fmtDate(upcomingWeek.sunday, 'EEE MMM d, yyyy')} (${upcomingWeek.isoWeekLabel}). Prescriptions are **current working loads** in the app.`,
+    );
+    if (upcomingWeek.mesoNote) {
+      lines.push('');
+      lines.push(`**Mesocycle (week starting ${upcomingWeek.monday}):** ${upcomingWeek.mesoNote}`);
+    }
+    lines.push('');
+    lines.push(
+      `Recent tracking: **${signalDates.length} calendar days** ending the day before that week (context only). For a full history export, use **Claude .md** on Program.`,
+    );
+    lines.push('');
+  }
   lines.push('## Equipment constraint');
   lines.push('');
   lines.push('**No dumbbells.** Program any substitutions using barbell, machine, cable, plate, or bodyweight only.');
@@ -157,12 +257,19 @@ export function buildRoutineMarkdown(input: RoutineMarkdownInput): string {
 
   lines.push('## Weekly lifting prescriptions');
   lines.push('');
-  lines.push('Template order **U1 → L1 → U2 → L2 → U3 → L3**. Weights are **current working prescriptions** (not history).');
+  lines.push(
+    scope === 'upcoming_week'
+      ? 'Template order **U1 → L1 → U2 → L2 → U3 → L3**. Each heading includes the **calendar date** for that day in your upcoming training week.'
+      : 'Template order **U1 → L1 → U2 → L2 → U3 → L3**. Weights are **current working prescriptions** (not history).',
+  );
   lines.push('');
 
   for (const t of sortedTemplates) {
     const list = byTemplate.get(t.id) ?? [];
-    lines.push(`### ${t.id} — ${dowLabel(t.dayOfWeek)} — ${sanitizeCell(t.name)}`);
+    const sched =
+      scope === 'upcoming_week' && upcomingWeek ? upcomingWeek.templateDateById.get(t.id) : undefined;
+    const schedSuffix = sched ? ` · **${sched}**` : '';
+    lines.push(`### ${t.id} — ${dowLabel(t.dayOfWeek)} — ${sanitizeCell(t.name)}${schedSuffix}`);
     lines.push('');
     lines.push('| # | Exercise | Weight | Sets | Reps | Notes |');
     lines.push('| --- | --- | --- | --- | --- | --- |');
@@ -185,7 +292,9 @@ export function buildRoutineMarkdown(input: RoutineMarkdownInput): string {
   lines.push('## Recent tracking');
   lines.push('');
   lines.push(
-    `Nutrition, sleep, and stress rows for the **last ${signalDates.length} calendar days** (app logs). Empty cells mean no log that day.`,
+    scope === 'upcoming_week' && upcomingWeek
+      ? `Nutrition, sleep, and stress for **${signalDates.length} days before ${upcomingWeek.monday}**. Empty cells mean no log that day.`
+      : `Nutrition, sleep, and stress rows for the **last ${signalDates.length} calendar days** (app logs). Empty cells mean no log that day.`,
   );
   lines.push('');
 

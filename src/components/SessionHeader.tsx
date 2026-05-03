@@ -17,11 +17,14 @@ export function SessionHeader({
   session,
   templates,
   onTemplateChange,
+  hideTemplatePicker = false,
 }: {
   template: SessionTemplate;
   session: SessionLog;
   templates: SessionTemplate[];
   onTemplateChange: (t: SessionTemplate) => void;
+  /** When true, session template is fixed (e.g. Sunday before early Monday unlock). */
+  hideTemplatePicker?: boolean;
 }) {
   const [showModes, setShowModes] = useState(false);
   const [reasonDraft, setReasonDraft] = useState(session.reason ?? '');
@@ -64,18 +67,25 @@ export function SessionHeader({
           <div className="text-xs text-zinc-500 uppercase tracking-wider">{fmtDate(session.date, 'EEEE, MMM d')}</div>
           <h1 className="text-2xl font-semibold mt-1">{template.name}</h1>
         </div>
-        <select
-          value={template.id}
-          onChange={(e) => {
-            const t = templates.find((x) => x.id === e.target.value);
-            if (t) onTemplateChange(t);
-          }}
-          className="h-10 rounded-lg bg-zinc-900 border border-zinc-800 px-2 text-sm"
-        >
-          {templates.map((t) => (
-            <option key={t.id} value={t.id}>{t.id}</option>
-          ))}
-        </select>
+        {!hideTemplatePicker ? (
+          <select
+            value={template.id}
+            onChange={(e) => {
+              const t = templates.find((x) => x.id === e.target.value);
+              if (t) onTemplateChange(t);
+            }}
+            className="h-10 rounded-lg bg-zinc-900 border border-zinc-800 px-2 text-sm"
+            aria-label="Session template"
+          >
+            {templates.map((t) => (
+              <option key={t.id} value={t.id}>{t.id}</option>
+            ))}
+          </select>
+        ) : (
+          <span className="text-xs text-zinc-500 tabular-nums px-2" aria-hidden>
+            {template.id}
+          </span>
+        )}
       </div>
 
       <div className="flex flex-wrap items-center gap-2">

@@ -1,7 +1,12 @@
-import { format, getISOWeek, getISOWeekYear, startOfISOWeek, endOfISOWeek } from 'date-fns';
+import { addDays, format, getISOWeek, getISOWeekYear, startOfISOWeek, endOfISOWeek } from 'date-fns';
 
 export function todayIso(): string {
   return format(new Date(), 'yyyy-MM-dd');
+}
+
+/** Add signed calendar days to `YYYY-MM-dd` (local noon anchor). */
+export function addDaysIso(dateIso: string, days: number): string {
+  return format(addDays(new Date(`${dateIso}T12:00:00`), days), 'yyyy-MM-dd');
 }
 
 export function isoWeekString(d: Date = new Date()): string {

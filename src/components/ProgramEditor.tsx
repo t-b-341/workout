@@ -22,8 +22,10 @@ import { buildFullLocalExport } from '@/lib/exportLocalDump';
 import { fmtDate, todayIso } from '@/lib/time';
 import {
   buildRoutineMarkdown,
+  buildUpcomingWeekRoutineMarkdown,
   isoDatesEndingToday,
   RECENT_SIGNAL_DAYS_DEFAULT,
+  upcomingTrainingIsoWeekRange,
 } from '@/lib/exportRoutineMarkdown';
 import { isoWeekOf, startOfWeekIso } from '@/lib/stats';
 import { liftForSnap, snapWorkingWeight } from '@/lib/progression';
@@ -72,8 +74,9 @@ export function ProgramEditor() {
   const [templateOverride, setTemplateOverride] = useState<TemplateId | null>(null);
   const activeId = templateOverride ?? effectiveProgramTemplateId;
   const prescriptions = usePrescriptions(activeId);
+  const mesoCfg = useMesoConfig();
   const [exporting, setExporting] = useState(false);
-  const [exportingClaude, setExportingClaude] = useState<'idle' | 'md' | 'txt'>('idle');
+  const [exportingClaude, setExportingClaude] = useState<'idle' | 'md' | 'txt' | 'upMd' | 'upTxt'>('idle');
 
   const templatesProgramOrder = useMemo(
     () => (templates?.length ? sortTemplatesProgramOrder(templates) : []),
@@ -194,6 +197,54 @@ export function ProgramEditor() {
     }
   }
 
+  async function exportClaudeUpcomingWeek(ext: 'md' | 'txt') {
+    const liftsNow = lifts;
+    if (!liftsNow) return;
+    setExportingClaude(ext === 'md' ? 'upMd' : 'upTxt');
+    try {
+      const db = getDb();
+      const [prescriptionsAll, nutritionAll, sleepAll, stressAll] = await Promise.all([
+        db.prescriptions.toArray(),
+        db.nutrition_logs.toArray(),
+        db.sleep_logs.toArray(),
+        db.stress_logs.toArray(),
+      ]);
+      const nutritionByDate = new Map(nutritionAll.map((n) => [n.date, n]));
+      const sleepByDate = new Map(sleepAll.map((s) => [s.date, s]));
+      const stressByDate = new Map(stressAll.map((s) => [s.date, s]));
+      const range = upcomingTrainingIsoWeekRange(todayIso());
+      let mesoNote: string | undefined;
+      if (mesoCfg) {
+        const pos = mesocyclePosition(range.monday, mesoCfg);
+        if (pos) {
+          mesoNote = `Meso ${pos.mesoIndex} · Week ${pos.weekInMeso} of ${pos.totalWeeks}${pos.isDeload ? ' · deload' : ''}`;
+        }
+      }
+      const md = buildUpcomingWeekRoutineMarkdown({
+        exportedAtIso: new Date().toISOString(),
+        todayIso: todayIso(),
+        templates: templatesProgramOrder,
+        lifts: liftsNow,
+        prescriptions: prescriptionsAll,
+        nutritionByDate,
+        sleepByDate,
+        stressByDate,
+        mesoNote,
+      });
+      const mime =
+        ext === 'md' ? 'text/markdown;charset=utf-8' : 'text/plain;charset=utf-8';
+      const blob = new Blob([md], { type: mime });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `workout-claude-upcoming-week-${todayIso()}.${ext}`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } finally {
+      setExportingClaude('idle');
+    }
+  }
+
   async function exportAll() {
     setExporting(true);
     try {
@@ -219,6 +270,24 @@ export function ProgramEditor() {
             onClick={async () => { await flushDirty(); await pullAll(); }}
             className="h-10 px-3 rounded-lg bg-zinc-800 text-sm"
           >Sync</button>
+          <button
+            type="button"
+            onClick={() => exportClaudeUpcomingWeek('md')}
+            disabled={exportingClaude !== 'idle' || exporting}
+            title="Next Mon–Sun on your program with calendar dates, plus 7 days of nutrition / sleep / stress before that week. Smaller than full Claude export."
+            className="h-10 px-3 rounded-lg bg-zinc-800 text-sm disabled:opacity-50"
+          >
+            {exportingClaude === 'upMd' ? 'Exporting…' : 'Upcoming week* · .md'}
+          </button>
+          <button
+            type="button"
+            onClick={() => exportClaudeUpcomingWeek('txt')}
+            disabled={exportingClaude !== 'idle' || exporting}
+            title="Same as upcoming week .md as plain text."
+            className="h-10 px-3 rounded-lg bg-zinc-800 text-sm disabled:opacity-50"
+          >
+            {exportingClaude === 'upTxt' ? 'Exporting…' : 'Upcoming week* · .txt'}
+          </button>
           <button
             type="button"
             onClick={() => exportClaudeBrief('md')}

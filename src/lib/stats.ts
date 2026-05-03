@@ -1,4 +1,10 @@
 import { format, getISOWeek, getISOWeekYear, parseISO, subDays } from 'date-fns';
+import {
+  bodyweightLbForSessionVolume,
+  effectiveP1AssistedConcentricLoadLb,
+  readinessBySessionId,
+  strengthVolumeLbForSet,
+} from './p1AssistedVolume';
 import type {
   BodyweightLog,
   CardioLog,
@@ -74,6 +80,8 @@ export function buildLiftHistory(
   liftId: string,
   sets: SetLog[],
   sessions: SessionLog[],
+  bodyweightLogs: BodyweightLog[] = [],
+  readinessLogs: ReadinessLog[] = [],
 ): LiftSessionPoint[] {
   const sessionMap = new Map(sessions.map((s) => [s.id, s]));
   const bySession = new Map<string, SetLog[]>();
@@ -83,24 +91,38 @@ export function buildLiftHistory(
     arr.push(s);
     bySession.set(s.sessionLogId, arr);
   }
+  const rxBySession = readinessBySessionId(readinessLogs);
+  const isAssisted = liftId === 'p1_assisted';
   const out: LiftSessionPoint[] = [];
   for (const [sid, ss] of bySession) {
     const session = sessionMap.get(sid);
     if (!session) continue;
     const completed = ss.filter((x) => x.status === 'completed');
     if (completed.length === 0) continue;
+    const bw = isAssisted
+      ? bodyweightLbForSessionVolume(session, rxBySession.get(sid), bodyweightLogs)
+      : undefined;
+    if (isAssisted && bw == null) continue;
+
     let topWeight = 0;
     let topReps = 0;
     let best1RM = 0;
     let volume = 0;
     for (const x of completed) {
-      const e = est1RM(x.weight, x.reps);
-      if (x.weight > topWeight || (x.weight === topWeight && x.reps > topReps)) {
-        topWeight = x.weight;
+      const loadForStats = isAssisted && bw != null
+        ? effectiveP1AssistedConcentricLoadLb(x.weight, bw)
+        : x.weight;
+      const e = est1RM(loadForStats, x.reps);
+      if (loadForStats > topWeight || (loadForStats === topWeight && x.reps > topReps)) {
+        topWeight = loadForStats;
         topReps = x.reps;
       }
       if (e > best1RM) best1RM = e;
-      if (x.weight > 0) volume += x.weight * x.reps;
+      if (isAssisted && bw != null) {
+        volume += effectiveP1AssistedConcentricLoadLb(x.weight, bw) * x.reps;
+      } else if (x.weight > 0) {
+        volume += x.weight * x.reps;
+      }
     }
     out.push({
       date: session.date,
@@ -136,8 +158,10 @@ export function buildWeeklySummaries(
   cardio: CardioLog[],
   lifts: Lift[],
   readiness: ReadinessLog[],
+  bodyweightLogs: BodyweightLog[] = [],
 ): WeekSummary[] {
   const liftMap = new Map(lifts.map((l) => [l.id, l]));
+  const rxBySession = readinessBySessionId(readiness);
   const setsBySession = new Map<string, SetLog[]>();
   for (const s of sets) {
     const arr = setsBySession.get(s.sessionLogId) ?? [];
@@ -176,23 +200,46 @@ export function buildWeeklySummaries(
     for (const f of s.watchFlags) w.watchFlagCounts[f]++;
 
     const ss = setsBySession.get(s.id) ?? [];
+    const bw = bodyweightLbForSessionVolume(s, rxBySession.get(s.id), bodyweightLogs);
     const topByLift = new Map<string, SetLog>();
     for (const x of ss) {
       if (x.status !== 'completed') continue;
-      if (x.weight > 0) w.totalVolume += x.weight * x.reps;
+      const lift = liftMap.get(x.liftId);
+      w.totalVolume += strengthVolumeLbForSet(x, lift, bw);
       const cur = topByLift.get(x.liftId);
-      if (!cur || x.weight > cur.weight || (x.weight === cur.weight && x.reps > cur.reps)) {
+      const topLoad =
+        lift?.id === 'p1_assisted' && bw != null
+          ? effectiveP1AssistedConcentricLoadLb(x.weight, bw)
+          : x.weight;
+      const curLoad = cur
+        ? (liftMap.get(cur.liftId)?.id === 'p1_assisted' && bw != null
+            ? effectiveP1AssistedConcentricLoadLb(cur.weight, bw)
+            : cur.weight)
+        : -1;
+      if (
+        !cur
+        || topLoad > curLoad
+        || (topLoad === curLoad && x.reps > cur.reps)
+      ) {
         topByLift.set(x.liftId, x);
       }
     }
     for (const [liftId, top] of topByLift) {
       const lift = liftMap.get(liftId);
       if (!lift || lift.equipment === 'cardio' || lift.equipment === 'time') continue;
+      const displayWeight =
+        lift.id === 'p1_assisted' && bw != null
+          ? effectiveP1AssistedConcentricLoadLb(top.weight, bw)
+          : top.weight;
       // keep the heaviest of the week per lift
       const existing = w.topSets.find((t) => t.liftId === liftId);
-      if (!existing || top.weight > existing.weight || (top.weight === existing.weight && top.reps > existing.reps)) {
+      if (
+        !existing
+        || displayWeight > existing.weight
+        || (displayWeight === existing.weight && top.reps > existing.reps)
+      ) {
         const filtered = w.topSets.filter((t) => t.liftId !== liftId);
-        filtered.push({ liftId, liftName: lift.name, weight: top.weight, reps: top.reps, date: s.date });
+        filtered.push({ liftId, liftName: lift.name, weight: displayWeight, reps: top.reps, date: s.date });
         w.topSets = filtered;
       }
     }
@@ -449,12 +496,12 @@ export function sessionTotalRestBetweenSetsMs(
 /** Aggregates for the finish / recap screen (one session). */
 export type SessionFinishHighlights = {
   completedSetCount: number;
-  /** weight × reps summed for completed, non–cardio/time sets with weight > 0. */
+  /** Tonnage (lb): usual `weight × reps`; `p1_assisted` uses (bodyweight − assist) × reps when BW is known. */
   strengthVolumeLb: number;
   distinctLifts: number;
   /** Best Epley e1RM among completed strength sets this session (lb). */
   bestSessionE1RmLb: number;
-  /** Heaviest completed strength set by weight (ties break on reps). */
+  /** Heaviest completed strength set by nominal weight (effective moved load for assisted pull-ups). */
   topSet: { liftName: string; weight: number; reps: number } | null;
   reduced: number;
   skipped: number;
@@ -464,11 +511,17 @@ export type SessionFinishHighlights = {
 };
 
 export function sessionFinishHighlights(
-  sessionId: string,
+  session: SessionLog,
   sets: SetLog[],
   lifts: Lift[],
+  bodyweightLogs: BodyweightLog[] = [],
+  readinessLogs: ReadinessLog[] = [],
 ): SessionFinishHighlights {
   const liftMap = new Map(lifts.map((l) => [l.id, l]));
+  const rxBySession = readinessBySessionId(readinessLogs);
+  const bw = bodyweightLbForSessionVolume(session, rxBySession.get(session.id), bodyweightLogs);
+  const sessionId = session.id;
+
   let completedSetCount = 0;
   let strengthVolumeLb = 0;
   const liftIds = new Set<string>();
@@ -489,16 +542,32 @@ export function sessionFinishHighlights(
     liftIds.add(s.liftId);
     const lift = liftMap.get(s.liftId);
     const strength = lift && lift.equipment !== 'cardio' && lift.equipment !== 'time';
-    if (strength && s.weight > 0) {
-      strengthVolumeLb += s.weight * s.reps;
-      const e = est1RM(s.weight, s.reps);
+    if (!strength || !lift) continue;
+
+    strengthVolumeLb += strengthVolumeLbForSet(s, lift, bw);
+    const loadForE1rm =
+      lift.id === 'p1_assisted' && bw != null
+        ? effectiveP1AssistedConcentricLoadLb(s.weight, bw)
+        : lift.id === 'p1_assisted'
+          ? 0
+          : s.weight;
+    if (loadForE1rm > 0) {
+      const e = est1RM(loadForE1rm, s.reps);
       if (e > bestSessionE1RmLb) bestSessionE1RmLb = e;
+    }
+    const topLoad =
+      lift.id === 'p1_assisted' && bw != null
+        ? effectiveP1AssistedConcentricLoadLb(s.weight, bw)
+        : lift.id === 'p1_assisted'
+          ? 0
+          : s.weight;
+    if (topLoad > 0) {
       if (
         !topSet
-        || s.weight > topSet.weight
-        || (s.weight === topSet.weight && s.reps > topSet.reps)
+        || topLoad > topSet.weight
+        || (topLoad === topSet.weight && s.reps > topSet.reps)
       ) {
-        topSet = { liftId: s.liftId, weight: s.weight, reps: s.reps };
+        topSet = { liftId: s.liftId, weight: topLoad, reps: s.reps };
       }
     }
   }
@@ -655,20 +724,25 @@ export function buildWeeklyMuscleVolume(
   sessions: SessionLog[],
   sets: SetLog[],
   lifts: Lift[],
+  bodyweightLogs: BodyweightLog[] = [],
+  readinessLogs: ReadinessLog[] = [],
 ): WeeklyVolumeByGroup[] {
   const liftMap = new Map(lifts.map((l) => [l.id, l]));
-  const sessionDate = new Map(sessions.map((s) => [s.id, s.date]));
+  const sessionById = new Map(sessions.map((s) => [s.id, s]));
+  const rxBySession = readinessBySessionId(readinessLogs);
   const byWeek = new Map<string, WeeklyVolumeByGroup>();
 
   for (const s of sets) {
     if (s.status !== 'completed') continue;
-    const date = sessionDate.get(s.sessionLogId);
-    if (!date) continue;
+    const session = sessionById.get(s.sessionLogId);
+    if (!session) continue;
+    const date = session.date;
     const lift = liftMap.get(s.liftId);
     if (!lift) continue;
     const groups = lift.muscleGroups ?? [];
     if (groups.length === 0) continue;
     const wk = isoWeekOf(date);
+    const bw = bodyweightLbForSessionVolume(session, rxBySession.get(s.sessionLogId), bodyweightLogs);
 
     let bucket = byWeek.get(wk);
     if (!bucket) {
@@ -681,7 +755,7 @@ export function buildWeeklyMuscleVolume(
       byWeek.set(wk, bucket);
     }
 
-    const vol = s.weight > 0 ? s.weight * s.reps : 0;
+    const vol = strengthVolumeLbForSet(s, lift, bw);
     for (const g of groups) {
       bucket.volumeByGroup[g] = (bucket.volumeByGroup[g] ?? 0) + vol;
       bucket.setsByGroup[g] = (bucket.setsByGroup[g] ?? 0) + 1;
@@ -868,8 +942,10 @@ export function sessionStrengthDensity(
   session: SessionLog,
   sets: SetLog[],
   lifts: Lift[],
+  bodyweightLogs: BodyweightLog[] = [],
+  readinessLogs: ReadinessLog[] = [],
 ): { strengthVolumeLb: number; durationMs: number | null; lbPerHour: number | null } {
-  const highlights = sessionFinishHighlights(session.id, sets, lifts);
+  const highlights = sessionFinishHighlights(session, sets, lifts, bodyweightLogs, readinessLogs);
   const durationMs = sessionDurationMs(session, sets);
   return {
     strengthVolumeLb: highlights.strengthVolumeLb,
@@ -908,6 +984,8 @@ export function rollingStrengthTrainingWindow(
   sessions: SessionLog[],
   sets: SetLog[],
   lifts: Lift[],
+  bodyweightLogs: BodyweightLog[] = [],
+  readinessLogs: ReadinessLog[] = [],
 ): RollingStrengthTrainingWindow {
   const end = parseISO(endDateIso);
   const start = subDays(end, windowDays - 1);
@@ -923,7 +1001,7 @@ export function rollingStrengthTrainingWindow(
     if (!s.completedAt) continue;
     if (s.date < startStr || s.date > endStr) continue;
     completedSessions++;
-    const h = sessionFinishHighlights(s.id, sets, lifts);
+    const h = sessionFinishHighlights(s, sets, lifts, bodyweightLogs, readinessLogs);
     strengthVolumeLb += h.strengthVolumeLb;
     const dm = sessionDurationMs(s, sets);
     if (dm != null && dm > 0) {

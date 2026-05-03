@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   useAllBodyMeasurements,
   useAllBodyweight,
+  useAllReadiness,
   useAllSets,
   useLifts,
   useMacroTrendAdvice,
@@ -38,6 +39,10 @@ import {
   todayPlanPreferenceIsForToday,
   writeTodayPlanPreference,
 } from '@/lib/todayPlanPreference';
+import {
+  readSundayMondayEarlyUnlocked,
+  writeSundayMondayEarlyUnlocked,
+} from '@/lib/sundayMondayEarly';
 import { applyEffortScale, effortLabel } from '@/lib/effort';
 import { BodyweightQuickLog } from './BodyweightQuickLog';
 import { BodyMeasurementsQuickLog } from './BodyMeasurementsQuickLog';
@@ -83,6 +88,7 @@ export function TodayView() {
   const session = useTodaySession((activeId ?? 'U1') as TemplateId);
   const prescriptions = usePrescriptions((activeId ?? undefined) as TemplateId | undefined);
   const readiness = useReadinessForSession(session?.id);
+  const allReadiness = useAllReadiness();
   const allSets = useAllSets();
   const allBodyweight = useAllBodyweight();
   const allMeasurements = useAllBodyMeasurements();
@@ -100,8 +106,8 @@ export function TodayView() {
 
   const completeHighlights = useMemo(() => {
     if (!session?.completedAt || !allSets || !lifts) return null;
-    return sessionFinishHighlights(session.id, allSets, lifts);
-  }, [session, allSets, lifts]);
+    return sessionFinishHighlights(session, allSets, lifts, allBodyweight ?? [], allReadiness ?? []);
+  }, [session, allSets, lifts, allBodyweight, allReadiness]);
 
   // Auto-create today's session row. We re-check Dexie inside the effect
   // because `session` is briefly `undefined` while useLiveQuery resolves;
@@ -132,6 +138,11 @@ export function TodayView() {
     writeTodayPlanPreference({ date: session.date, templateId: session.templateId });
   }, [session]);
 
+  const [sundayMondayUnlocked, setSundayMondayUnlocked] = useState(false);
+  useEffect(() => {
+    setSundayMondayUnlocked(readSundayMondayEarlyUnlocked(todayIso()));
+  }, [session?.id, session?.date]);
+
   if (!templates || !lifts || !activeTemplate) {
     return <div className="p-6 text-zinc-500">Loading…</div>;
   }
@@ -142,8 +153,18 @@ export function TodayView() {
   const checkinFullyCompleted = Boolean(readiness);
   const checkinSkipped = !readiness && Boolean(session.readinessCompletedAt);
 
+  const isLocalSunday = new Date(`${todayIso()}T12:00:00`).getDay() === 0;
+  const sundayGateActive =
+    isLocalSunday
+    && !needsReadiness
+    && session.mode !== 'skip'
+    && !session.startedAt
+    && !session.completedAt
+    && !sundayMondayUnlocked;
+
   const showSessionDock =
     !needsReadiness &&
+    !sundayGateActive &&
     session.mode !== 'skip' &&
     (prescriptions?.length ?? 0) > 0 &&
     !session.completedAt;
@@ -170,12 +191,13 @@ export function TodayView() {
         template={activeTemplate}
         session={session}
         templates={templates}
+        hideTemplatePicker={sundayGateActive}
         onTemplateChange={(t) => {
           setChosenTemplateId(t.id);
           writeTodayPlanPreference({ date: todayIso(), templateId: t.id });
         }}
       />
-      <SessionGoalsCard sessionId={session.id} />
+      {!sundayGateActive && <SessionGoalsCard sessionId={session.id} />}
       <MindfulnessTodayCard session={session} readiness={readiness} />
       <DayNotesCard date={todayIso()} />
       {(weeklyFlags.bodyweightOverdue || weeklyFlags.measurementsOverdue) && (
@@ -226,6 +248,30 @@ export function TodayView() {
             <div className="text-sm">No sets to log. Switch back to Standard or Light if plans change.</div>
           </div>
         </>
+      ) : sundayGateActive ? (
+        <>
+          {readiness && (
+            <ReadinessSummary readiness={readiness} session={session} allowEdit />
+          )}
+          <div className="rounded-2xl border border-zinc-700 bg-zinc-900/80 px-4 py-5 space-y-3">
+            <div className="text-sm font-medium text-zinc-200">Monday&apos;s workout</div>
+            <p className="text-xs text-zinc-500 leading-relaxed">
+              Your check-in is done for Sunday. Monday&apos;s session stays tucked away until you open it
+              (or until Monday).
+            </p>
+            <button
+              type="button"
+              onClick={() => {
+                const d = todayIso();
+                writeSundayMondayEarlyUnlocked(d);
+                setSundayMondayUnlocked(true);
+              }}
+              className="w-full h-12 rounded-xl bg-amber-500 text-zinc-950 text-sm font-semibold"
+            >
+              Tap here to start Monday&apos;s workout
+            </button>
+          </div>
+        </>
       ) : (
         <div className="space-y-3">
           {readiness && (
@@ -251,7 +297,7 @@ export function TodayView() {
         </div>
       )}
 
-      {!needsReadiness && session.mode !== 'skip' && (
+      {!needsReadiness && session.mode !== 'skip' && !sundayGateActive && (
         <>
           {(session.effortScale ?? 0) !== 0 && (
             <div className="text-xs text-zinc-500 text-center">

@@ -1,9 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import {
   buildRoutineMarkdown,
+  buildUpcomingWeekRoutineMarkdown,
   isoDatesEndingToday,
+  isoDatesBeforeWeek,
   PROGRESSION_RULES_MARKDOWN,
+  upcomingTrainingIsoWeekRange,
+  UPCOMING_WEEK_CONTEXT_SIGNAL_DAYS,
 } from '@/lib/exportRoutineMarkdown';
+import { addDaysIso } from '@/lib/time';
+import { isoWeekOf, startOfWeekIso } from '@/lib/stats';
 import type {
   Lift,
   NutritionLog,
@@ -137,5 +143,43 @@ describe('exportRoutineMarkdown', () => {
   it('isoDatesEndingToday returns chronological ISO dates', () => {
     const dates = isoDatesEndingToday(3, new Date('2026-05-03T12:00:00'));
     expect(dates).toEqual(['2026-05-01', '2026-05-02', '2026-05-03']);
+  });
+
+  it('upcomingTrainingIsoWeekRange is the Monday–Sunday after the current ISO week', () => {
+    const today = '2026-05-03';
+    const thisMonday = startOfWeekIso(isoWeekOf(today));
+    const r = upcomingTrainingIsoWeekRange(today);
+    expect(r.monday).toBe(addDaysIso(thisMonday, 7));
+    expect(r.sunday).toBe(addDaysIso(r.monday, 6));
+    expect(r.isoWeekLabel).toBe(isoWeekOf(r.monday));
+  });
+
+  it('isoDatesBeforeWeek returns oldest-first dates immediately before the week', () => {
+    expect(isoDatesBeforeWeek('2026-05-11', 3)).toEqual(['2026-05-08', '2026-05-09', '2026-05-10']);
+  });
+
+  it('buildUpcomingWeekRoutineMarkdown scopes title and signal window', () => {
+    const md = buildUpcomingWeekRoutineMarkdown({
+      exportedAtIso: '2026-05-03T12:00:00.000Z',
+      todayIso: '2026-05-03',
+      templates,
+      lifts,
+      prescriptions,
+      nutritionByDate: new Map(),
+      sleepByDate: new Map(),
+      stressByDate: new Map(),
+      mesoNote: 'Meso 1 · Week 2 of 5',
+    });
+    expect(md).toContain('# Upcoming week in training (for Claude)');
+    expect(md).toContain('**Mesocycle');
+    expect(md).toContain('Meso 1 · Week 2 of 5');
+    expect(md).toContain('### U1 — Monday');
+    const mon = upcomingTrainingIsoWeekRange('2026-05-03').monday;
+    const expectedSignalDays = isoDatesBeforeWeek(mon, UPCOMING_WEEK_CONTEXT_SIGNAL_DAYS);
+    expect(expectedSignalDays.length).toBe(UPCOMING_WEEK_CONTEXT_SIGNAL_DAYS);
+    for (const d of expectedSignalDays) {
+      expect(md).toContain(d);
+    }
+    expect(md).toContain('Claude .md** on Program');
   });
 });

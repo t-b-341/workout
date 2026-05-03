@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { useMemo } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { getDb } from '@/lib/db';
-import { useAllSets, useLifts, useSessionsAfterReadiness } from '@/lib/hooks';
+import { useAllBodyweight, useAllReadiness, useAllSets, useLifts, useSessionsAfterReadiness } from '@/lib/hooks';
 import { fmtDate } from '@/lib/time';
 import { buildLiftHistory, est1RM, liftPRs } from '@/lib/stats';
 import { MiniBars, Sparkline } from './Sparkline';
@@ -15,14 +15,19 @@ export function LiftDetailView({ liftId }: { liftId: string }) {
   const lifts = useLifts();
   const allSets = useAllSets();
   const allSessions = useSessionsAfterReadiness();
+  const allBw = useAllBodyweight();
+  const allRx = useAllReadiness();
   const prescriptions = useLiveQuery(async () => {
     const all = await getDb().prescriptions.where('liftId').equals(liftId).toArray();
     return all.sort((a, b) => a.templateId.localeCompare(b.templateId));
   }, [liftId]);
 
   const points = useMemo(
-    () => (allSets && allSessions ? buildLiftHistory(liftId, allSets, allSessions) : []),
-    [liftId, allSets, allSessions],
+    () =>
+      allSets && allSessions && allBw != null && allRx != null
+        ? buildLiftHistory(liftId, allSets, allSessions, allBw, allRx)
+        : [],
+    [liftId, allSets, allSessions, allBw, allRx],
   );
   const prs = useMemo(
     () => (allSets && allSessions
@@ -31,7 +36,7 @@ export function LiftDetailView({ liftId }: { liftId: string }) {
     [liftId, allSets, allSessions],
   );
 
-  if (!lifts || !allSets || !allSessions || !prescriptions) {
+  if (!lifts || !allSets || !allSessions || !prescriptions || allBw == null || allRx == null) {
     return <div className="p-6 text-zinc-500">Loading…</div>;
   }
   const lift = lifts.find((l) => l.id === liftId);

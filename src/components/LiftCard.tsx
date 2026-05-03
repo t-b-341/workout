@@ -2,10 +2,12 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import {
+  useAllBodyweight,
   useAllSessions,
   useAllSets,
   useLastSessionsForLift,
   useLifts,
+  useReadinessForSession,
   useSetsForSession,
 } from '@/lib/hooks';
 import { localDelete, localUpsert } from '@/lib/sync';
@@ -14,6 +16,7 @@ import { DecimalStepper, RepStepper, RirStepper, WeightStepper } from './WeightS
 import { fmtDate } from '@/lib/time';
 import { platesPerSide } from '@/lib/plates';
 import { snapWorkingWeight } from '@/lib/progression';
+import { bodyweightLbForSessionVolume } from '@/lib/p1AssistedVolume';
 import { detectPR, detectLissIntensityPR, est1RM } from '@/lib/stats';
 import { RestTimer } from './RestTimer';
 import { rpeFromRir, shouldTrackRpeForReps } from '@/lib/rpe';
@@ -54,6 +57,15 @@ export function LiftCard({ prescription, lift, session }: Props) {
   const lifts = useLifts();
   const allSets = useAllSets();
   const allSessions = useAllSessions();
+  const readinessRow = useReadinessForSession(session.id);
+  const allBodyweight = useAllBodyweight();
+  const p1BwAnchor = useMemo(
+    () =>
+      prescription.liftId === 'p1_assisted'
+        ? bodyweightLbForSessionVolume(session, readinessRow, allBodyweight ?? [])
+        : undefined,
+    [prescription.liftId, session, readinessRow, allBodyweight],
+  );
   const [openSubs, setOpenSubs] = useState<number | null>(null);
   const [reasonDraft, setReasonDraft] = useState('');
   const [substituteId, setSubstituteId] = useState<string>('');
@@ -310,6 +322,7 @@ export function LiftCard({ prescription, lift, session }: Props) {
                     initialRir={existing?.rir}
                     initialSpeedMph={existing?.speedMph ?? 2}
                     initialGradePct={existing?.gradePct ?? 3}
+                    bodyweightLb={p1BwAnchor}
                     onSave={(weight, reps, rir, status, cardioMeta) =>
                       logSet({ setIndex: idx, side, weight, reps, rir, status, cardioMeta })
                     }
@@ -474,6 +487,7 @@ function SetRow({
   initialRir,
   initialSpeedMph,
   initialGradePct,
+  bodyweightLb,
   onSave,
   done,
 }: {
@@ -486,6 +500,8 @@ function SetRow({
   initialRir?: number;
   initialSpeedMph: number;
   initialGradePct: number;
+  /** Session bodyweight anchor for `p1_assisted` moved-load estimate. */
+  bodyweightLb?: number;
   onSave: (
     weight: number,
     reps: number,
@@ -621,6 +637,24 @@ function SetRow({
           <div className="text-[11px] text-zinc-500">RPE hidden for sets over 12 reps</div>
         )}
       </div>
+      {lift.id === 'p1_assisted' && showWeight && (
+        <p className="text-[10px] text-zinc-500 leading-snug">
+          {bodyweightLb != null && bodyweightLb > 0 ? (
+            <>
+              Est. weight moved (concentric):{' '}
+              <span className="font-mono text-zinc-300">
+                ~{Math.round(Math.max(0, bodyweightLb - w) * r)} lb
+              </span>
+              {' '}
+              <span className="text-zinc-600">
+                ({bodyweightLb} lb BW − {w} lb assist × {r})
+              </span>
+            </>
+          ) : (
+            <>Log bodyweight in check-in or the BW tab to estimate moved load from assistance.</>
+          )}
+        </p>
+      )}
       <div className="flex gap-2">
         <button
           onClick={() => onSave(w, r, trackRpe ? rir : undefined, 'completed', cardioMeta())}

@@ -42,11 +42,19 @@ export async function buildSessionRecapPayload(opts: {
   const allSets = await db.set_logs.toArray();
   const allSessions = await db.session_logs.toArray();
   const lifts = await db.lifts.toArray();
+  const bodyweightLogs = await db.bodyweight_logs.toArray();
+  const readinessLogs = await db.readiness_logs.toArray();
   const tmpl = await db.templates.get(session.templateId);
 
   const prs = sessionRecapPRs(session.id, allSets, allSessions, lifts);
-  const highlights = sessionFinishHighlights(session.id, sessionSets, lifts);
-  const { lbPerHour: strengthLbPerHour } = sessionStrengthDensity(session, sessionSets, lifts);
+  const highlights = sessionFinishHighlights(session, sessionSets, lifts, bodyweightLogs, readinessLogs);
+  const { lbPerHour: strengthLbPerHour } = sessionStrengthDensity(
+    session,
+    sessionSets,
+    lifts,
+    bodyweightLogs,
+    readinessLogs,
+  );
   const durationMs = sessionDurationMs(session, sessionSets);
 
   return {
