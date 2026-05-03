@@ -23,6 +23,40 @@ import type {
 
 type RemoteTable = DirtyRow['table'];
 
+/** Lower tier = earlier in upsert batch; negate for delete batch (children before parents). */
+const FLUSH_TABLE_TIER: Record<RemoteTable, number> = {
+  prescriptions: 0,
+  session_logs: 1,
+  set_logs: 2,
+  cardio_logs: 2,
+  readiness_logs: 2,
+  bodyweight_logs: 3,
+  body_measurement_logs: 3,
+  nutrition_logs: 3,
+  hydration_logs: 3,
+  sleep_logs: 3,
+  stress_logs: 3,
+  injury_episodes: 3,
+  body_readiness_logs: 3,
+};
+
+/** Order dirty rows so FKs succeed (parents before children on upsert; upserts before deletes). */
+export function sortDirtyQueueForFlush(items: DirtyRow[]): DirtyRow[] {
+  return [...items].sort((a, b) => {
+    const opKey = (op: DirtyRow['op']) => (op === 'upsert' ? 0 : 1);
+    const cmpOp = opKey(a.op) - opKey(b.op);
+    if (cmpOp !== 0) return cmpOp;
+
+    const tierA = FLUSH_TABLE_TIER[a.table];
+    const tierB = FLUSH_TABLE_TIER[b.table];
+    const tableKeyA = a.op === 'upsert' ? tierA : -tierA;
+    const tableKeyB = b.op === 'upsert' ? tierB : -tierB;
+    if (tableKeyA !== tableKeyB) return tableKeyA - tableKeyB;
+
+    return a.enqueuedAt - b.enqueuedAt;
+  });
+}
+
 const TABLE_TO_LOCAL: Record<RemoteTable, keyof ReturnType<typeof getDb> & string> = {
   prescriptions: 'prescriptions',
   session_logs: 'session_logs',
@@ -200,7 +234,7 @@ export async function enqueueDirty(table: RemoteTable, rowId: string, op: DirtyR
 export async function flushDirty() {
   const db = getDb();
   const supabase = createClient();
-  const dirty = await db.dirty.orderBy('enqueuedAt').toArray();
+  const dirty = sortDirtyQueueForFlush(await db.dirty.toArray());
   if (dirty.length === 0) return;
 
   let refreshed = false;
