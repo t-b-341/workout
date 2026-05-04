@@ -48,13 +48,15 @@ export function ReadinessForm({
         sleepHours: sleep,
         soreness,
         motivation,
-        hrvRmssd: hrvSkipped ? undefined : hrvRmssd,
-        hrvMeasuredMin: hrvSkipped ? undefined : 5,
         hrvSkipped,
         bodyweight: showBwInput ? bw : undefined,
         mindfulnessMinutes,
         createdAt: new Date().toISOString(),
       };
+      if (!hrvSkipped) {
+        row.hrvRmssd = hrvRmssd;
+        row.hrvMeasuredMin = 5;
+      }
       await localUpsert('readiness_logs', row);
 
       if (showBwInput) {
@@ -247,16 +249,14 @@ export function ReadinessEditForm({
         hrvRmssd: hrvSkipped ? undefined : hrvRmssd,
         hrvSkipped,
       });
-      const row: ReadinessLog = {
-        ...readiness,
-        sleepHours: sleep,
-        soreness,
-        motivation,
-        hrvRmssd: hrvSkipped ? undefined : hrvRmssd,
-        hrvMeasuredMin: hrvSkipped ? undefined : 5,
-        hrvSkipped,
-        bodyweight: hadBw ? bw : undefined,
-      };
+      const row: ReadinessLog = { ...readiness, sleepHours: sleep, soreness, motivation, hrvSkipped, bodyweight: hadBw ? bw : undefined };
+      if (hrvSkipped) {
+        delete row.hrvRmssd;
+        delete row.hrvMeasuredMin;
+      } else {
+        row.hrvRmssd = hrvRmssd;
+        row.hrvMeasuredMin = 5;
+      }
       await localUpsert('readiness_logs', row);
       if (hadBw) {
         await localUpsert('bodyweight_logs', {

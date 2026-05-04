@@ -10,6 +10,8 @@ import {
   sessionDateFromMindfulnessSessionId,
 } from './mindfulnessPending';
 import { loadWellnessTargets } from './wellnessTargets';
+import { defaultTemplateForLocalDate } from './seed';
+import { readTodayPlanPreference, todayPlanPreferenceIsForToday } from './todayPlanPreference';
 import { isoWeekString, weekRange, todayIso } from './time';
 import { buildMacroTrendAdvice, priorDatesExclusive } from './macroTrend';
 import { filterSessionsAfterReadiness } from './sessionFilters';
@@ -45,6 +47,32 @@ export function useLifts() {
 
 export function useTemplates() {
   return useLiveQuery(() => getDb().templates.toArray(), []);
+}
+
+/**
+ * Which program day (template) is “today” for the user: same rules as the Today tab
+ * (saved `workout:todayPlan:v1` for the calendar day, else weekly default, else U1).
+ * Use with `useTodaySession` so readiness / session rows match across tabs.
+ */
+export function useTodayPlanTemplateId(): TemplateId {
+  const templates = useTemplates();
+  const [chosenTemplateId] = useState<TemplateId | null>(() => {
+    if (typeof window === 'undefined') return null;
+    const p = readTodayPlanPreference();
+    return todayPlanPreferenceIsForToday(p) ? p.templateId : null;
+  });
+
+  const validatedChosenTemplateId = useMemo((): TemplateId | null => {
+    if (!chosenTemplateId || !templates?.length) return null;
+    return templates.some((t) => t.id === chosenTemplateId) ? chosenTemplateId : null;
+  }, [templates, chosenTemplateId]);
+
+  const suggested = useMemo(() => {
+    if (!templates?.length) return undefined;
+    return defaultTemplateForLocalDate(templates);
+  }, [templates]);
+
+  return validatedChosenTemplateId ?? suggested?.id ?? 'U1';
 }
 
 export function useTodaySession(templateId: TemplateId): SessionLog | undefined {

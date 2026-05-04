@@ -9,6 +9,7 @@ import {
   useNutritionForDate,
   useSleepForDate,
   useStressForDate,
+  useTodayPlanTemplateId,
   useTodaySession,
   useReadinessForSession,
 } from '@/lib/hooks';
@@ -25,7 +26,7 @@ import { kcalFromMacros } from '@/lib/macros';
 import { deriveMealMetrics, sortMealTimestamps } from '@/lib/mealTiming';
 import { flushDirty, localUpsert } from '@/lib/sync';
 import { todayIso } from '@/lib/time';
-import type { HydrationLog, NutritionLog, StressLog, TemplateId } from '@/lib/types';
+import type { HydrationLog, NutritionLog, StressLog } from '@/lib/types';
 import { BodyweightQuickLog } from './BodyweightQuickLog';
 import { InjuryTrackingPanel } from './InjuryTrackingPanel';
 import { MacroTrendCallout } from './MacroTrendCallout';
@@ -196,7 +197,8 @@ export function RecoveryView() {
   const hydration = useHydrationForDate(date);
   const sleep = useSleepForDate(date);
   const stress = useStressForDate(date);
-  const session = useTodaySession('U1' as TemplateId);
+  const todayPlanTemplateId = useTodayPlanTemplateId();
+  const session = useTodaySession(todayPlanTemplateId);
   const readiness = useReadinessForSession(session?.id);
 
   const score = useMemo(

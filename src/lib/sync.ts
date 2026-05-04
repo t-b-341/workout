@@ -274,7 +274,12 @@ async function pushOne(item: DirtyRow): Promise<Error | null> {
   // its trigger so we don't fight the canonical value.
   const { updatedAt: _ignore, ...rest } = row as Record<string, unknown>;
   void _ignore;
-  const { error } = await supabase.from(item.table).upsert(toRemote(rest));
+  let payload = toRemote(rest) as Record<string, unknown>;
+  // Supabase upsert omits undefined keys — cleared locals must send null to wipe RMSSD on skip.
+  if (item.table === 'readiness_logs' && (rest as ReadinessLog).hrvSkipped === true) {
+    payload = { ...payload, hrv_rmssd: null, hrv_measured_min: null };
+  }
+  const { error } = await supabase.from(item.table).upsert(payload);
   return error ?? null;
 }
 
