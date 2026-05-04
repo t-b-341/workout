@@ -6,6 +6,7 @@ import {
   strengthVolumeLbForSet,
 } from './p1AssistedVolume';
 import type {
+  BodyMeasurementLog,
   BodyweightLog,
   CardioLog,
   Lift,
@@ -823,6 +824,42 @@ export function bodyweightSeries(logs: BodyweightLog[]): BodyweightPoint[] {
       isoWeek: sorted[i].isoWeek,
       bodyweight: sorted[i].bodyweight,
       rolling4w: avg,
+    });
+  }
+  return out;
+}
+
+export type BodyMeasurementPoint = {
+  date: string;
+  isoWeek: string;
+  waist: number;
+  abdomen: number;
+  hips: number;
+  /** 4-entry trailing average of weeks (up to last 4 data points, same as bodyweight rolling). */
+  rollingWaist4w: number;
+  rollingAbdomen4w: number;
+  rollingHips4w: number;
+};
+
+export function bodyMeasurementSeries(logs: BodyMeasurementLog[]): BodyMeasurementPoint[] {
+  const sorted = [...logs].sort((a, b) => (a.date < b.date ? -1 : 1));
+  const out: BodyMeasurementPoint[] = [];
+  for (let i = 0; i < sorted.length; i++) {
+    const window = sorted.slice(Math.max(0, i - 3), i + 1);
+    const n = window.length;
+    const rw = window.reduce((s, x) => s + x.waist, 0) / n;
+    const ra = window.reduce((s, x) => s + x.abdomen, 0) / n;
+    const rh = window.reduce((s, x) => s + x.hips, 0) / n;
+    const row = sorted[i]!;
+    out.push({
+      date: row.date,
+      isoWeek: isoWeekOf(row.date),
+      waist: row.waist,
+      abdomen: row.abdomen,
+      hips: row.hips,
+      rollingWaist4w: rw,
+      rollingAbdomen4w: ra,
+      rollingHips4w: rh,
     });
   }
   return out;

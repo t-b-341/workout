@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useMemo, useState } from 'react';
 import {
   useAllBodyweight,
+  useAllBodyMeasurements,
   useAllCardio,
   useAllReadiness,
   useAllStress,
@@ -17,6 +18,7 @@ import { sortSetLogsForSession } from '@/lib/sessionFilters';
 import { localDelete, localUpsert } from '@/lib/sync';
 import { fmtDate, todayIso } from '@/lib/time';
 import {
+  bodyMeasurementSeries,
   bodyweightSeries,
   buildLiftHistory,
   buildWeeklyMuscleVolume,
@@ -38,6 +40,7 @@ import { PageShell } from './PageShell';
 import { MUSCLE_GROUPS, PATTERNS } from '@/lib/seed';
 import { defaultWellnessTargets, useWellnessTargets, type WellnessTargets } from '@/lib/wellnessTargets';
 import type {
+  BodyMeasurementLog,
   BodyweightLog,
   CardioLog,
   Lift,
@@ -49,7 +52,7 @@ import type {
   StressLog,
 } from '@/lib/types';
 
-type Tab = 'sessions' | 'trends' | 'weeks' | 'prs' | 'muscle' | 'bodyweight' | 'diet';
+type Tab = 'sessions' | 'trends' | 'weeks' | 'prs' | 'muscle' | 'bodyweight' | 'measurements' | 'diet';
 
 const TABS: Array<{ id: Tab; label: string }> = [
   { id: 'sessions', label: 'Sessions' },
@@ -58,6 +61,7 @@ const TABS: Array<{ id: Tab; label: string }> = [
   { id: 'prs', label: 'PRs' },
   { id: 'muscle', label: 'Muscle' },
   { id: 'bodyweight', label: 'BW' },
+  { id: 'measurements', label: 'Measure' },
   { id: 'diet', label: 'Diet' },
 ];
 
@@ -68,13 +72,24 @@ export function HistoryView() {
   const allSets = useAllSets();
   const cardio = useAllCardio();
   const bodyweights = useAllBodyweight();
+  const bodyMeasurements = useAllBodyMeasurements();
   const readiness = useAllReadiness();
   const stress = useAllStress();
   const nutrition = useAllNutrition();
   const wellnessTargets = useWellnessTargets();
   const wkTargets = wellnessTargets ?? defaultWellnessTargets();
 
-  if (!lifts || !sessions || !allSets || !cardio || !bodyweights || !readiness || !stress || !nutrition) {
+  if (
+    !lifts ||
+    !sessions ||
+    !allSets ||
+    !cardio ||
+    !bodyweights ||
+    !bodyMeasurements ||
+    !readiness ||
+    !stress ||
+    !nutrition
+  ) {
     return <div className="p-6 text-zinc-500">Loading…</div>;
   }
 
@@ -82,7 +97,7 @@ export function HistoryView() {
     <PageShell className="p-4 space-y-4">
       <h1 className="text-2xl font-semibold">History</h1>
 
-      <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-1 rounded-xl bg-zinc-900 border border-zinc-800 p-1">
+      <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-1 rounded-xl bg-zinc-900 border border-zinc-800 p-1">
         {TABS.map((t) => (
           <button
             key={t.id}
@@ -113,6 +128,7 @@ export function HistoryView() {
         <MuscleList sessions={sessions} sets={allSets} lifts={lifts} bodyweights={bodyweights} readiness={readiness} />
       )}
       {tab === 'bodyweight' && <BodyweightList logs={bodyweights} />}
+      {tab === 'measurements' && <MeasurementsList logs={bodyMeasurements} />}
       {tab === 'diet' && <DietList logs={nutrition} />}
     </PageShell>
   );
@@ -985,6 +1001,123 @@ function DietList({ logs }: { logs: NutritionLog[] }) {
               <div className="rounded-lg bg-zinc-950/80 px-2 py-1.5 border border-zinc-800">
                 <span className="text-zinc-500">F </span>
                 {n.fatActualG}/{n.fatTargetG}g
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function MeasurementsList({ logs }: { logs: BodyMeasurementLog[] }) {
+  const points = useMemo(() => bodyMeasurementSeries(logs), [logs]);
+  if (points.length === 0) {
+    return (
+      <div className="text-zinc-500 text-sm space-y-1">
+        <p>No body measurements yet.</p>
+        <p className="text-xs text-zinc-600">Log waist, abdomen, and hips (in) from Today or the Daily Check-In.</p>
+      </div>
+    );
+  }
+
+  const last = points[points.length - 1];
+  const first = points[0];
+
+  const metrics = [
+    {
+      key: 'waist' as const,
+      label: 'Waist',
+      hint: 'narrowest',
+      raw: points.map((p) => p.waist),
+      roll: points.map((p) => p.rollingWaist4w),
+      latest: last.waist,
+      firstVal: first.waist,
+      stroke: '#22d3ee',
+    },
+    {
+      key: 'abdomen' as const,
+      label: 'Abdomen',
+      hint: 'at navel',
+      raw: points.map((p) => p.abdomen),
+      roll: points.map((p) => p.rollingAbdomen4w),
+      latest: last.abdomen,
+      firstVal: first.abdomen,
+      stroke: '#a78bfa',
+    },
+    {
+      key: 'hips' as const,
+      label: 'Hips',
+      hint: 'widest',
+      raw: points.map((p) => p.hips),
+      roll: points.map((p) => p.rollingHips4w),
+      latest: last.hips,
+      firstVal: first.hips,
+      stroke: '#f472b6',
+    },
+  ];
+
+  return (
+    <div className="space-y-3">
+      <p className="text-xs text-zinc-500">
+        Trends use your logged inches. The dashed line is a rolling average of the last up to four entries (same window as
+        bodyweight on the BW tab).
+      </p>
+      {metrics.map((m) => {
+        const delta = +(m.latest - m.firstVal).toFixed(2);
+        return (
+          <div
+            key={m.key}
+            className="rounded-2xl bg-zinc-900 border border-zinc-800 p-4 space-y-3"
+          >
+            <div className="flex items-baseline justify-between gap-2">
+              <div>
+                <div className="text-xs uppercase tracking-wider text-zinc-500">
+                  {m.label} <span className="normal-case text-zinc-600">· {m.hint}</span>
+                </div>
+                <div className="text-3xl font-mono text-zinc-100">
+                  {m.latest} <span className="text-sm text-zinc-500">in</span>
+                </div>
+                <div className="text-xs text-zinc-500">
+                  {fmtDate(last.date, 'EEE M/d')} · {last.isoWeek}
+                </div>
+              </div>
+              <div className="text-right">
+                <div className="text-xs uppercase tracking-wider text-zinc-500">vs first entry</div>
+                <div className="text-2xl font-mono text-zinc-300">
+                  {delta > 0 ? '+' : ''}
+                  {delta} <span className="text-xs">in</span>
+                </div>
+                <div className="text-xs text-zinc-500">{points.length} entries</div>
+              </div>
+            </div>
+            <div>
+              <div className="text-xs uppercase tracking-wider text-zinc-500 mb-1">Trend (raw + rolling avg)</div>
+              <Sparkline values={m.raw} overlay={m.roll} height={120} stroke={m.stroke} />
+            </div>
+          </div>
+        );
+      })}
+
+      <div className="rounded-2xl bg-zinc-900 border border-zinc-800 divide-y divide-zinc-800">
+        {[...points].reverse().slice(0, 24).map((p) => (
+          <div key={p.date} className="p-3 flex flex-wrap items-baseline justify-between gap-2 text-sm">
+            <div>
+              <div className="text-zinc-300">{fmtDate(p.date, 'EEE MMM d, yyyy')}</div>
+              <div className="text-xs text-zinc-500">{p.isoWeek}</div>
+            </div>
+            <div className="flex gap-4 text-right font-mono text-xs sm:text-sm">
+              <div>
+                <span className="text-zinc-600">W </span>
+                <span className="text-cyan-300/90">{p.waist}</span>
+              </div>
+              <div>
+                <span className="text-zinc-600">A </span>
+                <span className="text-violet-300/90">{p.abdomen}</span>
+              </div>
+              <div>
+                <span className="text-zinc-600">H </span>
+                <span className="text-pink-300/90">{p.hips}</span>
               </div>
             </div>
           </div>
