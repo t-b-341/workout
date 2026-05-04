@@ -381,7 +381,7 @@ function StressSection({
   }
 
   async function removeEntry(id: string) {
-    await localDelete('stress_logs', id);
+    await localDelete('stress_logs', id, { undoLabel: 'Stress check-in' });
     await flushDirty().catch(() => {});
   }
 

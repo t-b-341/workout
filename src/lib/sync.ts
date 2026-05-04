@@ -2,6 +2,7 @@
 
 import type { RealtimeChannel } from '@supabase/supabase-js';
 import { getDb, type DirtyRow } from './db';
+import { offerDeleteUndo, type UndoRemoteTable } from './deleteUndoCoordinator';
 import { createClient } from './supabase/client';
 import { LIFTS, PRESCRIPTIONS, TEMPLATES } from './seed';
 import { fromRemote, toRemote } from './syncCodec';
@@ -21,9 +22,15 @@ import type {
   StressLog,
 } from './types';
 
-type RemoteTable = DirtyRow['table'];
+export type RemoteTable = DirtyRow['table'];
 
-/** Lower tier = earlier in upsert batch; negate for delete batch (children before parents). */
+function cloneRowForUndo(row: Record<string, unknown>): Record<string, unknown> {
+  try {
+    return JSON.parse(JSON.stringify(row)) as Record<string, unknown>;
+  } catch {
+    return { ...row };
+  }
+}
 const FLUSH_TABLE_TIER: Record<RemoteTable, number> = {
   prescriptions: 0,
   session_logs: 1,
@@ -302,9 +309,23 @@ async function pushOne(item: DirtyRow): Promise<Error | null> {
 export type LocalWriteOpts = {
   /** Don't enqueue for push (use when the row came from a realtime payload). */
   skipDirty?: boolean;
+  /** When set with a non-skipped sync delete, shows a timed Undo toast. */
+  undoLabel?: string;
 };
 
-/** Local upsert + (by default) enqueue for sync. */
+/** Drops a queued delete before it flushes — safe no-op after the delete already synced. */
+export async function cancelPendingDirtyDelete(table: RemoteTable, rowId: string) {
+  await getDb().dirty.delete(`${table}:${rowId}`);
+}
+
+/** Re-inserts a row cancelled by accidental delete + re-queues upsert when appropriate. */
+export async function restoreDeletedRow(table: RemoteTable, snapshot: Record<string, unknown>) {
+  const id = snapshot.id as string | undefined;
+  if (!id) return;
+  await cancelPendingDirtyDelete(table, id);
+  await localUpsert(table, snapshot as { id: string });
+}
+
 export async function localUpsert<T extends { id: string }>(
   table: RemoteTable,
   row: T,
@@ -321,8 +342,20 @@ export async function localDelete(table: RemoteTable, id: string, opts: LocalWri
   const db = getDb();
   const localTable = db[TABLE_TO_LOCAL[table]];
   // @ts-expect-error dynamic table access
+  const row = await localTable.get(id);
+  // @ts-expect-error dynamic table access
   await localTable.delete(id);
   if (!opts.skipDirty) await enqueueDirty(table, id, 'delete');
+
+  const label = opts.undoLabel?.trim();
+  if (label && row && !opts.skipDirty) {
+    offerDeleteUndo({
+      kind: 'row',
+      table: table as UndoRemoteTable,
+      snapshot: cloneRowForUndo(row as Record<string, unknown>),
+      label,
+    });
+  }
 }
 
 /** Subscribe to Supabase Realtime postgres_changes for every user-scoped

@@ -134,7 +134,7 @@ export function ProgramEditor() {
     ) {
       return;
     }
-    await localDelete('prescriptions', p.id);
+    await localDelete('prescriptions', p.id, { undoLabel: `Program · ${name}` });
   }
 
   async function reorderPrescriptions(fromIndex: number, toIndex: number) {

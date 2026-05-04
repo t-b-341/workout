@@ -59,7 +59,7 @@ async function mirrorCardioFromSet(
     };
     await localUpsert('cardio_logs', cardioRow);
   } else {
-    await localDelete('cardio_logs', cardioId);
+    await localDelete('cardio_logs', cardioId, { undoLabel: 'Timer cardio' });
   }
 }
 

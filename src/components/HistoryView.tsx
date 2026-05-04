@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import { format } from 'date-fns';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { useMemo, useState } from 'react';
 import {
@@ -10,6 +11,7 @@ import {
   useAllReadiness,
   useAllStress,
   useAllNutrition,
+  useAllInjuryEpisodes,
   useSessionsAfterReadiness,
   useAllSets,
   useLifts,
@@ -17,7 +19,8 @@ import {
 } from '@/lib/hooks';
 import { getDb } from '@/lib/db';
 import { sortSetLogsForSession } from '@/lib/sessionFilters';
-import { localDelete, localUpsert } from '@/lib/sync';
+import { cancelPendingDirtyDelete, localDelete, localUpsert } from '@/lib/sync';
+import { offerDeleteUndo } from '@/lib/deleteUndoCoordinator';
 import { fmtDate, todayIso } from '@/lib/time';
 import {
   bodyMeasurementSeries,
@@ -51,10 +54,13 @@ import {
   describeHrvRecoveryVariability,
   measuredHrvAsc,
 } from '@/lib/hrvAnalytics';
+import { labelForSiteKey, type InjurySiteKey } from '@/lib/injurySites';
+
 import type {
   BodyMeasurementLog,
   BodyweightLog,
   CardioLog,
+  InjuryEpisode,
   Lift,
   MuscleGroup,
   NutritionLog,
@@ -74,6 +80,7 @@ type Tab =
   | 'bodyweight'
   | 'measurements'
   | 'diet'
+  | 'injuries'
   | 'hrv'
   | 'types';
 
@@ -87,6 +94,7 @@ const TABS: Array<{ id: Tab; label: string }> = [
   { id: 'bodyweight', label: 'BW' },
   { id: 'measurements', label: 'Measure' },
   { id: 'diet', label: 'Diet' },
+  { id: 'injuries', label: 'Injuries' },
   { id: 'hrv', label: 'HRV' },
 ];
 
@@ -102,6 +110,7 @@ export function HistoryView() {
   const readiness = useAllReadiness();
   const stress = useAllStress();
   const nutrition = useAllNutrition();
+  const episodes = useAllInjuryEpisodes();
   const wellnessTargets = useWellnessTargets();
   const wkTargets = wellnessTargets ?? defaultWellnessTargets();
 
@@ -115,7 +124,8 @@ export function HistoryView() {
     !bodyMeasurements ||
     !readiness ||
     !stress ||
-    !nutrition
+    !nutrition ||
+    !episodes
   ) {
     return <div className="p-6 text-zinc-500">Loading…</div>;
   }
@@ -124,7 +134,7 @@ export function HistoryView() {
     <PageShell className="p-4 space-y-4">
       <h1 className="text-2xl font-semibold">History</h1>
 
-      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-1 rounded-xl bg-zinc-900 border border-zinc-800 p-1">
+      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 lg:grid-cols-6 gap-1 rounded-xl bg-zinc-900 border border-zinc-800 p-1">
         {TABS.map((t) => (
           <button
             key={t.id}
@@ -167,6 +177,7 @@ export function HistoryView() {
       {tab === 'bodyweight' && <BodyweightList logs={bodyweights} />}
       {tab === 'measurements' && <MeasurementsList logs={bodyMeasurements} />}
       {tab === 'diet' && <DietList logs={nutrition} />}
+      {tab === 'injuries' && <InjuriesList episodes={episodes} />}
       {tab === 'hrv' && <HrvList readiness={readiness} />}
     </PageShell>
   );
@@ -1051,6 +1062,143 @@ function MuscleList({
   );
 }
 
+function injuryEpisodeDurationDays(startIso: string, endIso: string): number {
+  const ms = new Date(endIso).getTime() - new Date(startIso).getTime();
+  return Math.max(0, Math.round(ms / (24 * 60 * 60 * 1000)));
+}
+
+function fmtInjuryInstant(iso: string): string {
+  try {
+    return format(new Date(iso), 'MMM d, yyyy · h:mm a');
+  } catch {
+    return iso;
+  }
+}
+
+function InjuriesList({ episodes }: { episodes: InjuryEpisode[] }) {
+  const activeBySite = useMemo(() => {
+    const m = new Map<string, InjuryEpisode>();
+    for (const e of episodes) {
+      if (e.endedAt) continue;
+      const prev = m.get(e.siteKey);
+      if (!prev || e.startedAt > prev.startedAt) m.set(e.siteKey, e);
+    }
+    return m;
+  }, [episodes]);
+
+  const activeList = useMemo(() => {
+    return Array.from(activeBySite.entries()).sort((a, b) =>
+      labelForSiteKey(a[0] as InjurySiteKey).localeCompare(labelForSiteKey(b[0] as InjurySiteKey)),
+    );
+  }, [activeBySite]);
+
+  const timeline = useMemo(
+    () => [...episodes].sort((a, b) => b.startedAt.localeCompare(a.startedAt)),
+    [episodes],
+  );
+
+  if (episodes.length === 0) {
+    return (
+      <div className="text-zinc-500 text-sm space-y-2">
+        <p>No body-area episodes yet.</p>
+        <p>
+          Turn sites on under{' '}
+          <Link href="/recovery" className="text-amber-400 hover:underline">
+            Daily Check-In
+          </Link>
+          &nbsp;→ <span className="text-zinc-400">&quot;Current injuries &amp; body state.&quot;</span> Active sites
+          and notes sync here automatically.
+        </p>
+      </div>
+    );
+  }
+
+  const resolvedN = timeline.filter((e) => Boolean(e.endedAt)).length;
+
+  return (
+    <div className="space-y-4">
+      <p className="text-sm text-zinc-400">
+        Same log as Daily Check-In —{' '}
+        <Link href="/recovery" className="text-amber-400 hover:underline">
+          open Check-In to edit
+        </Link>
+        .
+      </p>
+
+      {activeList.length > 0 && (
+        <div className="rounded-2xl border border-amber-500/25 bg-amber-950/20 px-4 py-3 space-y-2">
+          <div className="text-[11px] uppercase tracking-wider text-amber-200/80">Active areas</div>
+          <ul className="flex flex-wrap gap-2">
+            {activeList.map(([sk, ep]) => (
+              <li
+                key={sk}
+                className="text-xs rounded-lg bg-zinc-900 border border-zinc-700 px-2.5 py-1 text-zinc-200"
+              >
+                <span>{labelForSiteKey(sk as InjurySiteKey)}</span>
+                <span className="text-zinc-500"> · {ep.kind}</span>
+                <span className="text-zinc-600 font-mono text-[11px] block mt-0.5">
+                  since {fmtInjuryInstant(ep.startedAt)}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      <div className="rounded-2xl bg-zinc-900 border border-zinc-800 p-4">
+        <div className="text-xs uppercase tracking-wider text-zinc-500">Summary</div>
+        <div className="mt-1 text-sm text-zinc-300">
+          <span className="font-mono text-amber-400/90">{activeList.length}</span> active
+          {activeList.length === 1 ? ' site' : ' sites'} ·{' '}
+          <span className="font-mono text-zinc-400">{resolvedN}</span> resolved episode{resolvedN === 1 ? '' : 's'} ·{' '}
+          <span className="font-mono text-zinc-400">{timeline.length}</span> total episode
+          {timeline.length === 1 ? '' : 's'}
+        </div>
+      </div>
+
+      <div className="rounded-2xl bg-zinc-900 border border-zinc-800 divide-y divide-zinc-800">
+        <div className="px-4 py-3 text-xs uppercase tracking-wider text-zinc-500">
+          Timeline (most recent started first)
+        </div>
+        {timeline.map((e) => {
+          const site = labelForSiteKey(e.siteKey as InjurySiteKey);
+          const open = !e.endedAt;
+          return (
+            <div key={e.id} className="p-4 space-y-2">
+              <div className="flex flex-wrap items-baseline justify-between gap-2">
+                <div>
+                  <div className="text-sm font-medium text-zinc-100">{site}</div>
+                  <div className="text-[11px] text-zinc-500 capitalize mt-0.5">{e.kind}</div>
+                </div>
+                <div
+                  className={`text-[11px] font-medium uppercase tracking-wide shrink-0 ${
+                    open ? 'text-rose-400' : 'text-zinc-500'
+                  }`}
+                >
+                  {open ? 'Active' : 'Resolved'}
+                </div>
+              </div>
+              <div className="text-xs font-mono text-zinc-500 space-y-0.5">
+                <div>Started · {fmtInjuryInstant(e.startedAt)}</div>
+                {e.endedAt && (
+                  <div>
+                    Ended · {fmtInjuryInstant(e.endedAt)}
+                    {' · '}
+                    {injuryEpisodeDurationDays(e.startedAt, e.endedAt)}d tracked
+                  </div>
+                )}
+              </div>
+              {e.notes && (
+                <div className="text-xs text-zinc-400 border-t border-zinc-800 pt-2 whitespace-pre-wrap">{e.notes}</div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 function macroPct(actual: number, target: number): string | null {
   if (target <= 0) return null;
   return `${Math.round((actual / target) * 100)}%`;
@@ -1601,6 +1749,10 @@ function BodyweightList({ logs }: { logs: BodyweightLog[] }) {
   );
 }
 
+function cloneJsonForUndo<T>(x: T): T {
+  return JSON.parse(JSON.stringify(x)) as T;
+}
+
 function DeleteSessionButton({
   session,
   setCount,
@@ -1621,31 +1773,52 @@ function DeleteSessionButton({
         hasReadiness ? 'readiness check' : null,
       ].filter(Boolean).join(' + ');
       const ok = window.confirm(
-        `Delete ${fmtDate(session.date, 'EEE, MMM d')} · ${session.templateId}?\n` +
-        `This removes ${childParts} and cannot be undone.`,
+        `Delete ${fmtDate(session.date, 'EEE, MMM d')} · ${session.templateId}?\n\n` +
+        `This removes ${childParts}.\n\n` +
+        `You'll have ~15 seconds to Undo from the bar at the bottom if this was a mistake.`,
       );
       if (!ok) return;
     }
     setBusy(true);
     try {
       const db = getDb();
+      const childSets = await db.set_logs.where('sessionLogId').equals(session.id).toArray();
+      const childReadiness = await db.readiness_logs.where('sessionLogId').equals(session.id).toArray();
+      const childCardio = await db.cardio_logs.where('sessionLogId').equals(session.id).toArray();
+
+      const undoSnapshot = {
+        session: cloneJsonForUndo(session),
+        sets: childSets.map(cloneJsonForUndo),
+        readiness: childReadiness.map(cloneJsonForUndo),
+        cardios: childCardio.map(cloneJsonForUndo),
+      };
+
       // Mirror the server's ON DELETE CASCADE locally so Dexie doesn't keep
       // orphan rows. set_logs and readiness_logs cascade, cardio_logs sets
       // session_log_id to null on the server — we replicate that by clearing
       // the field locally.
-      const childSets = await db.set_logs.where('sessionLogId').equals(session.id).toArray();
       for (const x of childSets) {
         await localDelete('set_logs', x.id, { skipDirty: true });
       }
-      const childReadiness = await db.readiness_logs.where('sessionLogId').equals(session.id).toArray();
       for (const x of childReadiness) {
         await localDelete('readiness_logs', x.id, { skipDirty: true });
       }
-      const childCardio = await db.cardio_logs.where('sessionLogId').equals(session.id).toArray();
       for (const x of childCardio) {
         await localUpsert('cardio_logs', { ...x, sessionLogId: undefined }, { skipDirty: true });
       }
       await localDelete('session_logs', session.id);
+
+      offerDeleteUndo({
+        kind: 'batch',
+        label: `Workout · ${fmtDate(session.date, 'EEE, MMM d')}`,
+        restore: async () => {
+          await cancelPendingDirtyDelete('session_logs', undoSnapshot.session.id);
+          await localUpsert('session_logs', undoSnapshot.session);
+          for (const s of undoSnapshot.sets) await localUpsert('set_logs', s);
+          for (const r of undoSnapshot.readiness) await localUpsert('readiness_logs', r);
+          for (const c of undoSnapshot.cardios) await localUpsert('cardio_logs', c);
+        },
+      });
     } finally {
       setBusy(false);
     }

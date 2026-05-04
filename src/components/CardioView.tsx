@@ -164,7 +164,14 @@ export function CardioView() {
               {c.notes && <div className="text-xs text-zinc-500 mt-0.5">{c.notes}</div>}
             </div>
             <button
-              onClick={() => localDelete('cardio_logs', c.id)}
+              type="button"
+              onClick={() => {
+                void (async () => {
+                  await localDelete('cardio_logs', c.id, {
+                    undoLabel: `${c.type === 'liss' ? 'LISS' : 'Intervals'} · ${c.durationMin} min`,
+                  });
+                })();
+              }}
               className="text-xs text-zinc-500 px-2 py-1 rounded hover:text-rose-400"
             >Delete</button>
           </div>
