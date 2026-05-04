@@ -15,7 +15,7 @@ export type TrackerReminderSlot = {
   body: string;
 };
 
-/** Fixed times (device local): 7:00, 14:00, 20:00 — align with stress check-ins + meal logging. */
+/** Fixed times (device local): 7:00, 14:00, 20:00 — align with meal logging + ad-hoc stress check-ins. */
 export const TRACKER_REMINDER_SLOTS: TrackerReminderSlot[] = [
   {
     id: 'morning',
@@ -23,7 +23,7 @@ export const TRACKER_REMINDER_SLOTS: TrackerReminderSlot[] = [
     minute: 0,
     windowMinutes: 180,
     title: 'Morning Daily Check-In',
-    body: 'Log start-of-day stress, hydration, and meal times.',
+    body: 'Log hydration, meal times, and stress check-ins (Recovery) as needed.',
   },
   {
     id: 'midday',
@@ -31,7 +31,7 @@ export const TRACKER_REMINDER_SLOTS: TrackerReminderSlot[] = [
     minute: 0,
     windowMinutes: 240,
     title: 'Midday tracker',
-    body: 'Log mid-day stress and meal check-ins.',
+    body: 'Meal check-ins and optional stress (1–5) on Recovery.',
   },
   {
     id: 'evening',
@@ -39,7 +39,7 @@ export const TRACKER_REMINDER_SLOTS: TrackerReminderSlot[] = [
     minute: 0,
     windowMinutes: 180,
     title: 'Evening Daily Check-In',
-    body: 'Log end-of-day stress, dinner timing, and hydration.',
+    body: 'Log dinner, hydration, and stress check-in before wind-down.',
   },
 ];
 

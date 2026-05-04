@@ -40,7 +40,7 @@ export const LIFTS: Lift[] = [
   // Upper - bodyweight pullup variants (P1). Added-load snap rules: `LIFT_IDS_PULLUP_ADDED_LOAD` in progression.ts.
   { id: 'p1_eccentric', name: 'P1 Weighted Eccentric', equipment: 'bodyweight', loadUnit: 'lb', repUnit: 'reps', increment: 2.5, notes: '5 sec eccentric, weighted (added load)',
     pattern: 'vert-pull', muscleGroups: ['lats', 'biceps', 'mid-back'] },
-  { id: 'p1_assisted', name: 'P1 Assisted', equipment: 'bodyweight', loadUnit: 'lb', repUnit: 'reps', increment: 5, notes: 'Counterweight assistance in 5 lb steps (down to 0 = unassisted); optional negative for eccentric overload',
+  { id: 'p1_assisted', name: 'P1 Assisted', equipment: 'bodyweight', loadUnit: 'lb', repUnit: 'reps', increment: 5, notes: 'Counterweight assistance in 5 lb steps; lower lb = lighter band / closer to full bodyweight (0 = unassisted), then weighted variants; optional negative for eccentric overload',
     pattern: 'vert-pull', muscleGroups: ['lats', 'biceps', 'mid-back'] },
   { id: 'p1_bw', name: 'P1 (Bodyweight)', equipment: 'bodyweight', loadUnit: 'bodyweight', repUnit: 'reps', increment: 2.5, notes: 'Unassisted; tracked as added load (0 = bodyweight)',
     pattern: 'vert-pull', muscleGroups: ['lats', 'biceps', 'mid-back'] },
@@ -77,12 +77,12 @@ export const LIFTS: Lift[] = [
 ];
 
 export const TEMPLATES: SessionTemplate[] = [
-  { id: 'L1', name: 'Tuesday — Lower (Heavy)',    dayOfWeek: 2, group: 'lower', intensity: 'heavy' },
-  { id: 'L2', name: 'Thursday — Lower (Light)',   dayOfWeek: 4, group: 'lower', intensity: 'light' },
-  { id: 'L3', name: 'Saturday — Lower (Moderate)',dayOfWeek: 6, group: 'lower', intensity: 'moderate' },
-  { id: 'U1', name: 'Monday — Upper (Heavy)',     dayOfWeek: 1, group: 'upper', intensity: 'heavy' },
-  { id: 'U2', name: 'Wednesday — Upper (Light)',  dayOfWeek: 3, group: 'upper', intensity: 'light' },
-  { id: 'U3', name: 'Friday — Upper (Moderate)',  dayOfWeek: 5, group: 'upper', intensity: 'moderate' },
+  { id: 'L1', name: 'Tuesday — Lower (Heavy)',     dayOfWeek: 2, group: 'lower', intensity: 'heavy' },
+  { id: 'L2', name: 'Thursday — Lower (Light)',    dayOfWeek: 4, group: 'lower', intensity: 'light' },
+  { id: 'L3', name: 'Saturday — Lower (volume/medium)', dayOfWeek: 6, group: 'lower', intensity: 'moderate' },
+  { id: 'U1', name: 'Monday — Upper (Heavy)',      dayOfWeek: 1, group: 'upper', intensity: 'heavy' },
+  { id: 'U2', name: 'Wednesday — Upper (Light)',   dayOfWeek: 3, group: 'upper', intensity: 'light' },
+  { id: 'U3', name: 'Friday — Upper (volume/medium)', dayOfWeek: 5, group: 'upper', intensity: 'moderate' },
 ];
 
 /**
@@ -175,7 +175,7 @@ export const PRESCRIPTIONS: Prescription[] = [
   p('U2', 'rdf',             70, 10,  4, 15, 15, { notes: '10# plates/side' }),
   p('U2', 'liss',            80, 0,   1, 30, 30, { notes: '30 min @ 2.0 mph / 3.0% grade' }),
 
-  // Friday — U3 (Moderate)
+  // Friday — U3 (volume/medium)
   p('U3', 'pp',           10, 115, 2, 4, 8, { notes: "BRACE YOUR GODDAMN CORE, or you'll hurt your back again" }),
   p('U3', 'ohp',          20,  85, 3, 8, 12),
   p('U3', 'p1_bw',        30,   0, 3, 2, 2, { notes: '3×2 → 4×2 (elbows need to adjust); BW 245#' }),
@@ -199,7 +199,7 @@ export const PRESCRIPTIONS: Prescription[] = [
   p('L2', 'echo_intervals',  50,   0, 1, 16, 16, { notes: '8 × (30s sprint / 90s slow); HR target 170 sprints' }),
   p('L2', 'liss',            60,   0, 1, 20, 20, { notes: '20 min @ 2.0 mph / 3.0% grade' }),
 
-  // Saturday — L3 (Moderate)
+  // Saturday — L3 (volume/medium)
   p('L3', 'back_squat_paused', 10, 205, 3, 3, 6),
   p('L3', 'ddl',               20, 300, 3, 3, 6),
   p('L3', 'bss',               30, 45, 2, 6, 8, { notes: 'Barbell; shoot for 8; learning' }),

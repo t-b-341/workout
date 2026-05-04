@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
   useAllBodyweight,
+  useAllReadiness,
   useAllSessions,
   useAllSets,
   useLastSessionsForLift,
@@ -26,6 +27,8 @@ type Props = {
   prescription: Prescription;
   lift: Lift;
   session: SessionLog;
+  /** Emphasize when this lift is pinned on Program / lift detail. */
+  pinned?: boolean;
 };
 
 export type CardioSetMeta = {
@@ -51,7 +54,7 @@ const STATUS_COLOR: Record<SetStatus, string> = {
   substituted: 'bg-indigo-600',
 };
 
-export function LiftCard({ prescription, lift, session }: Props) {
+export function LiftCard({ prescription, lift, session, pinned }: Props) {
   const sets = useSetsForSession(session.id);
   const history = useLastSessionsForLift(prescription.liftId, 3);
   const lifts = useLifts();
@@ -59,6 +62,7 @@ export function LiftCard({ prescription, lift, session }: Props) {
   const allSessions = useAllSessions();
   const readinessRow = useReadinessForSession(session.id);
   const allBodyweight = useAllBodyweight();
+  const allReadiness = useAllReadiness();
   const p1BwAnchor = useMemo(
     () =>
       prescription.liftId === 'p1_assisted'
@@ -98,7 +102,7 @@ export function LiftCard({ prescription, lift, session }: Props) {
   function prFor(set: SetLog | undefined) {
     if (!set || !allSets || !allSessions) return null;
     const prior = allSets.filter((s) => s.id !== set.id);
-    return detectPR(set, set.liftId, prior, allSessions);
+    return detectPR(set, set.liftId, prior, allSessions, allBodyweight ?? undefined, allReadiness ?? undefined);
   }
 
   function lissIntensityPrFor(set: SetLog | undefined) {
@@ -214,7 +218,13 @@ export function LiftCard({ prescription, lift, session }: Props) {
   return (
     <div id={`lift-${prescription.id}`} className="rounded-2xl bg-zinc-900 border border-zinc-800 p-4 space-y-3 scroll-mt-24">
       <div className="flex items-start justify-between gap-2">
-        <div className="min-w-0">
+        <div className="min-w-0 flex items-start gap-2">
+          {pinned && (
+            <span className="text-amber-400 text-sm shrink-0 mt-0.5 select-none" title="Pinned lift" aria-hidden>
+              ★
+            </span>
+          )}
+          <div className="min-w-0">
           <div className="font-semibold text-zinc-100">{lift.name}</div>
           <div className="text-xs text-zinc-400 mt-0.5">
             <span className="font-mono">{prescription.weight}</span>
@@ -245,6 +255,7 @@ export function LiftCard({ prescription, lift, session }: Props) {
               <div className="text-xs text-zinc-500 mt-1">Plates/side: <span className="font-mono">{plates}</span></div>
             ) : null;
           })()}
+        </div>
         </div>
       </div>
 
@@ -639,6 +650,8 @@ function SetRow({
       </div>
       {lift.id === 'p1_assisted' && showWeight && (
         <p className="text-[10px] text-zinc-500 leading-snug">
+          Counterweight assistance: <span className="text-zinc-400">lower lb = lighter band and closer to full bodyweight</span>
+          (then unassisted / weighted).{' '}
           {bodyweightLb != null && bodyweightLb > 0 ? (
             <>
               Est. weight moved (concentric):{' '}
@@ -651,7 +664,7 @@ function SetRow({
               </span>
             </>
           ) : (
-            <>Log bodyweight in check-in or the BW tab to estimate moved load from assistance.</>
+            <> Log bodyweight in check-in or the BW tab to estimate moved load from assistance.</>
           )}
         </p>
       )}

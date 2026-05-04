@@ -15,6 +15,7 @@ import type {
   ReadinessLog,
   SessionLog,
   SetLog,
+  TemplateId,
   WatchFlag,
 } from './types';
 
@@ -281,23 +282,68 @@ export type PRBucket = {
 
 export type LiftPRs = {
   liftId: string;
-  /** All-time best per rep value (only completed sets, weight > 0). */
+  /**
+   * All-time best per rep value (completed sets). For `p1_assisted`, `weight` is
+   * the logged counterweight — **lower is better** (less assistance).
+   */
   bestByReps: PRBucket[];
   /** Best estimated 1RM. */
   bestE1RM: { value: number; date: string; weight: number; reps: number } | null;
 };
 
-/** Best weight at each rep value (1, 2, ...) for a given lift. */
-export function liftPRs(liftId: string, sets: SetLog[], sessions: SessionLog[]): LiftPRs {
+/** Best weight at each rep value (1, 2, …). For `p1_assisted`, best = lowest assistance (when BW logs exist, e1RM uses moved load). */
+export function liftPRs(
+  liftId: string,
+  sets: SetLog[],
+  sessions: SessionLog[],
+  bodyweightLogs?: BodyweightLog[],
+  readinessLogs?: ReadinessLog[],
+): LiftPRs {
   const sessionDate = new Map(sessions.map((s) => [s.id, s.date]));
+  const sessionById = new Map(sessions.map((s) => [s.id, s]));
+  const rxBySession =
+    readinessLogs != null ? readinessBySessionId(readinessLogs) : null;
+  const canResolveBw = bodyweightLogs != null && readinessLogs != null;
+
+  const isP1Assisted = liftId === 'p1_assisted';
   const bestPerReps = new Map<number, PRBucket>();
   let bestE1RM: LiftPRs['bestE1RM'] = null;
+
   for (const s of sets) {
     if (s.liftId !== liftId) continue;
     if (s.status !== 'completed') continue;
-    if (s.weight <= 0) continue;
     const date = sessionDate.get(s.sessionLogId);
     if (!date) continue;
+
+    if (isP1Assisted) {
+      const cur = bestPerReps.get(s.reps);
+      if (!cur || s.weight < cur.weight) {
+        bestPerReps.set(s.reps, {
+          reps: s.reps,
+          weight: s.weight,
+          date,
+          sessionLogId: s.sessionLogId,
+        });
+      }
+      if (canResolveBw) {
+        const session = sessionById.get(s.sessionLogId);
+        if (session) {
+          const bw = bodyweightLbForSessionVolume(session, rxBySession!.get(session.id), bodyweightLogs!);
+          if (bw != null && bw > 0) {
+            const moved = effectiveP1AssistedConcentricLoadLb(s.weight, bw);
+            if (moved > 0) {
+              const e = est1RM(moved, s.reps);
+              if (!bestE1RM || e > bestE1RM.value) {
+                bestE1RM = { value: e, date, weight: s.weight, reps: s.reps };
+              }
+            }
+          }
+        }
+      }
+      continue;
+    }
+
+    if (s.weight <= 0) continue;
     const cur = bestPerReps.get(s.reps);
     if (!cur || s.weight > cur.weight) {
       bestPerReps.set(s.reps, {
@@ -326,12 +372,39 @@ export function detectPR(
   liftId: string,
   priorSets: SetLog[],
   sessions: SessionLog[],
+  bodyweightLogs?: BodyweightLog[],
+  readinessLogs?: ReadinessLog[],
 ): { repPR: boolean; e1rmPR: boolean; previousAtReps?: number } | null {
   if (set.liftId !== liftId) return null;
   if (set.status !== 'completed') return null;
+
+  const prs = liftPRs(liftId, priorSets, sessions, bodyweightLogs, readinessLogs);
+
+  if (liftId === 'p1_assisted') {
+    const previousAtReps = prs.bestByReps.find((b) => b.reps === set.reps)?.weight;
+    const repPR = previousAtReps === undefined ? true : set.weight < previousAtReps;
+
+    let e1rmPR = false;
+    if (bodyweightLogs && readinessLogs) {
+      const sessionById = new Map(sessions.map((x) => [x.id, x]));
+      const session = sessionById.get(set.sessionLogId);
+      if (session) {
+        const rxBySession = readinessBySessionId(readinessLogs);
+        const bw = bodyweightLbForSessionVolume(session, rxBySession.get(session.id), bodyweightLogs);
+        if (bw != null && bw > 0) {
+          const moved = effectiveP1AssistedConcentricLoadLb(set.weight, bw);
+          const e1rmNow = moved > 0 ? est1RM(moved, set.reps) : 0;
+          e1rmPR = e1rmNow > 0 && (!prs.bestE1RM || e1rmNow > prs.bestE1RM.value);
+        }
+      }
+    }
+
+    if (!repPR && !e1rmPR) return null;
+    return { repPR, e1rmPR, previousAtReps };
+  }
+
   if (set.weight <= 0) return null;
 
-  const prs = liftPRs(liftId, priorSets, sessions);
   const previousAtReps = prs.bestByReps.find((b) => b.reps === set.reps)?.weight;
   const repPR = previousAtReps == null ? true : set.weight > previousAtReps;
   const e1rmNow = est1RM(set.weight, set.reps);
@@ -402,6 +475,8 @@ export function sessionRecapPRs(
   sets: SetLog[],
   sessions: SessionLog[],
   lifts: Lift[],
+  bodyweightLogs?: BodyweightLog[],
+  readinessLogs?: ReadinessLog[],
 ): SessionRecapPRItem[] {
   const liftMap = new Map(lifts.map((l) => [l.id, l]));
   const ordered = sortSetsChronologically(sets, sessions);
@@ -428,7 +503,7 @@ export function sessionRecapPRs(
           });
         }
       } else if (lift && lift.equipment !== 'cardio' && lift.equipment !== 'time') {
-        const pr = detectPR(s, s.liftId, prior, sessions);
+        const pr = detectPR(s, s.liftId, prior, sessions, bodyweightLogs, readinessLogs);
         if (pr) {
           out.push({
             setId: s.id,
@@ -683,14 +758,54 @@ export function prFeed(sets: SetLog[], sessions: SessionLog[], lifts: Lift[]): P
   const sessionDate = new Map(sessions.map((s) => [s.id, s.date]));
   const ordered = sortSetsChronologically(sets, sessions);
 
-  const bestPerLiftReps = new Map<string, number>(); // key = liftId|reps
+  const bestPerLiftReps = new Map<string, number>(); // key = liftId|reps → best weight
+  /** `p1_bw` at added load 0: track best unassisted rep count (PR = new max reps). */
+  let bestP1BwUnassistedReps = 0;
   const out: PRFeedItem[] = [];
   for (const s of ordered) {
-    if (s.status !== 'completed' || s.weight <= 0) continue;
+    if (s.status !== 'completed') continue;
     const lift = liftMap.get(s.liftId);
     if (!lift || lift.equipment === 'cardio' || lift.equipment === 'time') continue;
     const date = sessionDate.get(s.sessionLogId);
     if (!date) continue;
+
+    // Unassisted pull-ups: added load 0; PR feed tracks lifetime max reps.
+    if (s.liftId === 'p1_bw' && s.weight === 0) {
+      if (s.reps > bestP1BwUnassistedReps) {
+        const prevReps = bestP1BwUnassistedReps > 0 ? bestP1BwUnassistedReps : undefined;
+        out.push({
+          date,
+          liftId: s.liftId,
+          liftName: lift.name,
+          reps: s.reps,
+          weight: 0,
+          previousWeight: prevReps,
+        });
+        bestP1BwUnassistedReps = s.reps;
+      }
+      continue;
+    }
+
+    // P1 assisted: lower counterweight = less band help = better (toward BW / weighted pull-ups).
+    if (s.liftId === 'p1_assisted') {
+      const key = `${s.liftId}|${s.reps}`;
+      const prev = bestPerLiftReps.get(key);
+      if (prev == null || s.weight < prev) {
+        out.push({
+          date,
+          liftId: s.liftId,
+          liftName: lift.name,
+          reps: s.reps,
+          weight: s.weight,
+          previousWeight: prev,
+        });
+        bestPerLiftReps.set(key, s.weight);
+      }
+      continue;
+    }
+
+    if (s.weight <= 0) continue;
+
     const key = `${s.liftId}|${s.reps}`;
     const prev = bestPerLiftReps.get(key);
     if (prev == null || s.weight > prev) {
@@ -1071,4 +1186,67 @@ export function fmtDurationShort(ms: number): string {
   if (h > 0) return `${h}h ${m.toString().padStart(2, '0')}m`;
   if (m > 0) return `${m}m ${s.toString().padStart(2, '0')}s`;
   return `${s}s`;
+}
+
+/** One completed instance of a template (e.g. U1→U1) for same-type progression. */
+export type TemplateSessionProgressPoint = {
+  sessionId: string;
+  date: string;
+  templateId: string;
+  /** Sum of strength set tonnage (lb); excludes pure cardio/time. */
+  strengthVolumeLb: number;
+  completedSets: number;
+  durationLabel: string | null;
+  /** Tonnage change vs the previous completed session of this template only. */
+  volumeDeltaLb: number | null;
+  /** Percent change vs previous same-template session. */
+  deltaPct: number | null;
+};
+
+/**
+ * Chronological U1→U1, L1→L1, … series: strength volume and deltas only against
+ * the prior session with the same `templateId`.
+ */
+export function buildTemplateSessionProgressSeries(
+  templateId: TemplateId,
+  sessions: SessionLog[],
+  sets: SetLog[],
+  lifts: Lift[],
+  bodyweightLogs: BodyweightLog[],
+  readinessLogs: ReadinessLog[],
+): TemplateSessionProgressPoint[] {
+  const liftMap = new Map(lifts.map((l) => [l.id, l]));
+  const rxBySession = readinessBySessionId(readinessLogs);
+  const filtered = sessions
+    .filter((s) => s.templateId === templateId && s.completedAt)
+    .sort((a, b) => a.date.localeCompare(b.date));
+  const out: TemplateSessionProgressPoint[] = [];
+  let prevVol: number | null = null;
+  for (const s of filtered) {
+    const sessionSets = sets.filter((x) => x.sessionLogId === s.id && x.status === 'completed');
+    const bw = bodyweightLbForSessionVolume(s, rxBySession.get(s.id), bodyweightLogs);
+    let strengthVolumeLb = 0;
+    for (const x of sessionSets) {
+      const lift = liftMap.get(x.liftId);
+      strengthVolumeLb += strengthVolumeLbForSet(x, lift, bw);
+    }
+    const durationMs = sessionDurationMs(s, sets);
+    const durationLabel =
+      durationMs != null && durationMs > 0 ? fmtDurationShort(durationMs) : null;
+    const volumeDeltaLb = prevVol != null ? strengthVolumeLb - prevVol : null;
+    const deltaPct =
+      prevVol != null && prevVol > 0 ? ((strengthVolumeLb - prevVol) / prevVol) * 100 : null;
+    out.push({
+      sessionId: s.id,
+      date: s.date,
+      templateId,
+      strengthVolumeLb,
+      completedSets: sessionSets.length,
+      durationLabel,
+      volumeDeltaLb,
+      deltaPct,
+    });
+    prevVol = strengthVolumeLb;
+  }
+  return out;
 }

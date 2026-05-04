@@ -6,7 +6,7 @@ import {
   nutritionScore,
   recoveryBand,
   sleepScore,
-  stressScore,
+  stressScoreFromAverageRating,
 } from '../src/lib/recovery';
 
 describe('recovery scoring', () => {
@@ -41,15 +41,14 @@ describe('recovery scoring', () => {
   });
 
   it('blends stress and mindfulness when both are present', () => {
-    const stress = {
-      id: 's',
-      date: '2026-04-27',
-      startOfDay: 3 as const,
-      midDay: 3 as const,
-      endOfDay: 3 as const,
-      average: 3,
-      managementEffectiveness: 3 as const,
-    };
+    const stress = [
+      {
+        id: 's',
+        date: '2026-04-27',
+        loggedAt: '2026-04-27T12:00:00.000Z',
+        rating: 3 as const,
+      },
+    ];
     const readiness = {
       id: 'r',
       sessionLogId: 's1',
@@ -70,25 +69,23 @@ describe('recovery scoring', () => {
   });
 
   it('includes stress in composite when stress log present', () => {
-    const stressLow = {
-      id: 's',
-      date: '2026-04-27',
-      startOfDay: 1 as const,
-      midDay: 1 as const,
-      endOfDay: 1 as const,
-      average: 1,
-      managementEffectiveness: 5 as const,
-    };
-    const stressHigh = {
-      id: 's',
-      date: '2026-04-27',
-      startOfDay: 5 as const,
-      midDay: 5 as const,
-      endOfDay: 5 as const,
-      average: 5,
-      managementEffectiveness: 1 as const,
-    };
-    expect(stressScore(stressLow)).toBeGreaterThan(stressScore(stressHigh));
+    const stressLow = [
+      {
+        id: 's',
+        date: '2026-04-27',
+        loggedAt: '2026-04-27T10:00:00.000Z',
+        rating: 1 as const,
+      },
+    ];
+    const stressHigh = [
+      {
+        id: 's',
+        date: '2026-04-27',
+        loggedAt: '2026-04-27T10:00:00.000Z',
+        rating: 5 as const,
+      },
+    ];
+    expect(stressScoreFromAverageRating(1)).toBeGreaterThan(stressScoreFromAverageRating(5));
 
     const base = { date: '2026-04-27' };
     const withLow = buildRecoveryScore({ ...base, stress: stressLow });

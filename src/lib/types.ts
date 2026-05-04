@@ -283,20 +283,15 @@ export type BodyReadinessLog = {
   score: 1 | 2 | 3 | 4 | 5;
 };
 
+/** Momentary stress check-in: timestamp + 1–5 (higher = more stressed). Multiple per day allowed. */
 export type StressLog = {
   id: string;
-  /** ISO date YYYY-MM-DD. */
+  /** Calendar day (local) for filtering. */
   date: string;
-  /** 1-5 stress at start of day. */
-  startOfDay: 1 | 2 | 3 | 4 | 5;
-  /** 1-5 stress mid day. */
-  midDay: 1 | 2 | 3 | 4 | 5;
-  /** 1-5 stress end of day. */
-  endOfDay: 1 | 2 | 3 | 4 | 5;
-  /** Daily average of the three check-ins. */
-  average: number;
-  /** Perceived stress-management effectiveness right now (1-5). */
-  managementEffectiveness: 1 | 2 | 3 | 4 | 5;
+  /** ISO timestamp when logged. */
+  loggedAt: string;
+  /** 1 = calm … 5 = very stressed */
+  rating: 1 | 2 | 3 | 4 | 5;
 };
 
 export type RecoveryBand = 'push' | 'normal' | 'conservative' | 'recovery';
@@ -314,7 +309,7 @@ export type RecoveryScore = {
   hydrationScore: number;
   nutritionScore: number;
   readinessScore: number;
-  /** Included when `buildRecoveryScore` was called with a stress log for that day. */
+  /** Included when `buildRecoveryScore` was called with ≥1 stress check-in for that day. */
   stressScore?: number;
   /** Included when that day’s readiness log had `mindfulnessMinutes` set. */
   mindfulnessScore?: number;

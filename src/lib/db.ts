@@ -171,8 +171,8 @@ export class WorkoutDB extends Dexie {
       meta: 'key',
     });
 
-    // v7 — cardio_logs optional wall-clock fields (same indexes; JSON-only change locally).
-    this.version(7).stores({
+    // v8 — stress check-ins: timestamp + single 1–5 rating; multiple rows per day.
+    this.version(8).stores({
       lifts: 'id, name',
       templates: 'id, dayOfWeek',
       prescriptions: 'id, templateId, liftId, [templateId+order]',
@@ -185,16 +185,53 @@ export class WorkoutDB extends Dexie {
       nutrition_logs: 'id, date',
       hydration_logs: 'id, date',
       sleep_logs: 'id, date',
-      stress_logs: 'id, date',
+      stress_logs: 'id, date, loggedAt',
       injury_episodes: 'id, siteKey, startedAt',
       body_readiness_logs: 'id, date',
       dirty: 'id, table, rowId, enqueuedAt',
       meta: 'key',
+    }).upgrade(async (tx) => {
+      const t = tx.table('stress_logs');
+      const rows = await t.toArray();
+      await t.clear();
+      const clampR = (n: number): 1 | 2 | 3 | 4 | 5 =>
+        Math.min(5, Math.max(1, Math.round(n))) as 1 | 2 | 3 | 4 | 5;
+      for (const raw of rows) {
+        const r = raw as Record<string, unknown>;
+        if (r.loggedAt && r.rating != null) {
+          await t.put(raw);
+          continue;
+        }
+        const date = String(r.date ?? '');
+        const idBase = String(r.id ?? `stress-${date}`);
+        const sod = r.startOfDay;
+        const mid = r.midDay;
+        const eod = r.endOfDay;
+        if (
+          typeof sod === 'number' &&
+          typeof mid === 'number' &&
+          typeof eod === 'number'
+        ) {
+          const slots: Array<{ id: string; loggedAt: string; rating: number }> = [
+            { id: `${idBase}-sod`, loggedAt: `${date}T08:00:00.000Z`, rating: sod },
+            { id: `${idBase}-mid`, loggedAt: `${date}T14:00:00.000Z`, rating: mid },
+            { id: `${idBase}-eod`, loggedAt: `${date}T20:00:00.000Z`, rating: eod },
+          ];
+          for (const s of slots) {
+            await t.put({
+              id: s.id,
+              date,
+              loggedAt: s.loggedAt,
+              rating: clampR(s.rating),
+            });
+          }
+        }
+      }
     });
   }
 }
 
-export const SCHEMA_VERSION = 7;
+export const SCHEMA_VERSION = 8;
 
 let _db: WorkoutDB | null = null;
 export function getDb(): WorkoutDB {

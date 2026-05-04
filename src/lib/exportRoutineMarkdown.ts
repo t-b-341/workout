@@ -3,8 +3,9 @@
  * progression rules, equipment constraints, and recent nutrition / sleep / stress.
  */
 
-import { format, subDays } from 'date-fns';
+import { format, parseISO, subDays } from 'date-fns';
 import { sortTemplatesProgramOrder } from '@/lib/seed';
+import { averageStressRating } from '@/lib/recovery';
 import { isoWeekOf, startOfWeekIso } from '@/lib/stats';
 import { addDaysIso, fmtDate } from '@/lib/time';
 import type { Lift, NutritionLog, Prescription, SessionTemplate, SleepLog, StressLog } from '@/lib/types';
@@ -80,6 +81,30 @@ function dowLabel(dow: number): string {
   return DOW_NAMES[dow] ?? `day-${dow}`;
 }
 
+/** Group stress check-ins by calendar day (sorted by time). */
+export function stressLogsByDate(logs: StressLog[]): Map<string, StressLog[]> {
+  const m = new Map<string, StressLog[]>();
+  for (const s of logs) {
+    const arr = m.get(s.date) ?? [];
+    arr.push(s);
+    m.set(s.date, arr);
+  }
+  for (const arr of m.values()) {
+    arr.sort((a, b) => a.loggedAt.localeCompare(b.loggedAt));
+  }
+  return m;
+}
+
+function formatStressDayMarkdown(entries: StressLog[]): string {
+  if (entries.length === 0) return '—';
+  const avg = averageStressRating(entries);
+  const parts = entries.map((e) => {
+    const t = format(parseISO(e.loggedAt), 'HH:mm');
+    return `${t}→${e.rating}`;
+  });
+  return avg != null ? `${parts.join('; ')} (avg ${avg.toFixed(2)})` : parts.join('; ');
+}
+
 function liftMap(lifts: Lift[]): Map<string, Lift> {
   return new Map(lifts.map((l) => [l.id, l]));
 }
@@ -115,7 +140,7 @@ export type RoutineMarkdownInput = {
   prescriptions: Prescription[];
   nutritionByDate: Map<string, NutritionLog | undefined>;
   sleepByDate: Map<string, SleepLog | undefined>;
-  stressByDate: Map<string, StressLog | undefined>;
+  stressByDate: Map<string, StressLog[] | undefined>;
   /** Calendar days of nutrition/sleep/stress tables (oldest → newest). */
   signalDates: string[];
   scope?: 'full' | 'upcoming_week';
@@ -334,20 +359,18 @@ export function buildRoutineMarkdown(input: RoutineMarkdownInput): string {
   }
   lines.push('');
 
-  lines.push('### Stress (1–5 check-ins + management effectiveness)');
+  lines.push('### Stress (timestamped 1–5 check-ins; multiple per day allowed)');
   lines.push('');
-  lines.push('| Date | Day | Start | Mid | End | Avg | Mgmt eff. |');
-  lines.push('| --- | --- | --- | --- | --- | --- | --- |');
+  lines.push('| Date | Day | Check-ins |');
+  lines.push('| --- | --- | --- |');
   for (const d of signalDates) {
     const st = stressByDate.get(d);
     const day = dowLabel(new Date(`${d}T12:00:00`).getDay());
-    if (!st) {
-      lines.push(`| ${d} | ${day} | — | — | — | — | — |`);
+    if (!st || st.length === 0) {
+      lines.push(`| ${d} | ${day} | — |`);
       continue;
     }
-    lines.push(
-      `| ${d} | ${day} | ${st.startOfDay} | ${st.midDay} | ${st.endOfDay} | ${st.average.toFixed(1)} | ${st.managementEffectiveness} |`,
-    );
+    lines.push(`| ${d} | ${day} | ${sanitizeCell(formatStressDayMarkdown(st))} |`);
   }
   lines.push('');
 

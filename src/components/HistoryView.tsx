@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import { useLiveQuery } from 'dexie-react-hooks';
 import { useMemo, useState } from 'react';
 import {
   useAllBodyweight,
@@ -12,6 +13,7 @@ import {
   useSessionsAfterReadiness,
   useAllSets,
   useLifts,
+  useTemplates,
 } from '@/lib/hooks';
 import { getDb } from '@/lib/db';
 import { sortSetLogsForSession } from '@/lib/sessionFilters';
@@ -25,20 +27,30 @@ import {
   buildWeeklyPatternCoverage,
   buildWeeklyReadiness,
   buildWeeklySummaries,
+  buildTemplateSessionProgressSeries,
   DEFAULT_ROLLING_STRENGTH_WINDOW_DAYS,
   fmtDurationShort,
   isoWeekOf,
   prFeed,
   rollingStrengthTrainingWindow,
   sessionTotalRestBetweenSetsMs,
+  type TemplateSessionProgressPoint,
 } from '@/lib/stats';
-import { Sparkline, MiniBars } from './Sparkline';
+import { Sparkline, MiniBars, ProgressLineChart } from './Sparkline';
 import { ReadinessSummary } from './ReadinessSummary';
 import { SessionEditSheet } from './SessionEditSheet';
 import { NutritionLogEditSheet } from './NutritionLogEditSheet';
+import { BodyweightLogEditSheet } from './BodyweightLogEditSheet';
+import { BodyMeasurementLogEditSheet } from './BodyMeasurementLogEditSheet';
 import { PageShell } from './PageShell';
-import { MUSCLE_GROUPS, PATTERNS } from '@/lib/seed';
+import { MUSCLE_GROUPS, PATTERNS, sortTemplatesProgramOrder } from '@/lib/seed';
+import { applyOpeningPrBaseline, OPENING_PR_BASELINE_META_KEY } from '@/lib/openingPrBaseline';
 import { defaultWellnessTargets, useWellnessTargets, type WellnessTargets } from '@/lib/wellnessTargets';
+import {
+  buildHrvVariabilitySeries,
+  describeHrvRecoveryVariability,
+  measuredHrvAsc,
+} from '@/lib/hrvAnalytics';
 import type {
   BodyMeasurementLog,
   BodyweightLog,
@@ -50,22 +62,36 @@ import type {
   SessionLog,
   SetLog,
   StressLog,
+  SessionTemplate,
 } from '@/lib/types';
 
-type Tab = 'sessions' | 'trends' | 'weeks' | 'prs' | 'muscle' | 'bodyweight' | 'measurements' | 'diet';
+type Tab =
+  | 'sessions'
+  | 'trends'
+  | 'weeks'
+  | 'prs'
+  | 'muscle'
+  | 'bodyweight'
+  | 'measurements'
+  | 'diet'
+  | 'hrv'
+  | 'types';
 
 const TABS: Array<{ id: Tab; label: string }> = [
   { id: 'sessions', label: 'Sessions' },
   { id: 'trends', label: 'Trends' },
+  { id: 'types', label: 'Types' },
   { id: 'weeks', label: 'Weeks' },
   { id: 'prs', label: 'PRs' },
   { id: 'muscle', label: 'Muscle' },
   { id: 'bodyweight', label: 'BW' },
   { id: 'measurements', label: 'Measure' },
   { id: 'diet', label: 'Diet' },
+  { id: 'hrv', label: 'HRV' },
 ];
 
 export function HistoryView() {
+  const templates = useTemplates();
   const [tab, setTab] = useState<Tab>('sessions');
   const lifts = useLifts();
   const sessions = useSessionsAfterReadiness();
@@ -81,6 +107,7 @@ export function HistoryView() {
 
   if (
     !lifts ||
+    !templates ||
     !sessions ||
     !allSets ||
     !cardio ||
@@ -97,7 +124,7 @@ export function HistoryView() {
     <PageShell className="p-4 space-y-4">
       <h1 className="text-2xl font-semibold">History</h1>
 
-      <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-1 rounded-xl bg-zinc-900 border border-zinc-800 p-1">
+      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-1 rounded-xl bg-zinc-900 border border-zinc-800 p-1">
         {TABS.map((t) => (
           <button
             key={t.id}
@@ -110,6 +137,16 @@ export function HistoryView() {
       {tab === 'sessions' && <SessionsList sessions={sessions} sets={allSets} lifts={lifts} readiness={readiness} />}
       {tab === 'trends' && (
         <TrendsList sessions={sessions} sets={allSets} lifts={lifts} bodyweights={bodyweights} readiness={readiness} />
+      )}
+      {tab === 'types' && (
+        <TemplateProgressionList
+          templates={templates}
+          sessions={sessions}
+          sets={allSets}
+          lifts={lifts}
+          bodyweights={bodyweights}
+          readiness={readiness}
+        />
       )}
       {tab === 'weeks' && (
         <WeeksList
@@ -130,6 +167,7 @@ export function HistoryView() {
       {tab === 'bodyweight' && <BodyweightList logs={bodyweights} />}
       {tab === 'measurements' && <MeasurementsList logs={bodyMeasurements} />}
       {tab === 'diet' && <DietList logs={nutrition} />}
+      {tab === 'hrv' && <HrvList readiness={readiness} />}
     </PageShell>
   );
 }
@@ -257,6 +295,118 @@ function SessionsList({
   );
 }
 
+function TemplateProgressionList({
+  templates,
+  sessions,
+  sets,
+  lifts,
+  bodyweights,
+  readiness,
+}: {
+  templates: SessionTemplate[];
+  sessions: SessionLog[];
+  sets: SetLog[];
+  lifts: Lift[];
+  bodyweights: BodyweightLog[];
+  readiness: ReadinessLog[];
+}) {
+  const ordered = useMemo(() => sortTemplatesProgramOrder(templates), [templates]);
+  return (
+    <div className="space-y-4">
+      <p className="text-sm text-zinc-400">
+        Each program day is compared only to itself (e.g. Upper 1 vs the last Upper 1). Strength volume is tonnage in
+        lb; cardio-only work is not included.
+      </p>
+      <div className="space-y-6">
+        {ordered.map((t) => (
+          <TemplateProgressCard
+            key={t.id}
+            template={t}
+            points={buildTemplateSessionProgressSeries(t.id, sessions, sets, lifts, bodyweights, readiness)}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function TemplateProgressCard({
+  template,
+  points,
+}: {
+  template: SessionTemplate;
+  points: TemplateSessionProgressPoint[];
+}) {
+  const values = points.map((p) => p.strengthVolumeLb);
+  const dates = points.map((p) => p.date);
+  const recent = useMemo(() => [...points].reverse().slice(0, 12), [points]);
+
+  return (
+    <div className="rounded-xl border border-zinc-800 bg-zinc-950/50 p-4 space-y-3">
+      <div className="flex flex-wrap items-baseline justify-between gap-2">
+        <div>
+          <h3 className="text-base font-semibold text-zinc-100">{template.name}</h3>
+          <span className="text-xs font-mono text-zinc-500">{template.id}</span>
+        </div>
+        {points.length > 0 && (
+          <span className="text-xs text-zinc-500">
+            {points.length} session{points.length !== 1 ? 's' : ''}
+          </span>
+        )}
+      </div>
+      {points.length === 0 ? (
+        <p className="text-sm text-zinc-500">No completed sessions for this day type yet.</p>
+      ) : (
+        <>
+          <ProgressLineChart
+            values={values}
+            dates={dates}
+            unit="lb"
+            minWidth={300}
+            aria-label={`Strength volume trend for ${template.name}`}
+          />
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-left text-xs text-zinc-500 border-b border-zinc-800">
+                  <th className="py-2 pr-2">Date</th>
+                  <th className="py-2 pr-2">Volume</th>
+                  <th className="py-2 pr-2">Δ lb</th>
+                  <th className="py-2 pr-2">Δ %</th>
+                  <th className="py-2 pr-2">Sets</th>
+                  <th className="py-2">Time</th>
+                </tr>
+              </thead>
+              <tbody>
+                {recent.map((p) => (
+                  <tr key={p.sessionId} className="border-b border-zinc-800/60">
+                    <td className="py-1.5 pr-2 font-mono text-zinc-300">{fmtDate(p.date, 'MMM d, yyyy')}</td>
+                    <td className="py-1.5 pr-2 font-mono text-zinc-200">
+                      {Math.round(p.strengthVolumeLb).toLocaleString()}
+                    </td>
+                    <td className="py-1.5 pr-2 font-mono text-zinc-400">
+                      {p.volumeDeltaLb == null
+                        ? '—'
+                        : `${p.volumeDeltaLb >= 0 ? '+' : ''}${Math.round(p.volumeDeltaLb)}`}
+                    </td>
+                    <td className="py-1.5 pr-2 font-mono text-zinc-400">
+                      {p.deltaPct == null
+                        ? '—'
+                        : `${p.deltaPct >= 0 ? '+' : ''}${p.deltaPct.toFixed(1)}%`}
+                    </td>
+                    <td className="py-1.5 pr-2 text-zinc-400">{p.completedSets}</td>
+                    <td className="py-1.5 text-zinc-500">{p.durationLabel ?? '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 function TrendsList({
   sessions,
   sets,
@@ -345,6 +495,7 @@ function LiftTrendCard({
           </div>
           <div className="text-xs text-zinc-500 mt-0.5">
             {points.length} session{points.length === 1 ? '' : 's'} · last: <span className="font-mono">{last.topWeight}×{last.topReps}</span>
+            {lift.id === 'p1_assisted' && <span className="text-zinc-600"> lb moved</span>}
             {first && <span className={`ml-2 ${deltaColor}`}>{deltaSign}{delta}% e1RM</span>}
           </div>
         </div>
@@ -478,7 +629,7 @@ function WeeksList({
           <div>
             <div className="font-medium">Stress trend</div>
             <div className="text-xs text-zinc-500">
-              Weekly averages from daily stress logs.
+              Weekly average of all 1–5 stress check-ins logged that week (any number per day).
             </div>
           </div>
           <ReadinessTrendRow
@@ -487,13 +638,6 @@ function WeeksList({
             values={stressTrend.map((w) => +w.avgStress.toFixed(1))}
             color="#f97316"
             higherIsBetter={false}
-          />
-          <ReadinessTrendRow
-            label="Stress management"
-            unit="/5"
-            values={stressTrend.map((w) => +w.avgManagement.toFixed(1))}
-            color="#22c55e"
-            higherIsBetter
           />
         </div>
       )}
@@ -649,20 +793,18 @@ function WeeksList({
   );
 }
 
-function buildWeeklyStress(stressLogs: StressLog[]): Array<{ week: string; avgStress: number; avgManagement: number }> {
-  const byWeek = new Map<string, { stress: number[]; management: number[] }>();
+function buildWeeklyStress(stressLogs: StressLog[]): Array<{ week: string; avgStress: number }> {
+  const byWeek = new Map<string, number[]>();
   for (const s of stressLogs) {
     const week = isoWeekOf(s.date);
-    const row = byWeek.get(week) ?? { stress: [], management: [] };
-    row.stress.push(s.average);
-    row.management.push(s.managementEffectiveness);
+    const row = byWeek.get(week) ?? [];
+    row.push(s.rating);
     byWeek.set(week, row);
   }
   return Array.from(byWeek.entries())
-    .map(([week, vals]) => ({
+    .map(([week, ratings]) => ({
       week,
-      avgStress: vals.stress.reduce((sum, n) => sum + n, 0) / vals.stress.length,
-      avgManagement: vals.management.reduce((sum, n) => sum + n, 0) / vals.management.length,
+      avgStress: ratings.reduce((sum, n) => sum + n, 0) / ratings.length,
     }))
     .sort((a, b) => (a.week < b.week ? 1 : -1));
 }
@@ -750,44 +892,94 @@ function MuscleGroupRow({ setsByGroup }: { setsByGroup: Partial<Record<MuscleGro
 
 function PRsList({ sessions, sets, lifts }: { sessions: SessionLog[]; sets: SetLog[]; lifts: Lift[] }) {
   const feed = useMemo(() => prFeed(sets, sessions, lifts), [sessions, sets, lifts]);
-  if (feed.length === 0) {
-    return <div className="text-zinc-500 text-sm">No PRs yet — log a few sessions and they&apos;ll start showing up here.</div>;
-  }
+  const openingPrImported = useLiveQuery(
+    () => getDb().meta.where('key').equals(OPENING_PR_BASELINE_META_KEY).first(),
+    [],
+  );
+  const [baselineBusy, setBaselineBusy] = useState(false);
 
   // Group by month for legibility
-  const groups = new Map<string, typeof feed>();
-  for (const item of feed) {
-    const ym = item.date.slice(0, 7);
-    const arr = groups.get(ym) ?? [];
-    arr.push(item);
-    groups.set(ym, arr);
-  }
+  const groups = useMemo(() => {
+    const next = new Map<string, typeof feed>();
+    for (const item of feed) {
+      const ym = item.date.slice(0, 7);
+      const arr = next.get(ym) ?? [];
+      arr.push(item);
+      next.set(ym, arr);
+    }
+    return next;
+  }, [feed]);
 
   return (
     <div className="space-y-4">
-      {Array.from(groups.entries()).map(([ym, items]) => (
-        <div key={ym}>
-          <div className="text-xs uppercase tracking-wider text-zinc-500 mb-1">{fmtDate(ym + '-01', 'MMMM yyyy')}</div>
-          <div className="rounded-2xl bg-zinc-900 border border-zinc-800 divide-y divide-zinc-800">
-            {items.map((it, i) => (
-              <div key={`${it.liftId}-${it.date}-${it.reps}-${i}`} className="p-3 flex items-baseline justify-between gap-3">
-                <div className="min-w-0">
-                  <Link href={`/lifts/${it.liftId}`} className="font-medium text-zinc-100 hover:text-amber-400 truncate">
-                    {it.liftName}
-                  </Link>
-                  <div className="text-xs text-zinc-500">{fmtDate(it.date, 'EEE M/d')}</div>
-                </div>
-                <div className="text-right">
-                  <div className="font-mono text-amber-400">{it.weight}×{it.reps}</div>
-                  {it.previousWeight != null && (
-                    <div className="text-xs text-zinc-500 font-mono">was {it.previousWeight}</div>
-                  )}
-                </div>
-              </div>
-            ))}
+      {!openingPrImported?.value && (
+        <div className="rounded-2xl border border-zinc-800 bg-zinc-900 p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+          <div className="text-sm text-zinc-400">
+            <div className="font-medium text-zinc-200">Opening PR baseline</div>
+            <p className="text-xs text-zinc-500 mt-1">
+              Add your lifetime best numbers once (Barbell Row, Bench, OHP, Push Press, unassisted pull-ups, Squat, Deadlift).
+            </p>
           </div>
+          <button
+            type="button"
+            disabled={baselineBusy}
+            onClick={() => {
+              setBaselineBusy(true);
+              void applyOpeningPrBaseline()
+                .finally(() => setBaselineBusy(false));
+            }}
+            className="h-10 shrink-0 px-4 rounded-lg bg-amber-500 text-zinc-950 text-sm font-medium disabled:opacity-50"
+          >
+            {baselineBusy ? 'Adding…' : 'Add opening PRs'}
+          </button>
         </div>
-      ))}
+      )}
+
+      {feed.length === 0 ? (
+        <div className="text-zinc-500 text-sm">
+          No PRs yet — log sessions, or use &quot;Add opening PRs&quot; above.
+        </div>
+      ) : (
+        Array.from(groups.entries()).map(([ym, items]) => (
+          <div key={ym}>
+            <div className="text-xs uppercase tracking-wider text-zinc-500 mb-1">{fmtDate(ym + '-01', 'MMMM yyyy')}</div>
+            <div className="rounded-2xl bg-zinc-900 border border-zinc-800 divide-y divide-zinc-800">
+              {items.map((it, i) => {
+                const isUnassistedPullup = it.liftId === 'p1_bw' && it.weight === 0;
+                const isP1Assisted = it.liftId === 'p1_assisted';
+                return (
+                  <div key={`${it.liftId}-${it.date}-${it.reps}-${i}`} className="p-3 flex items-baseline justify-between gap-3">
+                    <div className="min-w-0">
+                      <Link href={`/lifts/${it.liftId}`} className="font-medium text-zinc-100 hover:text-amber-400 truncate">
+                        {it.liftName}
+                      </Link>
+                      <div className="text-xs text-zinc-500">{fmtDate(it.date, 'EEE M/d')}</div>
+                    </div>
+                    <div className="text-right">
+                      <div className="font-mono text-amber-400">
+                        {isUnassistedPullup
+                          ? `${it.reps} reps (BW)`
+                          : isP1Assisted
+                            ? `${it.weight} lb assist ×${it.reps}`
+                            : `${it.weight}×${it.reps}`}
+                      </div>
+                      {it.previousWeight != null && (
+                        <div className="text-xs text-zinc-500 font-mono">
+                          {isUnassistedPullup
+                            ? `was ${it.previousWeight} reps`
+                            : isP1Assisted
+                              ? `was ${it.previousWeight} lb assist`
+                              : `was ${it.previousWeight}`}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        ))
+      )}
     </div>
   );
 }
@@ -1010,7 +1202,170 @@ function DietList({ logs }: { logs: NutritionLog[] }) {
   );
 }
 
+function HrvList({ readiness }: { readiness: ReadinessLog[] }) {
+  const sortedDesc = useMemo(
+    () => [...readiness].sort((a, b) => b.date.localeCompare(a.date)),
+    [readiness],
+  );
+
+  const measured = useMemo(() => measuredHrvAsc(readiness), [readiness]);
+
+  const hrvSeries = useMemo(() => {
+    const values = measured.map((r) => r.hrvRmssd);
+    const rolling = values.map((_, i) => {
+      const w = values.slice(Math.max(0, i - 3), i + 1);
+      return w.reduce((s, x) => s + x, 0) / w.length;
+    });
+    return { values, rolling };
+  }, [measured]);
+
+  const variabilitySeries = useMemo(() => buildHrvVariabilitySeries(measured), [measured]);
+  const latestVariability =
+    variabilitySeries.length > 0 ? variabilitySeries[variabilitySeries.length - 1] : undefined;
+  const sdSeries = useMemo(() => variabilitySeries.map((p) => p.sdRmssd), [variabilitySeries]);
+  const cvSeries = useMemo(() => variabilitySeries.map((p) => p.cvPct), [variabilitySeries]);
+
+  const recoveryVariabilityHint = useMemo(
+    () => describeHrvRecoveryVariability(latestVariability),
+    [latestVariability],
+  );
+
+  const { values, rolling } = hrvSeries;
+  const lastReading = measured.length > 0 ? measured[measured.length - 1] : null;
+  const firstReading = measured.length > 0 ? measured[0] : null;
+
+  if (readiness.length === 0) {
+    return (
+      <div className="text-zinc-500 text-sm space-y-1">
+        <p>No check-ins yet.</p>
+        <p className="text-xs text-zinc-600">HRV (RMSSD, 5 min) is logged with your session check-in.</p>
+      </div>
+    );
+  }
+
+  const readingsCount = measured.length;
+  const skippedCount = sortedDesc.filter((r) => r.hrvSkipped).length;
+
+  return (
+    <div className="space-y-3">
+      <p className="text-xs text-zinc-500">
+        Morning HRV is optional RMSSD from a 5-minute measurement, saved with session check-in. Derived variability (SD / CV)
+        is informational only and does not change your program.
+      </p>
+
+      {readingsCount >= 1 && lastReading && lastReading.hrvRmssd != null && (
+        <div className="rounded-2xl bg-zinc-900 border border-zinc-800 p-4 space-y-3">
+          <div className="flex flex-wrap items-baseline justify-between gap-2">
+            <div>
+              <div className="text-xs uppercase tracking-wider text-zinc-500">Latest reading</div>
+              <div className="text-3xl font-mono text-zinc-100">
+                {lastReading.hrvRmssd} <span className="text-sm text-zinc-500">ms RMSSD</span>
+              </div>
+              <div className="text-xs text-zinc-500">{fmtDate(lastReading.date, 'EEE M/d')} · {isoWeekOf(lastReading.date)}</div>
+            </div>
+            {readingsCount >= 2 && firstReading && firstReading.hrvRmssd != null && (
+              <div className="text-right">
+                <div className="text-xs uppercase tracking-wider text-zinc-500">vs first in range</div>
+                <div className="text-xl font-mono text-zinc-300">
+                  {lastReading.hrvRmssd - firstReading.hrvRmssd > 0 ? '+' : ''}
+                  {(lastReading.hrvRmssd - firstReading.hrvRmssd).toFixed(0)} <span className="text-xs">ms</span>
+                </div>
+              </div>
+            )}
+          </div>
+          {values.length >= 2 && (
+            <div>
+              <div className="text-xs uppercase tracking-wider text-zinc-500 mb-1">Trend (RMSSD + 4-point rolling avg)</div>
+              <Sparkline values={values} overlay={rolling} height={110} stroke="#38bdf8" />
+            </div>
+          )}
+
+          {values.length >= 3 && sdSeries.length >= 3 && (
+            <div className="rounded-xl border border-zinc-800/80 bg-zinc-950/40 p-3 space-y-3">
+              <div>
+                <div className="text-xs uppercase tracking-wider text-zinc-500 mb-0.5">Variability vs recovery context</div>
+                <p className="text-[11px] text-zinc-600 leading-snug">
+                  Rolling stats use your last up to 7 RMSSD readings per point: SD = spread (ms), CV = spread relative to the
+                  window mean. Higher CV means more bounce between check-ins; it does not by itself say “good” or “bad.”
+                </p>
+              </div>
+              {sdSeries.length >= 2 && (
+                <div>
+                  <div className="text-[11px] uppercase tracking-wider text-zinc-600 mb-1">Rolling SD (ms)</div>
+                  <Sparkline values={sdSeries} height={72} stroke="#a78bfa" fill="rgba(167, 139, 250, 0.08)" showDots />
+                </div>
+              )}
+              {cvSeries.length >= 2 && (
+                <div>
+                  <div className="text-[11px] uppercase tracking-wider text-zinc-600 mb-1">Rolling CV (%)</div>
+                  <Sparkline values={cvSeries} height={72} stroke="#34d399" fill="rgba(52, 211, 153, 0.08)" showDots />
+                </div>
+              )}
+              {latestVariability && (
+                <div className="space-y-1 text-xs text-zinc-400 border-t border-zinc-800 pt-2">
+                  <div className="flex flex-wrap gap-x-4 gap-y-1 font-mono text-[11px]">
+                    <span>
+                      Latest window SD <span className="text-violet-300">{latestVariability.sdRmssd.toFixed(1)} ms</span>
+                    </span>
+                    <span>
+                      CV <span className="text-emerald-300">{latestVariability.cvPct.toFixed(0)}%</span>
+                    </span>
+                    <span>
+                      Mean RMSSD <span className="text-zinc-300">{latestVariability.meanRmssd.toFixed(0)} ms</span>
+                      <span className="text-zinc-600"> · n={latestVariability.windowN}</span>
+                    </span>
+                  </div>
+                  {recoveryVariabilityHint && (
+                    <p className="text-[11px] text-zinc-500 leading-relaxed">{recoveryVariabilityHint}</p>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+          <div className="flex flex-wrap gap-3 text-xs text-zinc-500">
+            <span>{readingsCount} reading{readingsCount === 1 ? '' : 's'}</span>
+            {skippedCount > 0 && <span>{skippedCount} check-in{skippedCount === 1 ? '' : 's'} skipped HRV</span>}
+          </div>
+        </div>
+      )}
+
+      {readingsCount === 0 && (
+        <div className="rounded-2xl border border-zinc-800 bg-zinc-900/50 p-4 text-sm text-zinc-400">
+          No RMSSD readings yet. Use Skip HRV or enter a value on session check-in to build this chart.
+        </div>
+      )}
+
+      <div className="rounded-2xl bg-zinc-900 border border-zinc-800 divide-y divide-zinc-800">
+        <div className="px-3 py-2 text-[11px] uppercase tracking-wider text-zinc-600">Check-ins (newest first)</div>
+        {sortedDesc.slice(0, 48).map((r) => (
+          <div key={r.id} className="p-3 flex items-baseline justify-between gap-2 text-sm">
+            <div>
+              <div className="text-zinc-300">{fmtDate(r.date, 'EEE MMM d, yyyy')}</div>
+              <div className="text-xs text-zinc-500">{isoWeekOf(r.date)}</div>
+            </div>
+            <div className="text-right font-mono shrink-0">
+              {r.hrvSkipped ? (
+                <span className="text-zinc-500">Skipped</span>
+              ) : r.hrvRmssd != null ? (
+                <span className="text-sky-300">{r.hrvRmssd} ms</span>
+              ) : (
+                <span className="text-zinc-600">—</span>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function MeasurementsList({ logs }: { logs: BodyMeasurementLog[] }) {
+  const [editing, setEditing] = useState<BodyMeasurementLog | null>(null);
+  const logByDate = useMemo(() => {
+    const m = new Map<string, BodyMeasurementLog>();
+    for (const x of logs) m.set(x.date, x);
+    return m;
+  }, [logs]);
   const points = useMemo(() => bodyMeasurementSeries(logs), [logs]);
   if (points.length === 0) {
     return (
@@ -1059,10 +1414,25 @@ function MeasurementsList({ logs }: { logs: BodyMeasurementLog[] }) {
 
   return (
     <div className="space-y-3">
-      <p className="text-xs text-zinc-500">
-        Trends use your logged inches. The dashed line is a rolling average of the last up to four entries (same window as
-        bodyweight on the BW tab).
-      </p>
+      {editing && (
+        <BodyMeasurementLogEditSheet key={editing.id} log={editing} onClose={() => setEditing(null)} />
+      )}
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <p className="text-xs text-zinc-500 flex-1 min-w-[12rem]">
+          Trends use your logged inches. The dashed line is a rolling average of the last up to four entries (same window as
+          bodyweight on the BW tab).
+        </p>
+        <button
+          type="button"
+          onClick={() => {
+            const row = logByDate.get(last.date);
+            if (row) setEditing(row);
+          }}
+          className="text-xs px-2 h-8 rounded-md border border-zinc-700 text-zinc-400 hover:text-amber-400 hover:border-zinc-600 shrink-0"
+        >
+          Edit latest
+        </button>
+      </div>
       {metrics.map((m) => {
         const delta = +(m.latest - m.firstVal).toFixed(2);
         return (
@@ -1100,34 +1470,54 @@ function MeasurementsList({ logs }: { logs: BodyMeasurementLog[] }) {
       })}
 
       <div className="rounded-2xl bg-zinc-900 border border-zinc-800 divide-y divide-zinc-800">
-        {[...points].reverse().slice(0, 24).map((p) => (
-          <div key={p.date} className="p-3 flex flex-wrap items-baseline justify-between gap-2 text-sm">
-            <div>
-              <div className="text-zinc-300">{fmtDate(p.date, 'EEE MMM d, yyyy')}</div>
-              <div className="text-xs text-zinc-500">{p.isoWeek}</div>
+        {[...points].reverse().slice(0, 24).map((p) => {
+          const rowLog = logByDate.get(p.date);
+          return (
+            <div key={p.date} className="p-3 flex flex-wrap items-baseline justify-between gap-2 text-sm">
+              <div>
+                <div className="text-zinc-300">{fmtDate(p.date, 'EEE MMM d, yyyy')}</div>
+                <div className="text-xs text-zinc-500">{p.isoWeek}</div>
+              </div>
+              <div className="flex flex-wrap items-baseline justify-end gap-2 sm:gap-4">
+                <div className="flex gap-4 text-right font-mono text-xs sm:text-sm">
+                  <div>
+                    <span className="text-zinc-600">W </span>
+                    <span className="text-cyan-300/90">{p.waist}</span>
+                  </div>
+                  <div>
+                    <span className="text-zinc-600">A </span>
+                    <span className="text-violet-300/90">{p.abdomen}</span>
+                  </div>
+                  <div>
+                    <span className="text-zinc-600">H </span>
+                    <span className="text-pink-300/90">{p.hips}</span>
+                  </div>
+                </div>
+                {rowLog && (
+                  <button
+                    type="button"
+                    onClick={() => setEditing(rowLog)}
+                    className="text-xs px-2 h-8 rounded-md border border-zinc-700 text-zinc-400 hover:text-amber-400 hover:border-zinc-600 shrink-0"
+                  >
+                    Edit
+                  </button>
+                )}
+              </div>
             </div>
-            <div className="flex gap-4 text-right font-mono text-xs sm:text-sm">
-              <div>
-                <span className="text-zinc-600">W </span>
-                <span className="text-cyan-300/90">{p.waist}</span>
-              </div>
-              <div>
-                <span className="text-zinc-600">A </span>
-                <span className="text-violet-300/90">{p.abdomen}</span>
-              </div>
-              <div>
-                <span className="text-zinc-600">H </span>
-                <span className="text-pink-300/90">{p.hips}</span>
-              </div>
-            </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );
 }
 
 function BodyweightList({ logs }: { logs: BodyweightLog[] }) {
+  const [editing, setEditing] = useState<BodyweightLog | null>(null);
+  const logByDate = useMemo(() => {
+    const m = new Map<string, BodyweightLog>();
+    for (const x of logs) m.set(x.date, x);
+    return m;
+  }, [logs]);
   const points = useMemo(() => bodyweightSeries(logs), [logs]);
   if (points.length === 0) {
     return <div className="text-zinc-500 text-sm">No bodyweight entries yet.</div>;
@@ -1140,21 +1530,37 @@ function BodyweightList({ logs }: { logs: BodyweightLog[] }) {
   const delta = +(last.bodyweight - first.bodyweight).toFixed(1);
   const deltaColor = delta > 0 ? 'text-emerald-400' : delta < 0 ? 'text-rose-400' : 'text-zinc-500';
 
+  const latestLog = logByDate.get(last.date);
+
   return (
     <div className="space-y-3">
+      {editing && (
+        <BodyweightLogEditSheet key={editing.id} log={editing} onClose={() => setEditing(null)} />
+      )}
       <div className="rounded-2xl bg-zinc-900 border border-zinc-800 p-4 space-y-3">
-        <div className="flex items-baseline justify-between">
+        <div className="flex items-baseline justify-between gap-2">
           <div>
             <div className="text-xs uppercase tracking-wider text-zinc-500">Latest</div>
             <div className="text-3xl font-mono">{last.bodyweight} <span className="text-sm text-zinc-500">lb</span></div>
             <div className="text-xs text-zinc-500">{fmtDate(last.date, 'EEE M/d')} · {last.isoWeek}</div>
           </div>
-          <div className="text-right">
-            <div className="text-xs uppercase tracking-wider text-zinc-500">vs first entry</div>
-            <div className={`text-2xl font-mono ${deltaColor}`}>
-              {delta > 0 ? '+' : ''}{delta} <span className="text-xs">lb</span>
+          <div className="flex items-start gap-2 shrink-0">
+            <div className="text-right">
+              <div className="text-xs uppercase tracking-wider text-zinc-500">vs first entry</div>
+              <div className={`text-2xl font-mono ${deltaColor}`}>
+                {delta > 0 ? '+' : ''}{delta} <span className="text-xs">lb</span>
+              </div>
+              <div className="text-xs text-zinc-500">{points.length} entries</div>
             </div>
-            <div className="text-xs text-zinc-500">{points.length} entries</div>
+            {latestLog && (
+              <button
+                type="button"
+                onClick={() => setEditing(latestLog)}
+                className="text-xs px-2 h-8 rounded-md border border-zinc-700 text-zinc-400 hover:text-amber-400 hover:border-zinc-600"
+              >
+                Edit
+              </button>
+            )}
           </div>
         </div>
         <div>
@@ -1164,18 +1570,32 @@ function BodyweightList({ logs }: { logs: BodyweightLog[] }) {
       </div>
 
       <div className="rounded-2xl bg-zinc-900 border border-zinc-800 divide-y divide-zinc-800">
-        {[...points].reverse().slice(0, 16).map((p) => (
-          <div key={p.date} className="p-3 flex items-baseline justify-between text-sm">
-            <div>
-              <div className="text-zinc-300">{fmtDate(p.date, 'EEE MMM d, yyyy')}</div>
-              <div className="text-xs text-zinc-500">{p.isoWeek}</div>
+        {[...points].reverse().slice(0, 16).map((p) => {
+          const rowLog = logByDate.get(p.date);
+          return (
+            <div key={p.date} className="p-3 flex items-baseline justify-between gap-2 text-sm">
+              <div>
+                <div className="text-zinc-300">{fmtDate(p.date, 'EEE MMM d, yyyy')}</div>
+                <div className="text-xs text-zinc-500">{p.isoWeek}</div>
+              </div>
+              <div className="flex items-baseline gap-2 shrink-0">
+                <div className="text-right">
+                  <div className="font-mono text-zinc-100">{p.bodyweight} <span className="text-xs text-zinc-500">lb</span></div>
+                  <div className="text-xs text-zinc-500 font-mono">avg {p.rolling4w.toFixed(1)}</div>
+                </div>
+                {rowLog && (
+                  <button
+                    type="button"
+                    onClick={() => setEditing(rowLog)}
+                    className="text-xs px-2 h-8 rounded-md border border-zinc-700 text-zinc-400 hover:text-amber-400 hover:border-zinc-600"
+                  >
+                    Edit
+                  </button>
+                )}
+              </div>
             </div>
-            <div className="text-right">
-              <div className="font-mono text-zinc-100">{p.bodyweight} <span className="text-xs text-zinc-500">lb</span></div>
-              <div className="text-xs text-zinc-500 font-mono">avg {p.rolling4w.toFixed(1)}</div>
-            </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );

@@ -46,7 +46,7 @@ export async function buildSessionRecapPayload(opts: {
   const readinessLogs = await db.readiness_logs.toArray();
   const tmpl = await db.templates.get(session.templateId);
 
-  const prs = sessionRecapPRs(session.id, allSets, allSessions, lifts);
+  const prs = sessionRecapPRs(session.id, allSets, allSessions, lifts, bodyweightLogs, readinessLogs);
   const highlights = sessionFinishHighlights(session, sessionSets, lifts, bodyweightLogs, readinessLogs);
   const { lbPerHour: strengthLbPerHour } = sessionStrengthDensity(
     session,

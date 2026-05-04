@@ -7,12 +7,15 @@ import { getDb } from '@/lib/db';
 import { useAllBodyweight, useAllReadiness, useAllSets, useLifts, useSessionsAfterReadiness } from '@/lib/hooks';
 import { fmtDate } from '@/lib/time';
 import { buildLiftHistory, est1RM, liftPRs } from '@/lib/stats';
-import { MiniBars, Sparkline } from './Sparkline';
+import { toggleFavoriteLift, useFavoriteLiftIds } from '@/lib/favoriteLifts';
+import { ProgressLineChart } from './Sparkline';
 import { PageShell } from './PageShell';
 import type { Prescription } from '@/lib/types';
 
 export function LiftDetailView({ liftId }: { liftId: string }) {
   const lifts = useLifts();
+  const favoriteLiftIds = useFavoriteLiftIds();
+  const pinned = favoriteLiftIds.includes(liftId);
   const allSets = useAllSets();
   const allSessions = useSessionsAfterReadiness();
   const allBw = useAllBodyweight();
@@ -30,10 +33,11 @@ export function LiftDetailView({ liftId }: { liftId: string }) {
     [liftId, allSets, allSessions, allBw, allRx],
   );
   const prs = useMemo(
-    () => (allSets && allSessions
-      ? liftPRs(liftId, allSets, allSessions)
-      : { liftId, bestByReps: [], bestE1RM: null }),
-    [liftId, allSets, allSessions],
+    () =>
+      allSets && allSessions
+        ? liftPRs(liftId, allSets, allSessions, allBw, allRx)
+        : { liftId, bestByReps: [], bestE1RM: null },
+    [liftId, allSets, allSessions, allBw, allRx],
   );
 
   if (!lifts || !allSets || !allSessions || !prescriptions || allBw == null || allRx == null) {
@@ -49,9 +53,7 @@ export function LiftDetailView({ liftId }: { liftId: string }) {
     );
   }
 
-  const e1rm = points.map((p) => Math.round(p.best1RM));
   const volumes = points.map((p) => p.volume);
-  const topWeights = points.map((p) => p.topWeight);
 
   const lastSetDate = points.length > 0 ? points[points.length - 1].date : null;
   const totalSetsLogged = allSets.filter((s) => s.liftId === liftId && s.status === 'completed').length;
@@ -60,11 +62,28 @@ export function LiftDetailView({ liftId }: { liftId: string }) {
     <PageShell className="p-4 space-y-4">
       <div>
         <Link href="/history" className="text-sm text-amber-400">← History</Link>
-        <h1 className="text-2xl font-semibold mt-1">{lift.name}</h1>
-        <div className="text-xs text-zinc-500 mt-0.5">
-          {lift.equipment} · {lift.repUnit}
-          {lift.pattern && <> · <span className="capitalize">{lift.pattern.replace('-', ' ')}</span></>}
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-semibold mt-1">{lift.name}</h1>
+          <div className="text-xs text-zinc-500 mt-0.5">
+            {lift.equipment} · {lift.repUnit}
+            {lift.pattern && <> · <span className="capitalize">{lift.pattern.replace('-', ' ')}</span></>}
+          </div>
         </div>
+        <button
+          type="button"
+          onClick={() => void toggleFavoriteLift(liftId)}
+          className={`shrink-0 h-10 px-3 rounded-lg border text-sm font-medium flex items-center gap-2 ${
+            pinned
+              ? 'border-amber-500/60 bg-amber-500/15 text-amber-300'
+              : 'border-zinc-700 bg-zinc-900 text-zinc-400 hover:text-zinc-200 hover:border-zinc-600'
+          }`}
+          aria-label={pinned ? 'Remove from pinned lifts' : 'Pin this lift'}
+        >
+          <span className="text-base" aria-hidden>{pinned ? '★' : '☆'}</span>
+          {pinned ? 'Pinned' : 'Pin lift'}
+        </button>
+      </div>
         {(lift.muscleGroups ?? []).length > 0 && (
           <div className="flex flex-wrap gap-1 mt-2">
             {(lift.muscleGroups ?? []).map((g) => (
@@ -97,25 +116,63 @@ export function LiftDetailView({ liftId }: { liftId: string }) {
 
       {points.length > 0 ? (
         <>
-          <div className="rounded-2xl bg-zinc-900 border border-zinc-800 p-4 space-y-2">
-            <div className="text-xs uppercase tracking-wider text-zinc-500">Estimated 1RM</div>
-            <Sparkline values={e1rm} height={120} />
-            {lastSetDate && (
-              <div className="text-xs text-zinc-500">last logged {fmtDate(lastSetDate, 'EEE M/d, yyyy')}</div>
+          <div className="rounded-2xl bg-zinc-900 border border-zinc-800 p-4 space-y-4">
+            <div>
+              <div className="text-sm font-medium text-zinc-200">Progress</div>
+              <p className="text-xs text-zinc-500 mt-0.5">
+                One point per session with completed sets for this lift. Dates along the bottom are first, mid, and latest.
+              </p>
+              {lastSetDate && (
+                <div className="text-xs text-zinc-600 mt-1">Last session on the chart: {fmtDate(lastSetDate, 'EEE M/d, yyyy')}</div>
+              )}
+            </div>
+
+            <div className="space-y-2">
+              <div className="text-xs uppercase tracking-wider text-zinc-500">Estimated 1RM</div>
+              <ProgressLineChart
+                values={points.map((p) => Math.round(p.best1RM))}
+                dates={points.map((p) => p.date)}
+                height={168}
+                stroke="#f59e0b"
+                fill="rgba(245, 158, 11, 0.1)"
+                unit="lb e1RM"
+                yDecimals={0}
+                aria-label="Estimated one rep max over time"
+              />
+            </div>
+
+            <div className="space-y-2 border-t border-zinc-800 pt-4">
+              <div className="text-xs uppercase tracking-wider text-zinc-500">
+                {lift.id === 'p1_assisted' ? 'Top set (est. weight moved)' : 'Top set weight'}
+              </div>
+              <ProgressLineChart
+                values={points.map((p) => p.topWeight)}
+                dates={points.map((p) => p.date)}
+                height={168}
+                stroke="#38bdf8"
+                fill="rgba(56, 189, 248, 0.1)"
+                unit="lb"
+                yDecimals={0}
+                aria-label="Heaviest load per session"
+              />
+            </div>
+
+            {volumes.some((v) => v > 0) && (
+              <div className="space-y-2 border-t border-zinc-800 pt-4">
+                <div className="text-xs uppercase tracking-wider text-zinc-500">Session volume</div>
+                <ProgressLineChart
+                  values={points.map((p) => p.volume)}
+                  dates={points.map((p) => p.date)}
+                  height={168}
+                  stroke="#34d399"
+                  fill="rgba(52, 211, 153, 0.1)"
+                  unit="lb·reps"
+                  yDecimals={0}
+                  aria-label="Training volume per session"
+                />
+              </div>
             )}
           </div>
-
-          <div className="rounded-2xl bg-zinc-900 border border-zinc-800 p-4 space-y-2">
-            <div className="text-xs uppercase tracking-wider text-zinc-500">Top set weight per session</div>
-            <MiniBars values={topWeights} height={56} color="#f59e0b" />
-          </div>
-
-          {volumes.some((v) => v > 0) && (
-            <div className="rounded-2xl bg-zinc-900 border border-zinc-800 p-4 space-y-2">
-              <div className="text-xs uppercase tracking-wider text-zinc-500">Volume per session</div>
-              <MiniBars values={volumes} height={56} />
-            </div>
-          )}
         </>
       ) : (
         <div className="rounded-2xl bg-zinc-900 border border-zinc-800 p-6 text-zinc-500 text-sm">
@@ -126,12 +183,31 @@ export function LiftDetailView({ liftId }: { liftId: string }) {
       {prs.bestByReps.length > 0 && (
         <div className="rounded-2xl bg-zinc-900 border border-zinc-800 p-4 space-y-2">
           <div className="text-xs uppercase tracking-wider text-zinc-500">PRs by rep range</div>
+          {lift.id === 'p1_assisted' && (
+            <p className="text-xs text-zinc-500">
+              Best = <span className="text-zinc-400">least assistance</span> at each rep count (lower listed lb → lighter
+              band, closer to full bodyweight and later weighted pull-ups).
+            </p>
+          )}
           <div className="space-y-1">
             {prs.bestByReps.map((b) => (
               <div key={b.reps} className="flex items-baseline justify-between text-sm">
                 <span className="text-zinc-400 font-mono">{b.reps} rep{b.reps === 1 ? '' : 's'}</span>
                 <span className="font-mono text-amber-400">
-                  {b.weight} lb <span className="text-xs text-zinc-500 ml-1">e1RM {Math.round(est1RM(b.weight, b.reps))}</span>
+                  {lift.id === 'p1_assisted' ? (
+                    <>
+                      {b.weight === 0
+                        ? '0 lb (unassisted)'
+                        : b.weight < 0
+                          ? `${b.weight} lb added`
+                          : `${b.weight} lb assist`}
+                    </>
+                  ) : (
+                    <>
+                      {b.weight} lb{' '}
+                      <span className="text-xs text-zinc-500 ml-1">e1RM {Math.round(est1RM(b.weight, b.reps))}</span>
+                    </>
+                  )}
                 </span>
                 <span className="text-xs text-zinc-500">{fmtDate(b.date, 'M/d/yy')}</span>
               </div>

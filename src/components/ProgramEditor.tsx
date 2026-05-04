@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { useMemo, useState } from 'react';
 import {
   useAllBodyweight,
@@ -26,6 +27,7 @@ import {
   buildUpcomingWeekRoutineMarkdown,
   isoDatesEndingToday,
   RECENT_SIGNAL_DAYS_DEFAULT,
+  stressLogsByDate,
   upcomingTrainingIsoWeekRange,
 } from '@/lib/exportRoutineMarkdown';
 import { isoWeekOf, startOfWeekIso } from '@/lib/stats';
@@ -56,6 +58,7 @@ import {
 import { MesoBoundaryPromptCard } from './MesoBoundaryPromptCard';
 import { LooseDecimalField, LooseIntField } from './WeightStepper';
 import { PageShell } from './PageShell';
+import { sortLiftsWithFavoritesFirst, toggleFavoriteLift, useFavoriteLiftIds } from '@/lib/favoriteLifts';
 
 /** Editable meso fields while the form is open — numbers as strings so the
  *  user can clear the field and type a new value (controlled `number` +
@@ -82,6 +85,8 @@ export function ProgramEditor() {
   const [templateOverride, setTemplateOverride] = useState<TemplateId | null>(null);
   const activeId = templateOverride ?? effectiveProgramTemplateId;
   const prescriptions = usePrescriptions(activeId);
+  const favoriteLiftIds = useFavoriteLiftIds();
+  const favoriteLiftIdSet = useMemo(() => new Set(favoriteLiftIds), [favoriteLiftIds]);
   const mesoCfg = useMesoConfig();
   const [exporting, setExporting] = useState(false);
   const [exportingClaude, setExportingClaude] = useState<'idle' | 'md' | 'txt' | 'upMd' | 'upTxt'>('idle');
@@ -93,8 +98,8 @@ export function ProgramEditor() {
 
   const liftsSorted = useMemo(() => {
     if (!lifts?.length) return [];
-    return [...lifts].sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
-  }, [lifts]);
+    return sortLiftsWithFavoritesFirst(lifts, favoriteLiftIds);
+  }, [lifts, favoriteLiftIds]);
 
   if (!templates || !lifts) return <div className="p-6 text-zinc-500">Loading…</div>;
 
@@ -179,7 +184,7 @@ export function ProgramEditor() {
       ]);
       const nutritionByDate = new Map(nutritionAll.map((n) => [n.date, n]));
       const sleepByDate = new Map(sleepAll.map((s) => [s.date, s]));
-      const stressByDate = new Map(stressAll.map((s) => [s.date, s]));
+      const stressByDateFull = stressLogsByDate(stressAll);
       const signalDates = isoDatesEndingToday(RECENT_SIGNAL_DAYS_DEFAULT);
       const md = buildRoutineMarkdown({
         exportedAtIso: new Date().toISOString(),
@@ -188,7 +193,7 @@ export function ProgramEditor() {
         prescriptions: prescriptionsAll,
         nutritionByDate: new Map(signalDates.map((d) => [d, nutritionByDate.get(d)])),
         sleepByDate: new Map(signalDates.map((d) => [d, sleepByDate.get(d)])),
-        stressByDate: new Map(signalDates.map((d) => [d, stressByDate.get(d)])),
+        stressByDate: new Map(signalDates.map((d) => [d, stressByDateFull.get(d)])),
         signalDates,
       });
       const mime =
@@ -219,7 +224,7 @@ export function ProgramEditor() {
       ]);
       const nutritionByDate = new Map(nutritionAll.map((n) => [n.date, n]));
       const sleepByDate = new Map(sleepAll.map((s) => [s.date, s]));
-      const stressByDate = new Map(stressAll.map((s) => [s.date, s]));
+      const stressByDateFull = stressLogsByDate(stressAll);
       const range = upcomingTrainingIsoWeekRange(todayIso());
       let mesoNote: string | undefined;
       if (mesoCfg) {
@@ -236,7 +241,7 @@ export function ProgramEditor() {
         prescriptions: prescriptionsAll,
         nutritionByDate,
         sleepByDate,
-        stressByDate,
+        stressByDate: stressByDateFull,
         mesoNote,
       });
       const mime =
@@ -321,9 +326,6 @@ export function ProgramEditor() {
         </div>
       </div>
 
-      <GoalsPanel />
-      <MesocycleSettings />
-
       <Schedule templates={templates} onSelectTemplate={(id) => setTemplateOverride(id)} />
 
       <div className="flex flex-wrap gap-2">
@@ -337,8 +339,30 @@ export function ProgramEditor() {
       </div>
 
       <p className="text-xs text-zinc-500">
-        Row order is the order on Today for this day. Use ↑ ↓ next to Remove to reorder exercises.
+        Row order is the order on Today for this day. Pinned lifts sort to the top on Today; the dropdown below puts
+        pins first so swaps stay quick.
       </p>
+
+      {favoriteLiftIds.length > 0 && (
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm">
+          <span className="text-zinc-500 text-xs uppercase tracking-wider shrink-0">Pinned</span>
+          <div className="flex flex-wrap gap-1.5">
+            {favoriteLiftIds.map((id) => {
+              const name = lifts.find((l) => l.id === id)?.name ?? id;
+              return (
+                <Link
+                  key={id}
+                  href={`/lifts/${id}`}
+                  className="inline-flex items-center gap-1 rounded-lg border border-amber-500/30 bg-amber-500/10 px-2 py-1 text-amber-200 text-xs hover:bg-amber-500/20"
+                >
+                  <span aria-hidden className="text-amber-400">★</span>
+                  {name}
+                </Link>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       <div className="rounded-2xl bg-zinc-900 border border-zinc-800 overflow-hidden">
         <div className="grid grid-cols-12 gap-2 px-3 py-2 text-xs uppercase tracking-wider text-zinc-500 border-b border-zinc-800">
@@ -349,18 +373,33 @@ export function ProgramEditor() {
           <div className="col-span-2">Notes</div>
           <div className="col-span-2 text-center">Slot</div>
         </div>
-        {(prescriptions ?? []).map((p, idx, arr) => (
+        {(prescriptions ?? []).map((p, idx, arr) => {
+          const pinned = favoriteLiftIdSet.has(p.liftId);
+          return (
           <div key={p.id} className="grid grid-cols-12 gap-2 px-3 py-3 items-center border-b border-zinc-800 last:border-b-0">
-            <label className="col-span-3 min-w-0">
-              <span className="sr-only">Exercise</span>
+            <div className="col-span-3 min-w-0 flex items-center gap-1.5">
+              <button
+                type="button"
+                aria-label={pinned ? 'Unpin lift' : 'Pin lift'}
+                title={pinned ? 'Unpin from favorites' : 'Pin — surfaces first on Today & in this list'}
+                onClick={() => void toggleFavoriteLift(p.liftId)}
+                className={`shrink-0 h-10 w-9 rounded-lg border text-lg leading-none flex items-center justify-center ${
+                  pinned
+                    ? 'border-amber-500/50 bg-amber-500/15 text-amber-400'
+                    : 'border-zinc-700 bg-zinc-950 text-zinc-500 hover:text-zinc-300 hover:border-zinc-600'
+                }`}
+              >
+                {pinned ? '★' : '☆'}
+              </button>
               <select
                 value={p.liftId}
+                aria-label="Exercise for this row"
                 onChange={(e) => {
                   const liftId = e.target.value;
                   const w = snapWorkingWeight(p.weight, liftForSnap(liftId));
                   void update(p, { liftId, weight: w, increment: undefined });
                 }}
-                className="h-10 w-full max-w-full rounded-lg bg-zinc-950 border border-zinc-800 px-2 text-sm text-zinc-200"
+                className="h-10 min-w-0 flex-1 rounded-lg bg-zinc-950 border border-zinc-800 px-2 text-sm text-zinc-200"
               >
                 {!liftsSorted.some((l) => l.id === p.liftId) && (
                   <option value={p.liftId}>{p.liftId}</option>
@@ -371,7 +410,7 @@ export function ProgramEditor() {
                   </option>
                 ))}
               </select>
-            </label>
+            </div>
             <LooseDecimalField
               value={p.weight}
               onCommit={(n) =>
@@ -442,7 +481,8 @@ export function ProgramEditor() {
               </button>
             </div>
           </div>
-        ))}
+          );
+        })}
         <div className="px-3 py-3 border-t border-zinc-800">
           <button
             type="button"
@@ -453,6 +493,9 @@ export function ProgramEditor() {
           </button>
         </div>
       </div>
+
+      <GoalsPanel />
+      <MesocycleSettings />
     </PageShell>
   );
 }

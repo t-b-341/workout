@@ -1,5 +1,7 @@
 'use client';
 
+import { fmtDate } from '@/lib/time';
+
 type Props = {
   values: number[];
   /** Optional second series rendered as a dashed line over the same axes. */
@@ -68,6 +70,111 @@ export function Sparkline({
       {showDots && values.map((v, i) => (
         <circle key={i} cx={x(i, values.length)} cy={y(v)} r={2.5} fill={stroke} />
       ))}
+    </svg>
+  );
+}
+
+/** Per-session line chart (time on X by index, value on Y). Optional dates label the timeline. */
+export type ProgressLineChartProps = {
+  values: number[];
+  /** One ISO date per point; ticks show first / middle / last. */
+  dates?: string[];
+  height?: number;
+  minWidth?: number;
+  stroke?: string;
+  fill?: string;
+  /** Shown next to Y ticks (e.g. "lb"). */
+  unit?: string;
+  /** Decimal places for Y-axis labels */
+  yDecimals?: number;
+  'aria-label'?: string;
+};
+
+export function ProgressLineChart({
+  values,
+  dates,
+  height = 168,
+  minWidth = 280,
+  stroke = '#f59e0b',
+  fill = 'rgba(245, 158, 11, 0.1)',
+  unit = '',
+  yDecimals = 0,
+  'aria-label': ariaLabel,
+}: ProgressLineChartProps) {
+  const n = values.length;
+  if (n === 0) {
+    return <div className="text-xs text-zinc-500 italic">No data yet</div>;
+  }
+  if (n === 1) {
+    return (
+      <div className="flex items-baseline gap-2 text-sm text-zinc-300 flex-wrap">
+        <span className="font-mono text-lg">{values[0].toFixed(yDecimals)}</span>
+        {unit && <span className="text-xs text-zinc-500">{unit}</span>}
+        <span className="text-xs text-zinc-500">· one session</span>
+        {dates?.[0] && <span className="text-xs text-zinc-500">{fmtDate(dates[0], 'MMM d, yyyy')}</span>}
+      </div>
+    );
+  }
+
+  const pad = { l: 44, r: 10, t: 12, b: 28 };
+  const width = minWidth;
+  const innerW = width - pad.l - pad.r;
+  const innerH = height - pad.t - pad.b;
+
+  const minV = Math.min(...values);
+  const maxV = Math.max(...values);
+  const span = maxV - minV || 1;
+
+  const xAt = (i: number) => pad.l + (i / Math.max(1, n - 1)) * innerW;
+  const yAt = (v: number) => pad.t + innerH - ((v - minV) / span) * innerH;
+
+  const pts = values.map((v, i) => `${xAt(i).toFixed(2)},${yAt(v).toFixed(2)}`).join(' ');
+  const floorPts = `${pad.l},${pad.t + innerH} ${pts} ${(pad.l + innerW).toFixed(2)},${pad.t + innerH}`;
+
+  const tickIndices: number[] = [0];
+  if (n > 2) tickIndices.push(Math.floor((n - 1) / 2));
+  if (n > 1) tickIndices.push(n - 1);
+  const uniqueTicks = [...new Set(tickIndices)].sort((a, b) => a - b);
+  const dateList = dates && dates.length === n ? dates : null;
+
+  const fmtYTick = (v: number) =>
+    Math.abs(v) >= 1000 ? Math.round(v).toLocaleString() : v.toFixed(yDecimals);
+
+  return (
+    <svg
+      viewBox={`0 0 ${width} ${height}`}
+      width="100%"
+      height={height}
+      role="img"
+      aria-label={ariaLabel ?? 'Progress line chart'}
+      className="text-zinc-500"
+    >
+      {/* Y-axis range */}
+      <text x={pad.l - 4} y={pad.t + 10} textAnchor="end" className="fill-zinc-400 text-[10px]">
+        {fmtYTick(maxV)}
+      </text>
+      <text x={pad.l - 4} y={pad.t + innerH} textAnchor="end" className="fill-zinc-500 text-[10px]">
+        {fmtYTick(minV)}
+      </text>
+
+      <polygon points={floorPts} fill={fill} />
+      <polyline points={pts} fill="none" stroke={stroke} strokeWidth={2.25} strokeLinejoin="round" strokeLinecap="round" />
+      {values.map((v, i) => (
+        <circle key={i} cx={xAt(i)} cy={yAt(v)} r={3} fill={stroke} stroke="#18181b" strokeWidth={1} />
+      ))}
+
+      {dateList &&
+        uniqueTicks.map((ti) => (
+          <text
+            key={ti}
+            x={xAt(ti)}
+            y={height - 6}
+            textAnchor={ti === 0 ? 'start' : ti === n - 1 ? 'end' : 'middle'}
+            className="fill-zinc-500 text-[10px]"
+          >
+            {fmtDate(dateList[ti]!, 'MMM d')}
+          </text>
+        ))}
     </svg>
   );
 }

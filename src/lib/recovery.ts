@@ -147,12 +147,16 @@ export function recoveryPlan(band: RecoveryBand): RecoveryPlan {
   };
 }
 
-/** Lower daily stress average (1–5) and stronger self-rated management → higher score. */
-export function stressScore(log: StressLog): number {
-  const avg = log.average;
-  const fromAvg = clamp(((6 - avg) / 5) * 100, 0, 100);
-  const mgmt = clamp((log.managementEffectiveness / 5) * 100, 0, 100);
-  return Math.round(fromAvg * 0.82 + mgmt * 0.18);
+/** Mean rating for the day; empty → null */
+export function averageStressRating(entries: StressLog[]): number | null {
+  if (entries.length === 0) return null;
+  const sum = entries.reduce((a, x) => a + x.rating, 0);
+  return sum / entries.length;
+}
+
+/** Lower average stress rating (1–5) → higher score (0–100). */
+export function stressScoreFromAverageRating(avgRating: number): number {
+  return Math.round(clamp(((6 - avgRating) / 5) * 100, 0, 100));
 }
 
 /** Logged mindfulness minutes (capped); omitted readiness field → excluded from composite. */
@@ -167,14 +171,16 @@ export function buildRecoveryScore(input: {
   hydration?: HydrationLog;
   nutrition?: NutritionLog;
   readiness?: ReadinessLog;
-  /** When present, composite uses a 5-way blend including `stressScore`. */
-  stress?: StressLog;
+  /** All stress check-ins for this calendar day (any count). */
+  stress?: StressLog[];
 }): RecoveryScore {
   const s = sleepScore(input.sleep);
   const h = hydrationScore(input.hydration);
   const n = nutritionScore(input.nutrition);
   const r = readinessScore(input.readiness);
-  const st = input.stress != null ? stressScore(input.stress) : undefined;
+  const avgR =
+    input.stress && input.stress.length > 0 ? averageStressRating(input.stress) : null;
+  const st = avgR != null ? stressScoreFromAverageRating(avgR) : undefined;
   const mind =
     input.readiness?.mindfulnessMinutes != null
       ? mindfulnessScore(input.readiness.mindfulnessMinutes)

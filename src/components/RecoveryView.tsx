@@ -13,7 +13,11 @@ import {
   useTodaySession,
   useReadinessForSession,
 } from '@/lib/hooks';
-import { buildRecoveryScore, recoveryPlan } from '@/lib/recovery';
+import {
+  averageStressRating,
+  buildRecoveryScore,
+  recoveryPlan,
+} from '@/lib/recovery';
 import {
   BOTTLE_REFILL_OZ_MAX,
   mlToUsFloz,
@@ -24,7 +28,8 @@ import {
 } from '@/lib/recoveryPrefs';
 import { kcalFromMacros } from '@/lib/macros';
 import { deriveMealMetrics, sortMealTimestamps } from '@/lib/mealTiming';
-import { flushDirty, localUpsert } from '@/lib/sync';
+import { replaceMealTimestampsForDay } from '@/lib/nutritionMealQuick';
+import { flushDirty, localDelete, localUpsert } from '@/lib/sync';
 import { todayIso } from '@/lib/time';
 import type { HydrationLog, NutritionLog, StressLog } from '@/lib/types';
 import { BodyweightQuickLog } from './BodyweightQuickLog';
@@ -36,6 +41,14 @@ import { WellnessTargetsCard } from './WellnessTargetsCard';
 
 function clamp(n: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, n));
+}
+
+function fmtCheckInTimestamp(iso: string): string {
+  try {
+    return new Date(iso).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
+  } catch {
+    return iso;
+  }
 }
 
 function fmtGapMinutes(totalMin: number): string {
@@ -61,7 +74,7 @@ type MacroRecommendation = {
 function buildTodayPerformanceRecommendations(input: {
   sleepHours?: number;
   nutrition?: NutritionLog;
-  stress?: StressLog;
+  stress?: StressLog[];
 }): string[] {
   const out: string[] = [];
 
@@ -85,10 +98,9 @@ function buildTodayPerformanceRecommendations(input: {
     out.push('Log nutrition and hit calories, protein, carbs, and fats today.');
   }
 
-  const stressHigh = (input.stress?.average ?? 0) >= 4
-    || (input.stress?.startOfDay ?? 0) >= 4
-    || (input.stress?.midDay ?? 0) >= 4
-    || (input.stress?.endOfDay ?? 0) >= 4;
+  const stressHigh =
+    (input.stress?.some((x) => x.rating >= 4) ?? false)
+    || (averageStressRating(input.stress ?? []) ?? 0) >= 4;
   if (stressHigh) {
     out.push('Focus on stress reduction now: 10-minute walk + slow exhale breathing, then lower training-day friction.');
   } else {
@@ -202,7 +214,7 @@ export function RecoveryView() {
   const readiness = useReadinessForSession(session?.id);
 
   const score = useMemo(
-    () => buildRecoveryScore({ date, sleep, hydration, nutrition, readiness, stress }),
+    () => buildRecoveryScore({ date, sleep, hydration, nutrition, readiness, stress: stress ?? [] }),
     [date, sleep, hydration, nutrition, readiness, stress],
   );
   const plan = useMemo(() => recoveryPlan(score.band), [score.band]);
@@ -210,7 +222,7 @@ export function RecoveryView() {
     () => buildTodayPerformanceRecommendations({
       sleepHours: sleep?.sleepHours,
       nutrition,
-      stress,
+      stress: stress ?? [],
     }),
     [sleep, nutrition, stress],
   );
@@ -219,6 +231,11 @@ export function RecoveryView() {
   return (
     <PageShell className="p-4 space-y-4">
       <MacroTrendCallout advice={macroTrend} title="Fueling trend (days before today)" />
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <DidYouEatQuickSection date={date} existing={nutrition} prefs={prefs} />
+        <StressSection date={date} entries={stress ?? []} />
+      </div>
 
       <div className="rounded-2xl bg-zinc-900 border border-zinc-800 p-4 space-y-2">
         <div className="text-sm font-medium">Today&apos;s recommendations</div>
@@ -254,7 +271,6 @@ export function RecoveryView() {
       <WellnessTargetsCard />
 
       <SleepSection date={date} existing={sleep} />
-      <StressSection date={date} existing={stress} />
       <BodyweightQuickLog date={date} />
       <HydrationSection date={date} existing={hydration} prefs={prefs} />
       <NutritionSection date={date} existing={nutrition} prefs={prefs} />
@@ -264,79 +280,169 @@ export function RecoveryView() {
   );
 }
 
-function StressSection({
+function DidYouEatQuickSection({
   date,
   existing,
+  prefs,
 }: {
   date: string;
-  existing: StressLog | undefined;
+  existing: NutritionLog | undefined;
+  prefs: RecoveryPrefs;
 }) {
-  const formKey = existing?.id ?? `stress-new-${date}`;
-  return <StressSectionForm key={formKey} date={date} existing={existing} />;
-}
+  const meals = sortMealTimestamps(existing?.mealTimestamps ?? []);
 
-function StressSectionForm({
-  date,
-  existing,
-}: {
-  date: string;
-  existing: StressLog | undefined;
-}) {
-  const [startOfDay, setStartOfDay] = useState<1 | 2 | 3 | 4 | 5>(existing?.startOfDay ?? 3);
-  const [midDay, setMidDay] = useState<1 | 2 | 3 | 4 | 5>(existing?.midDay ?? 3);
-  const [endOfDay, setEndOfDay] = useState<1 | 2 | 3 | 4 | 5>(existing?.endOfDay ?? 3);
-  const [managementEffectiveness, setManagementEffectiveness] = useState<1 | 2 | 3 | 4 | 5>(
-    existing?.managementEffectiveness ?? 3,
-  );
-  const average = useMemo(() => +((startOfDay + midDay + endOfDay) / 3).toFixed(1), [startOfDay, midDay, endOfDay]);
-  const highStress = startOfDay >= 4 || midDay >= 4 || endOfDay >= 4 || average >= 4;
+  async function logAteNow() {
+    const next = [...meals, new Date().toISOString()];
+    await replaceMealTimestampsForDay(date, prefs, next);
+    await flushDirty().catch(() => {});
+  }
 
-  async function save() {
-    await localUpsert('stress_logs', {
-      id: `stress-${date}`,
+  async function removeMeal(iso: string) {
+    await replaceMealTimestampsForDay(
       date,
-      startOfDay,
-      midDay,
-      endOfDay,
-      average,
-      managementEffectiveness,
-    });
+      prefs,
+      meals.filter((x) => x !== iso),
+    );
     await flushDirty().catch(() => {});
   }
 
   return (
     <div className="rounded-2xl bg-zinc-900 border border-zinc-800 p-4 space-y-3">
+      <div>
+        <div className="text-sm font-medium">Did you eat?</div>
+        <p className="text-xs text-zinc-500 mt-1">
+          Tap Yes when you eat; each tap saves a timestamp. Use Remove to delete a line.
+        </p>
+      </div>
+      {existing && existing.mealsLoggedCount > 0 && existing.mealTimestamps === undefined && (
+        <p className="text-[11px] text-zinc-500">
+          Earlier entry used manual meal count ({existing.mealsLoggedCount}). Add check-ins here to track times.
+        </p>
+      )}
+      <div className="flex flex-wrap gap-2 items-center">
+        <button
+          type="button"
+          className="h-10 px-4 rounded-lg bg-emerald-600 text-zinc-950 text-sm font-medium"
+          onClick={() => void logAteNow()}
+        >
+          Yes — log time
+        </button>
+        <span className="text-xs text-zinc-600 px-1" title="No — nothing is recorded">
+          No — nothing saved
+        </span>
+      </div>
+      {meals.length > 0 && (
+        <ul className="space-y-1.5">
+          {meals.map((iso, idx) => (
+            <li
+              key={`${iso}-${idx}`}
+              className="flex items-center justify-between gap-2 text-xs font-mono text-zinc-300 rounded-lg bg-zinc-950 px-2 py-1.5 border border-zinc-800"
+            >
+              <span>{fmtCheckInTimestamp(iso)}</span>
+              <button
+                type="button"
+                className="text-zinc-500 hover:text-rose-400 text-[11px] shrink-0"
+                onClick={() => void removeMeal(iso)}
+              >
+                Remove
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+function StressSection({
+  date,
+  entries,
+}: {
+  date: string;
+  entries: StressLog[];
+}) {
+  const [rating, setRating] = useState<1 | 2 | 3 | 4 | 5>(3);
+  const dayAvg = averageStressRating(entries);
+  const highStress =
+    entries.some((e) => e.rating >= 4) || (dayAvg != null && dayAvg >= 4);
+
+  async function addCheckIn() {
+    const id =
+      typeof crypto !== 'undefined' && 'randomUUID' in crypto
+        ? `stress-${date}-${crypto.randomUUID()}`
+        : `stress-${date}-${Date.now()}`;
+    await localUpsert('stress_logs', {
+      id,
+      date,
+      loggedAt: new Date().toISOString(),
+      rating,
+    });
+    await flushDirty().catch(() => {});
+  }
+
+  async function removeEntry(id: string) {
+    await localDelete('stress_logs', id);
+    await flushDirty().catch(() => {});
+  }
+
+  const sorted = [...entries].sort((a, b) => b.loggedAt.localeCompare(a.loggedAt));
+
+  return (
+    <div className="rounded-2xl bg-zinc-900 border border-zinc-800 p-4 space-y-3">
       <div className="flex items-center justify-between gap-2">
         <div>
-          <div className="text-sm font-medium">Stress check-ins</div>
-          <div className="text-xs text-zinc-500">Rate stress 1-5 at start, mid, and end of day.</div>
+          <div className="text-sm font-medium">Stress check</div>
+          <div className="text-xs text-zinc-500">
+            Each entry is a timestamp and a 1–5 rating (higher = more stressed). Add as many or as few per day as you
+            want.
+          </div>
         </div>
-        <div className="text-right">
-          <div className="text-xs text-zinc-500">Average</div>
-          <div className="font-mono text-zinc-200">{average}</div>
-        </div>
+        {entries.length > 0 && dayAvg != null && (
+          <div className="text-right">
+            <div className="text-xs text-zinc-500">Day average</div>
+            <div className="font-mono text-zinc-200">{dayAvg.toFixed(2)}</div>
+          </div>
+        )}
       </div>
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-        <StressField label="Start" value={startOfDay} onChange={setStartOfDay} />
-        <StressField label="Mid" value={midDay} onChange={setMidDay} />
-        <StressField label="End" value={endOfDay} onChange={setEndOfDay} />
+      {sorted.length > 0 && (
+        <ul className="space-y-2">
+          {sorted.map((e) => (
+            <li
+              key={e.id}
+              className="flex items-center justify-between gap-2 rounded-lg bg-zinc-950 border border-zinc-800 px-3 py-2 text-sm"
+            >
+              <span className="font-mono text-zinc-300">
+                {fmtCheckInTimestamp(e.loggedAt)} · {e.rating}/5
+              </span>
+              <button
+                type="button"
+                className="text-xs text-rose-300 hover:text-rose-200"
+                onClick={() => void removeEntry(e.id)}
+              >
+                Remove
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+      <div className="flex flex-wrap items-end gap-3">
+        <StressField label="Rating (1–5)" value={rating} onChange={setRating} />
+        <button
+          type="button"
+          className="h-11 px-4 rounded-lg bg-amber-500 text-zinc-950 text-sm font-medium shrink-0"
+          onClick={() => void addCheckIn()}
+        >
+          Log check-in
+        </button>
       </div>
-      <StressField
-        label="How effective are you managing stress right now? (1-5)"
-        value={managementEffectiveness}
-        onChange={setManagementEffectiveness}
-      />
       {highStress && (
         <div className="rounded-lg border border-amber-500/35 bg-amber-950/30 p-3 text-xs text-amber-100 space-y-1">
           <div className="font-semibold">High stress detected (4+)</div>
           <div>- Take a 10-minute walk outside and breathe through your nose.</div>
-          <div>- Do 2 minutes of slow exhales (4s inhale, 6-8s exhale).</div>
+          <div>- Do 2 minutes of slow exhales (4s inhale, 6–8s exhale).</div>
           <div>- Reduce stimulant load and hydrate before the next session.</div>
         </div>
       )}
-      <button type="button" className="h-11 px-4 rounded-lg bg-zinc-800 text-sm w-full" onClick={() => void save()}>
-        Save stress
-      </button>
     </div>
   );
 }
@@ -788,8 +894,9 @@ function NutritionSectionForm({
     [nt.proteinG, nt.carbsG, nt.fatG],
   );
 
-  const [mealTimestamps, setMealTimestamps] = useState<string[]>(() =>
-    sortMealTimestamps(existing?.mealTimestamps ?? []),
+  const mealTimestamps = useMemo(
+    () => sortMealTimestamps(existing?.mealTimestamps ?? []),
+    [existing?.mealTimestamps],
   );
   const mealDerived = useMemo(() => deriveMealMetrics(mealTimestamps), [mealTimestamps]);
   const recommendation = useMemo(
@@ -807,7 +914,6 @@ function NutritionSectionForm({
 
   async function persistNutrition(meals: string[]) {
     const sorted = sortMealTimestamps(meals);
-    setMealTimestamps(sorted);
 
     const migrated = existing?.mealTimestamps != null;
     let mealsLoggedCount: number;
@@ -843,14 +949,6 @@ function NutritionSectionForm({
 
   async function saveLog() {
     await persistNutrition(mealTimestamps);
-  }
-
-  async function logAteNow() {
-    await persistNutrition([...mealTimestamps, new Date().toISOString()]);
-  }
-
-  async function removeMeal(iso: string) {
-    await persistNutrition(mealTimestamps.filter((x) => x !== iso));
   }
 
   async function saveTargetsAsDefaults() {
@@ -984,46 +1082,15 @@ function NutritionSectionForm({
       </div>
 
       <div className="rounded-xl border border-zinc-800 bg-zinc-950 p-3 space-y-3">
-        <div className="text-xs uppercase tracking-wider text-zinc-500">Meal check-ins</div>
+        <div className="text-xs uppercase tracking-wider text-zinc-500">Meal timing stats</div>
         <p className="text-xs text-zinc-500">
-          Tap Yes when you eat; each tap saves the time. No does nothing. Times drive meal-based stats below.
+          Log meal times with <span className="text-zinc-400">Did you eat?</span> at the top of this page. Stats update
+          as you add timestamps.
         </p>
         {existing && existing.mealsLoggedCount > 0 && existing.mealTimestamps === undefined && (
           <p className="text-[11px] text-zinc-500">
-            Earlier entry used manual meal count ({existing.mealsLoggedCount}). Add check-ins below to track times.
+            Earlier entry used manual meal count ({existing.mealsLoggedCount}). Add check-ins above to track times.
           </p>
-        )}
-        <div className="flex flex-wrap gap-2 items-center">
-          <span className="text-sm text-zinc-400 shrink-0">Did you eat?</span>
-          <button
-            type="button"
-            className="h-10 px-4 rounded-lg bg-emerald-600 text-zinc-950 text-sm font-medium"
-            onClick={() => void logAteNow()}
-          >
-            Yes — log time
-          </button>
-          <span className="text-xs text-zinc-600 px-1" title="No — nothing is recorded">
-            No — nothing saved
-          </span>
-        </div>
-        {mealTimestamps.length > 0 && (
-          <ul className="space-y-1.5">
-            {sortMealTimestamps(mealTimestamps).map((iso, idx) => (
-              <li
-                key={`${iso}-${idx}`}
-                className="flex items-center justify-between gap-2 text-xs font-mono text-zinc-300 rounded-lg bg-zinc-900 px-2 py-1.5 border border-zinc-800"
-              >
-                <span>{new Date(iso).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })}</span>
-                <button
-                  type="button"
-                  className="text-zinc-500 hover:text-rose-400 text-[11px] shrink-0"
-                  onClick={() => void removeMeal(iso)}
-                >
-                  Remove
-                </button>
-              </li>
-            ))}
-          </ul>
         )}
         {mealDerived.occasions > 0 && (
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-[11px]">

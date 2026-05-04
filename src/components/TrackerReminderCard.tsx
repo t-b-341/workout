@@ -52,7 +52,7 @@ export function TrackerReminderCard() {
         <div className="min-w-0">
           <div className="text-sm font-medium text-zinc-200">Daily check-in notifications</div>
           <p className="text-xs text-zinc-500 mt-1">
-            {TRACKER_REMINDER_SLOTS.map((s) => formatSlotTime(s.hour, s.minute)).join(', ')} local time — stress
+            {TRACKER_REMINDER_SLOTS.map((s) => formatSlotTime(s.hour, s.minute)).join(', ')} local time — Recovery check-ins
             check-ins, meals, hydration. Works best when the app is open or you return to it; many browsers
             cannot wake a site at an exact time without a server push.
           </p>

@@ -64,6 +64,7 @@ import {
   useGoalChecksForSession,
   useGoalSessionPrefs,
 } from '@/lib/goals';
+import { sortPrescriptionsWithFavoritesFirst, useFavoriteLiftIds } from '@/lib/favoriteLifts';
 
 export function TodayView() {
   const templates = useTemplates();
@@ -89,6 +90,12 @@ export function TodayView() {
   const activeTemplate = templates?.find((t) => t.id === activeId);
   const session = useTodaySession((activeId ?? 'U1') as TemplateId);
   const prescriptions = usePrescriptions((activeId ?? undefined) as TemplateId | undefined);
+  const favoriteLiftIds = useFavoriteLiftIds();
+  const displayPrescriptions = useMemo(
+    () => sortPrescriptionsWithFavoritesFirst(prescriptions ?? [], favoriteLiftIds),
+    [prescriptions, favoriteLiftIds],
+  );
+  const favoriteLiftIdSet = useMemo(() => new Set(favoriteLiftIds), [favoriteLiftIds]);
   const readiness = useReadinessForSession(session?.id);
   const allReadiness = useAllReadiness();
   const allSets = useAllSets();
@@ -332,7 +339,7 @@ export function TodayView() {
               <TrainingMindsetCard />
             </>
           )}
-          {(prescriptions ?? []).map((p) => {
+          {(displayPrescriptions ?? []).map((p) => {
             const lift = lifts.find((l) => l.id === p.liftId);
             if (!lift) return null;
             const adjusted = applyEffortScale(applySessionMode(p, session), session);
@@ -340,7 +347,15 @@ export function TodayView() {
               ...adjusted,
               weight: snapWorkingWeight(adjusted.weight, liftForSnap(p.liftId)),
             };
-            return <LiftCard key={p.id} prescription={snapped} lift={lift} session={session} />;
+            return (
+              <LiftCard
+                key={p.id}
+                prescription={snapped}
+                lift={lift}
+                session={session}
+                pinned={favoriteLiftIdSet.has(p.liftId)}
+              />
+            );
           })}
         </div>
       )}
@@ -354,13 +369,13 @@ export function TodayView() {
           )}
           <FinishSessionButton
             session={session}
-            prescriptions={prescriptions ?? []}
+            prescriptions={displayPrescriptions ?? []}
             onRecap={(p) => setSessionRecap(p)}
           />
         </>
       )}
       {showSessionDock && allSets && (
-        <SessionContextDock session={session} prescriptions={prescriptions ?? []} allSets={allSets} />
+        <SessionContextDock session={session} prescriptions={displayPrescriptions ?? []} allSets={allSets} />
       )}
       {sessionRecap && (
         <SessionRecapSheet

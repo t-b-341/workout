@@ -116,15 +116,20 @@ describe('exportRoutineMarkdown', () => {
       sleepHours: 8,
       sleepQuality: 4,
     };
-    const stress: StressLog = {
-      id: 'st1',
-      date: '2026-05-01',
-      startOfDay: 2,
-      midDay: 3,
-      endOfDay: 2,
-      average: 2.33,
-      managementEffectiveness: 4,
-    };
+    const stress: StressLog[] = [
+      {
+        id: 'st1',
+        date: '2026-05-01',
+        loggedAt: '2026-05-01T14:30:00.000Z',
+        rating: 3,
+      },
+      {
+        id: 'st2',
+        date: '2026-05-01',
+        loggedAt: '2026-05-01T18:00:00.000Z',
+        rating: 2,
+      },
+    ];
     const md = buildRoutineMarkdown({
       exportedAtIso: '2026-05-01T12:00:00.000Z',
       templates,
@@ -137,7 +142,9 @@ describe('exportRoutineMarkdown', () => {
     });
     expect(md).toContain('2800/3000');
     expect(md).toContain('| 8 | 4 |');
-    expect(md).toContain('2.3');
+    expect(md).toContain('avg 2.50');
+    expect(md).toMatch(/→3/);
+    expect(md).toMatch(/→2/);
   });
 
   it('isoDatesEndingToday returns chronological ISO dates', () => {

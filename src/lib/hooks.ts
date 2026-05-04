@@ -309,17 +309,21 @@ export function useSleepForDate(date: string): SleepLog | undefined {
   }, [date]);
 }
 
-export function useStressForDate(date: string): StressLog | undefined {
+export function useStressForDate(date: string): StressLog[] | undefined {
   return useLiveQuery(async () => {
     const matches = await getDb().stress_logs.where('date').equals(date).toArray();
-    return matches[0];
+    if (matches.length === 0) return undefined;
+    return matches.sort((a, b) => a.loggedAt.localeCompare(b.loggedAt));
   }, [date]);
 }
 
 export function useAllStress(): StressLog[] | undefined {
   return useLiveQuery(async () => {
     const all = await getDb().stress_logs.toArray();
-    return all.sort((a, b) => (a.date < b.date ? 1 : -1));
+    return all.sort((a, b) => {
+      if (a.date !== b.date) return a.date < b.date ? 1 : -1;
+      return a.loggedAt < b.loggedAt ? 1 : -1;
+    });
   }, []);
 }
 
