@@ -31,6 +31,7 @@ import { InjuryTrackingPanel } from './InjuryTrackingPanel';
 import { MacroTrendCallout } from './MacroTrendCallout';
 import { PageShell } from './PageShell';
 import { TrackerReminderCard } from './TrackerReminderCard';
+import { WellnessTargetsCard } from './WellnessTargetsCard';
 
 function clamp(n: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, n));
@@ -232,6 +233,8 @@ export function RecoveryView() {
       </div>
 
       <TrackerReminderCard />
+
+      <WellnessTargetsCard />
 
       <SleepSection date={date} existing={sleep} />
       <StressSection date={date} existing={stress} />

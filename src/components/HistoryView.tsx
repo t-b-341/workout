@@ -33,7 +33,8 @@ import { Sparkline, MiniBars } from './Sparkline';
 import { ReadinessSummary } from './ReadinessSummary';
 import { SessionEditSheet } from './SessionEditSheet';
 import { PageShell } from './PageShell';
-import { CARDIO_WEEKLY_TARGET_MIN, MINDFULNESS_WEEKLY_TARGET_MIN, MUSCLE_GROUPS, PATTERNS } from '@/lib/seed';
+import { MUSCLE_GROUPS, PATTERNS } from '@/lib/seed';
+import { defaultWellnessTargets, useWellnessTargets, type WellnessTargets } from '@/lib/wellnessTargets';
 import type {
   BodyweightLog,
   CardioLog,
@@ -65,6 +66,8 @@ export function HistoryView() {
   const bodyweights = useAllBodyweight();
   const readiness = useAllReadiness();
   const stress = useAllStress();
+  const wellnessTargets = useWellnessTargets();
+  const wkTargets = wellnessTargets ?? defaultWellnessTargets();
 
   if (!lifts || !sessions || !allSets || !cardio || !bodyweights || !readiness || !stress) {
     return <div className="p-6 text-zinc-500">Loading…</div>;
@@ -97,6 +100,7 @@ export function HistoryView() {
           readiness={readiness}
           stress={stress}
           bodyweights={bodyweights}
+          wellnessTargets={wkTargets}
         />
       )}
       {tab === 'prs' && <PRsList sessions={sessions} sets={allSets} lifts={lifts} />}
@@ -369,6 +373,7 @@ function WeeksList({
   readiness,
   stress,
   bodyweights,
+  wellnessTargets,
 }: {
   sessions: SessionLog[];
   sets: SetLog[];
@@ -377,6 +382,7 @@ function WeeksList({
   readiness: ReadinessLog[];
   stress: StressLog[];
   bodyweights: BodyweightLog[];
+  wellnessTargets: WellnessTargets;
 }) {
   const weeks = buildWeeklySummaries(sessions, sets, cardio, lifts, readiness, bodyweights);
   const muscleWeeks = useMemo(
@@ -510,8 +516,14 @@ function WeeksList({
         ) : null}
       </div>
       {weeks.map((w) => {
-        const cardioPct = Math.min(100, Math.round((w.cardioMin / CARDIO_WEEKLY_TARGET_MIN) * 100));
-        const mindfulnessPct = Math.min(100, Math.round((w.mindfulnessMin / MINDFULNESS_WEEKLY_TARGET_MIN) * 100));
+        const cardioPct = Math.min(
+          100,
+          Math.round((w.cardioMin / wellnessTargets.cardioWeeklyMin) * 100),
+        );
+        const mindfulnessPct = Math.min(
+          100,
+          Math.round((w.mindfulnessMin / wellnessTargets.mindfulnessWeeklyMin) * 100),
+        );
         const flagTotal = w.watchFlagCounts.erectors + w.watchFlagCounts.elbow + w.watchFlagCounts.shoulder;
         const groupRow = muscleWeeks.find((g) => g.week === w.week);
         const patternRow = patternWeeks.find((p) => p.week === w.week);
@@ -530,8 +542,8 @@ function WeeksList({
 
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center">
               <Stat label="Volume" value={w.totalVolume.toLocaleString()} unit="lb" />
-              <Stat label="Cardio" value={`${w.cardioMin}`} unit={`/ ${CARDIO_WEEKLY_TARGET_MIN}m`} />
-              <Stat label="Mindfulness" value={`${w.mindfulnessMin}`} unit={`/ ${MINDFULNESS_WEEKLY_TARGET_MIN}m`} />
+              <Stat label="Cardio" value={`${w.cardioMin}`} unit={`/ ${wellnessTargets.cardioWeeklyMin}m`} />
+              <Stat label="Mindfulness" value={`${w.mindfulnessMin}`} unit={`/ ${wellnessTargets.mindfulnessWeeklyMin}m`} />
               <Stat label="Flags" value={`${flagTotal}`} unit="" tone={flagTotal > 0 ? 'warn' : 'normal'} />
             </div>
 

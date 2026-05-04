@@ -9,7 +9,7 @@ import {
   MINDFULNESS_PENDING_META_PREFIX,
   sessionDateFromMindfulnessSessionId,
 } from './mindfulnessPending';
-import { CARDIO_WEEKLY_TARGET_MIN, MINDFULNESS_WEEKLY_TARGET_MIN } from './seed';
+import { loadWellnessTargets } from './wellnessTargets';
 import { isoWeekString, weekRange, todayIso } from './time';
 import { buildMacroTrendAdvice, priorDatesExclusive } from './macroTrend';
 import { filterSessionsAfterReadiness } from './sessionFilters';
@@ -96,7 +96,8 @@ export function useThisWeekCardio() {
     const all = await db.cardio_logs.toArray();
     const wk = all.filter((c: CardioLog) => c.date >= startStr && c.date <= endStr);
     const total = wk.reduce((s, c) => s + (c.durationMin ?? 0), 0);
-    return { total, target: CARDIO_WEEKLY_TARGET_MIN, items: wk };
+    const targets = await loadWellnessTargets();
+    return { total, target: targets.cardioWeeklyMin, items: wk };
   }, []);
 }
 
@@ -138,7 +139,8 @@ export function useThisWeekMindfulness() {
     }
 
     const total = [...byDate.values()].reduce((a, b) => a + b, 0);
-    return { total, target: MINDFULNESS_WEEKLY_TARGET_MIN };
+    const targets = await loadWellnessTargets();
+    return { total, target: targets.mindfulnessWeeklyMin };
   }, []);
 }
 

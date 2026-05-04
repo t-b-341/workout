@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { useThisWeekCardio } from '@/lib/hooks';
 
 export function CardioBanner() {
@@ -17,6 +18,11 @@ export function CardioBanner() {
           className={`h-full ${pct >= 100 ? 'bg-emerald-500' : 'bg-amber-500'}`}
           style={{ width: `${pct}%` }}
         />
+      </div>
+      <div className="mt-2 text-right">
+        <Link href="/recovery#wellness-targets" className="text-[11px] text-amber-400/90 hover:text-amber-300">
+          Edit weekly goal
+        </Link>
       </div>
     </div>
   );

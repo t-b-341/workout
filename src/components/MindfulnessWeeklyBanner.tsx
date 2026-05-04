@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { useThisWeekMindfulness } from '@/lib/hooks';
 
 export function MindfulnessWeeklyBanner() {
@@ -17,6 +18,11 @@ export function MindfulnessWeeklyBanner() {
           className={`h-full ${pct >= 100 ? 'bg-emerald-500' : 'bg-sky-500'}`}
           style={{ width: `${pct}%` }}
         />
+      </div>
+      <div className="mt-2 text-right">
+        <Link href="/recovery#wellness-targets" className="text-[11px] text-amber-400/90 hover:text-amber-300">
+          Edit weekly goal
+        </Link>
       </div>
     </div>
   );

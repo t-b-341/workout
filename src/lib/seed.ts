@@ -214,7 +214,7 @@ export const DB_INCREMENTS: number[] = (() => {
 
 export const CARDIO_WEEKLY_TARGET_MIN = 150;
 
-/** Weekly meditation / mindfulness minutes (readiness log + Today card). */
+/** Legacy default before per-user `wellness:targets:v1` meta; see `wellnessTargets.ts`. */
 export const MINDFULNESS_WEEKLY_TARGET_MIN = 60;
 
 /** Display order for movement-pattern coverage charts. */

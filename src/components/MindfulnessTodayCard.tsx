@@ -1,7 +1,9 @@
 'use client';
 
+import Link from 'next/link';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { useEffect, useState } from 'react';
+import { useWellnessTargets } from '@/lib/wellnessTargets';
 import { getDb } from '@/lib/db';
 import {
   clampMindfulnessMinutes,
@@ -24,6 +26,8 @@ export function MindfulnessTodayCard({
   session: SessionLog;
   readiness: ReadinessLog | undefined;
 }) {
+  const wellness = useWellnessTargets();
+  const dailyGoal = wellness?.mindfulnessDailyMin ?? 10;
   const pendingKey = mindfulnessPendingMetaKey(session.id);
   const metaRow = useLiveQuery(
     () => getDb().meta.where('key').equals(pendingKey).first(),
@@ -115,6 +119,29 @@ export function MindfulnessTodayCard({
         </button>
         <span className="text-xs text-zinc-500 shrink-0 w-8">min</span>
       </div>
+      <div className="space-y-1">
+        <div className="flex justify-between text-[11px] text-zinc-500">
+          <span>Daily goal · {resolved} / {dailyGoal} min</span>
+          <span className="font-mono">
+            {Math.min(100, dailyGoal > 0 ? Math.round((resolved / dailyGoal) * 100) : 0)}%
+          </span>
+        </div>
+        <div className="h-2 rounded-full bg-zinc-800 overflow-hidden">
+          <div
+            className={`h-full ${
+              resolved >= dailyGoal ? 'bg-emerald-500' : 'bg-sky-500'
+            }`}
+            style={{
+              width: `${Math.min(100, dailyGoal > 0 ? (resolved / dailyGoal) * 100 : 0)}%`,
+            }}
+          />
+        </div>
+      </div>
+      <p className="text-[11px] text-right">
+        <Link href="/recovery#wellness-targets" className="text-amber-400/90 hover:text-amber-300">
+          Change daily or weekly goal
+        </Link>
+      </p>
       {!readiness && (
         <p className="text-[11px] text-zinc-500">
           After you complete the daily check-in, this value is stored on that log. Until then it stays on this device only.
