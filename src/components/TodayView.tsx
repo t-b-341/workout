@@ -100,6 +100,18 @@ export function TodayView() {
     [allBodyweight, allMeasurements],
   );
 
+  const lastWeighIn = useMemo(() => {
+    const a = allBodyweight;
+    if (!a?.length) return null;
+    return a[a.length - 1];
+  }, [allBodyweight]);
+
+  const lastMeasurement = useMemo(() => {
+    const a = allMeasurements;
+    if (!a?.length) return null;
+    return a[a.length - 1];
+  }, [allMeasurements]);
+
   const openReplayRecap = useCallback(async () => {
     if (!session?.completedAt) return;
     const p = await buildSessionRecapPayload({ session, progression: null });
@@ -210,6 +222,38 @@ export function TodayView() {
           measurementsOverdue={weeklyFlags.measurementsOverdue}
         />
       )}
+
+      <div className="rounded-xl border border-zinc-800 bg-zinc-950/60 px-3 py-2.5 space-y-1.5">
+        <div className="text-[11px] uppercase tracking-wider text-zinc-500">Last logged</div>
+        <div className="text-sm text-zinc-300">
+          <span className="text-zinc-500">Weigh-in </span>
+          {lastWeighIn ? (
+            <>
+              <span className="text-zinc-200">{fmtDate(lastWeighIn.date, 'MMM d, yyyy')}</span>
+              <span className="text-zinc-600"> · </span>
+              <span className="font-mono text-zinc-100">{lastWeighIn.bodyweight}</span>
+              <span className="text-zinc-500 text-xs"> lb</span>
+            </>
+          ) : (
+            <span className="text-zinc-600">No entries yet</span>
+          )}
+        </div>
+        <div className="text-sm text-zinc-300">
+          <span className="text-zinc-500">Measurements </span>
+          {lastMeasurement ? (
+            <>
+              <span className="text-zinc-200">{fmtDate(lastMeasurement.date, 'MMM d, yyyy')}</span>
+              <span className="text-zinc-600"> · </span>
+              <span className="font-mono text-zinc-100">
+                W {lastMeasurement.waist} · A {lastMeasurement.abdomen} · H {lastMeasurement.hips}
+              </span>
+              <span className="text-zinc-500 text-xs"> in</span>
+            </>
+          ) : (
+            <span className="text-zinc-600">No entries yet</span>
+          )}
+        </div>
+      </div>
 
       <BodyweightQuickLog
         date={todayIso()}
