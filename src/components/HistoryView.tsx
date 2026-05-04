@@ -7,6 +7,7 @@ import {
   useAllCardio,
   useAllReadiness,
   useAllStress,
+  useAllNutrition,
   useSessionsAfterReadiness,
   useAllSets,
   useLifts,
@@ -40,13 +41,14 @@ import type {
   CardioLog,
   Lift,
   MuscleGroup,
+  NutritionLog,
   ReadinessLog,
   SessionLog,
   SetLog,
   StressLog,
 } from '@/lib/types';
 
-type Tab = 'sessions' | 'trends' | 'weeks' | 'prs' | 'muscle' | 'bodyweight';
+type Tab = 'sessions' | 'trends' | 'weeks' | 'prs' | 'muscle' | 'bodyweight' | 'diet';
 
 const TABS: Array<{ id: Tab; label: string }> = [
   { id: 'sessions', label: 'Sessions' },
@@ -55,6 +57,7 @@ const TABS: Array<{ id: Tab; label: string }> = [
   { id: 'prs', label: 'PRs' },
   { id: 'muscle', label: 'Muscle' },
   { id: 'bodyweight', label: 'BW' },
+  { id: 'diet', label: 'Diet' },
 ];
 
 export function HistoryView() {
@@ -66,10 +69,11 @@ export function HistoryView() {
   const bodyweights = useAllBodyweight();
   const readiness = useAllReadiness();
   const stress = useAllStress();
+  const nutrition = useAllNutrition();
   const wellnessTargets = useWellnessTargets();
   const wkTargets = wellnessTargets ?? defaultWellnessTargets();
 
-  if (!lifts || !sessions || !allSets || !cardio || !bodyweights || !readiness || !stress) {
+  if (!lifts || !sessions || !allSets || !cardio || !bodyweights || !readiness || !stress || !nutrition) {
     return <div className="p-6 text-zinc-500">Loading…</div>;
   }
 
@@ -77,7 +81,7 @@ export function HistoryView() {
     <PageShell className="p-4 space-y-4">
       <h1 className="text-2xl font-semibold">History</h1>
 
-      <div className="grid grid-cols-3 sm:grid-cols-6 gap-1 rounded-xl bg-zinc-900 border border-zinc-800 p-1">
+      <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-1 rounded-xl bg-zinc-900 border border-zinc-800 p-1">
         {TABS.map((t) => (
           <button
             key={t.id}
@@ -108,6 +112,7 @@ export function HistoryView() {
         <MuscleList sessions={sessions} sets={allSets} lifts={lifts} bodyweights={bodyweights} readiness={readiness} />
       )}
       {tab === 'bodyweight' && <BodyweightList logs={bodyweights} />}
+      {tab === 'diet' && <DietList logs={nutrition} />}
     </PageShell>
   );
 }
@@ -832,6 +837,135 @@ function MuscleList({
             );
           })}
         </div>
+      </div>
+    </div>
+  );
+}
+
+function macroPct(actual: number, target: number): string | null {
+  if (target <= 0) return null;
+  return `${Math.round((actual / target) * 100)}%`;
+}
+
+function DietList({ logs }: { logs: NutritionLog[] }) {
+  const sorted = useMemo(
+    () => [...logs].sort((a, b) => b.date.localeCompare(a.date)),
+    [logs],
+  );
+  const sparkSeries = useMemo(() => {
+    const ch = [...logs].sort((a, b) => a.date.localeCompare(b.date));
+    return {
+      actual: ch.map((n) => n.caloriesActual),
+      target: ch.map((n) => n.caloriesTarget),
+    };
+  }, [logs]);
+
+  if (sorted.length === 0) {
+    return (
+      <div className="text-zinc-500 text-sm">
+        No diet logs yet. Enter macros and calories on Daily Check-In (nutrition section).
+      </div>
+    );
+  }
+
+  const latest = sorted[0];
+
+  return (
+    <div className="space-y-3">
+      <div className="rounded-2xl bg-zinc-900 border border-zinc-800 p-4 space-y-3">
+        <div className="flex items-baseline justify-between gap-2 flex-wrap">
+          <div>
+            <div className="text-xs uppercase tracking-wider text-zinc-500">Latest day</div>
+            <div className="text-lg font-medium text-zinc-100">{fmtDate(latest.date, 'EEE, MMM d')}</div>
+          </div>
+          <div className="text-right text-sm text-zinc-400">
+            {sorted.length} day{sorted.length === 1 ? '' : 's'} logged
+          </div>
+        </div>
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-sm">
+          <div>
+            <div className="text-[11px] uppercase text-zinc-500">Calories</div>
+            <div className="font-mono text-zinc-100">
+              {latest.caloriesActual}
+              <span className="text-zinc-500 text-xs"> / {latest.caloriesTarget}</span>
+            </div>
+            {macroPct(latest.caloriesActual, latest.caloriesTarget) && (
+              <div className="text-xs text-zinc-500">{macroPct(latest.caloriesActual, latest.caloriesTarget)} of target</div>
+            )}
+          </div>
+          <div>
+            <div className="text-[11px] uppercase text-zinc-500">Protein</div>
+            <div className="font-mono text-zinc-100">
+              {latest.proteinActualG}g
+              <span className="text-zinc-500 text-xs"> / {latest.proteinTargetG}g</span>
+            </div>
+          </div>
+          <div>
+            <div className="text-[11px] uppercase text-zinc-500">Carbs</div>
+            <div className="font-mono text-zinc-100">
+              {latest.carbsActualG}g
+              <span className="text-zinc-500 text-xs"> / {latest.carbsTargetG}g</span>
+            </div>
+          </div>
+          <div>
+            <div className="text-[11px] uppercase text-zinc-500">Fat</div>
+            <div className="font-mono text-zinc-100">
+              {latest.fatActualG}g
+              <span className="text-zinc-500 text-xs"> / {latest.fatTargetG}g</span>
+            </div>
+          </div>
+        </div>
+        {sparkSeries.actual.length >= 2 && (
+          <div>
+            <div className="text-xs uppercase tracking-wider text-zinc-500 mb-1">
+              Calories trend (actual vs target)
+            </div>
+            <Sparkline
+              values={sparkSeries.actual}
+              overlay={sparkSeries.target}
+              height={100}
+              width={320}
+            />
+          </div>
+        )}
+      </div>
+
+      <div className="rounded-2xl bg-zinc-900 border border-zinc-800 divide-y divide-zinc-800">
+        {sorted.map((n) => (
+          <div key={n.id} className="p-3 space-y-2">
+            <div className="flex items-baseline justify-between gap-2">
+              <div>
+                <div className="text-sm font-medium text-zinc-200">{fmtDate(n.date, 'EEE, MMM d, yyyy')}</div>
+                <div className="text-[11px] text-zinc-500">
+                  Meals logged: {n.mealsLoggedCount}
+                  {n.mealTimestamps && n.mealTimestamps.length > 0 && (
+                    <span className="ml-2">· {n.mealTimestamps.length} check-in times</span>
+                  )}
+                </div>
+              </div>
+              <div className="text-right shrink-0">
+                <div className="font-mono text-sm text-amber-400">
+                  {n.caloriesActual}
+                  <span className="text-zinc-500 text-xs"> / {n.caloriesTarget} kcal</span>
+                </div>
+              </div>
+            </div>
+            <div className="grid grid-cols-3 gap-2 text-xs font-mono">
+              <div className="rounded-lg bg-zinc-950/80 px-2 py-1.5 border border-zinc-800">
+                <span className="text-zinc-500">P </span>
+                {n.proteinActualG}/{n.proteinTargetG}g
+              </div>
+              <div className="rounded-lg bg-zinc-950/80 px-2 py-1.5 border border-zinc-800">
+                <span className="text-zinc-500">C </span>
+                {n.carbsActualG}/{n.carbsTargetG}g
+              </div>
+              <div className="rounded-lg bg-zinc-950/80 px-2 py-1.5 border border-zinc-800">
+                <span className="text-zinc-500">F </span>
+                {n.fatActualG}/{n.fatTargetG}g
+              </div>
+            </div>
+          </div>
+        ))}
       </div>
     </div>
   );
