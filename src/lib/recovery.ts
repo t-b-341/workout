@@ -165,6 +165,32 @@ export function mindfulnessScore(minutes: number): number {
   return Math.round(clamp(55 + (Math.min(m, 30) / 30) * 45, 0, 100));
 }
 
+export type RecoveryCompositeWeights = {
+  sleep: number;
+  hydration: number;
+  nutrition: number;
+  readiness: number;
+  stress?: number;
+  mindfulness?: number;
+};
+
+/** Shares the same branching rules as `buildRecoveryScore` for UI copy + math. */
+export function compositeWeightsForRecovery(
+  hasStress: boolean,
+  hasMindfulness: boolean,
+): RecoveryCompositeWeights {
+  if (hasStress && hasMindfulness) {
+    return { sleep: 0.33, hydration: 0.17, nutrition: 0.21, readiness: 0.12, stress: 0.11, mindfulness: 0.06 };
+  }
+  if (hasStress) {
+    return { sleep: 0.35, hydration: 0.18, nutrition: 0.22, readiness: 0.13, stress: 0.12 };
+  }
+  if (hasMindfulness) {
+    return { sleep: 0.36, hydration: 0.18, nutrition: 0.24, readiness: 0.14, mindfulness: 0.08 };
+  }
+  return { sleep: 0.4, hydration: 0.2, nutrition: 0.25, readiness: 0.15 };
+}
+
 export function buildRecoveryScore(input: {
   date: string;
   sleep?: SleepLog;
@@ -186,16 +212,18 @@ export function buildRecoveryScore(input: {
       ? mindfulnessScore(input.readiness.mindfulnessMinutes)
       : undefined;
 
-  let compositeScore: number;
-  if (st != null && mind != null) {
-    compositeScore = Math.round(s * 0.33 + h * 0.17 + n * 0.21 + r * 0.12 + st * 0.11 + mind * 0.06);
-  } else if (st != null) {
-    compositeScore = Math.round(s * 0.35 + h * 0.18 + n * 0.22 + r * 0.13 + st * 0.12);
-  } else if (mind != null) {
-    compositeScore = Math.round(s * 0.36 + h * 0.18 + n * 0.24 + r * 0.14 + mind * 0.08);
-  } else {
-    compositeScore = Math.round(s * 0.4 + h * 0.2 + n * 0.25 + r * 0.15);
-  }
+  const hasStress = (input.stress?.length ?? 0) > 0;
+  const hasMindfulness = input.readiness?.mindfulnessMinutes != null;
+
+  const w = compositeWeightsForRecovery(hasStress, hasMindfulness);
+  const compositeScore = Math.round(
+    s * w.sleep
+      + h * w.hydration
+      + n * w.nutrition
+      + r * w.readiness
+      + (w.stress != null && st != null ? st * w.stress : 0)
+      + (w.mindfulness != null && mind != null ? mind * w.mindfulness : 0),
+  );
 
   return {
     date: input.date,

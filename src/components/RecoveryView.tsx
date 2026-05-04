@@ -16,6 +16,7 @@ import {
 import {
   averageStressRating,
   buildRecoveryScore,
+  compositeWeightsForRecovery,
   recoveryPlan,
 } from '@/lib/recovery';
 import {
@@ -202,6 +203,171 @@ function recommendMacroTargets(opts: {
   };
 }
 
+function pctWeightLabel(decimal: number): string {
+  return `${Math.round(decimal * 100)}%`;
+}
+
+function DailyRecoveryExplainSheet({
+  open,
+  onClose,
+  weights,
+}: {
+  open: boolean;
+  onClose: () => void;
+  weights: ReturnType<typeof compositeWeightsForRecovery>;
+}) {
+  if (!open) return null;
+
+  const lines: Array<{ title: string; pct: number }> = [
+    { title: 'Sleep', pct: weights.sleep },
+    { title: 'Hydration', pct: weights.hydration },
+    { title: 'Nutrition', pct: weights.nutrition },
+    { title: 'Readiness', pct: weights.readiness },
+  ];
+  if (weights.stress != null) lines.push({ title: "Stress (avg of today's check-ins)", pct: weights.stress });
+  if (weights.mindfulness != null) lines.push({ title: 'Mindfulness', pct: weights.mindfulness });
+
+  return (
+    <div className="fixed inset-0 z-[90] flex items-end justify-center sm:items-center p-0 sm:p-4">
+      <button
+        type="button"
+        aria-label="Close explanation"
+        className="absolute inset-0 bg-black/70"
+        onClick={onClose}
+      />
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="daily-recovery-help-title"
+        className="relative w-full max-w-lg rounded-t-3xl sm:rounded-3xl border border-zinc-800 bg-zinc-950 shadow-2xl max-h-[min(88dvh,640px)] flex flex-col mb-14 sm:mb-0"
+      >
+        <div className="p-4 border-b border-zinc-800 shrink-0 flex items-start justify-between gap-2">
+          <h2 id="daily-recovery-help-title" className="text-lg font-semibold text-zinc-100 pr-2">
+            How Daily Recovery is calculated
+          </h2>
+          <button
+            type="button"
+            onClick={onClose}
+            className="shrink-0 h-9 px-3 rounded-lg border border-zinc-700 text-sm text-zinc-300 hover:bg-zinc-900"
+          >
+            Close
+          </button>
+        </div>
+        <div className="overflow-y-auto flex-1 p-4 space-y-5 text-sm text-zinc-300">
+          <section className="space-y-2">
+            <h3 className="text-xs uppercase tracking-wider text-zinc-500">Overall score</h3>
+            <p className="text-zinc-400">
+              The big number is a <span className="text-zinc-200">weighted average</span> of pillar scores (each 0–100),
+              rounded to an integer.
+            </p>
+            <ul className="list-disc list-inside space-y-1 text-zinc-400">
+              {lines.map((ln) => (
+                <li key={ln.title}>
+                  <span className="text-zinc-200">{ln.title}</span> ·{' '}
+                  <span className="font-mono text-zinc-300">{pctWeightLabel(ln.pct)}</span> of the composite
+                </li>
+              ))}
+            </ul>
+            <p className="text-xs text-zinc-500">
+              Stress only gets a slot after at least one stress check-in today. Mindfulness only counts when you enter
+              mindfulness minutes on Today&apos;s readiness. Otherwise those weights shift into the other pillars (see row
+              above).
+            </p>
+          </section>
+
+          <section className="space-y-2">
+            <h3 className="text-xs uppercase tracking-wider text-zinc-500">Bands</h3>
+            <p className="text-zinc-400">The named band is thresholds on the composite only:</p>
+            <ul className="text-zinc-400 space-y-1 list-disc list-inside">
+              <li>
+                <span className="text-zinc-200">Push</span> · composite ≥ 85
+              </li>
+              <li>
+                <span className="text-zinc-200">Normal</span> · 70–84
+              </li>
+              <li>
+                <span className="text-zinc-200">Conservative</span> · 50–69
+              </li>
+              <li>
+                <span className="text-zinc-200">Recovery</span> · under 50
+              </li>
+            </ul>
+          </section>
+
+          <section className="space-y-2">
+            <h3 className="text-xs uppercase tracking-wider text-zinc-500">Missing logs</h3>
+            <p className="text-zinc-400">
+              If a pillar has no data yet today, its pillar score defaults to{' '}
+              <span className="font-mono text-zinc-200">60</span> so the composite can still compute. Log the section below
+              to replace that placeholder with a real signal.
+            </p>
+          </section>
+
+          <section className="space-y-2">
+            <h3 className="text-xs uppercase tracking-wider text-zinc-500">Sleep pillar</h3>
+            <ul className="text-zinc-400 space-y-1 list-disc list-inside">
+              <li>
+                <span className="text-zinc-200">62%</span> duration: 7–10h counts as fully on-track; shorter sleep penalizes;
+                slightly long sleep applies a mild taper (not punished as harshly as short sleep).
+              </li>
+              <li>
+                <span className="text-zinc-200">28%</span> subjective sleep quality (1–5 scaled to a 0–100 chunk).
+              </li>
+              <li>
+                <span className="text-zinc-200">10%</span> fragmentation from optional wake count and onset latency — if you leave
+                them blank, they don&apos;t hurt the score (neutral).
+              </li>
+            </ul>
+          </section>
+
+          <section className="space-y-2">
+            <h3 className="text-xs uppercase tracking-wider text-zinc-500">Hydration pillar</h3>
+            <ul className="text-zinc-400 space-y-1 list-disc list-inside">
+              <li>Water consumed vs today&apos;s target, capped so going past target doesn&apos;t run away (extras above ~120% of target don&apos;t add more).</li>
+              <li>Small bonus if you flagged electrolytes.</li>
+              <li>Urine color (when set) subtracts slightly for darker buckets (dehydration signal).</li>
+            </ul>
+          </section>
+
+          <section className="space-y-2">
+            <h3 className="text-xs uppercase tracking-wider text-zinc-500">Nutrition pillar</h3>
+            <ul className="text-zinc-400 space-y-1 list-disc list-inside">
+              <li>Blends macros vs targets — protein carries the most weight, then calories, then carbs and fat (each capped the same way as hydration so modest overshoot doesn’t explode the score).</li>
+              <li>Calorie target/actual are derived from your macro targets in the nutrition log.</li>
+              <li>Tiny bump when meal timing shows at least three eating occasions logged for the day.</li>
+            </ul>
+          </section>
+
+          <section className="space-y-2">
+            <h3 className="text-xs uppercase tracking-wider text-zinc-500">Readiness pillar</h3>
+            <ul className="text-zinc-400 space-y-1 list-disc list-inside">
+              <li>Combines Today’s readiness fields: subjective sleep-hours estimate, soreness (lower soreness raises the score), and motivation.</li>
+              <li>When RMSSD/HRV isn’t skipped and a value exists, we blend that signal in (~20%); otherwise that mixture is readiness answers only.</li>
+            </ul>
+          </section>
+
+          <section className="space-y-2">
+            <h3 className="text-xs uppercase tracking-wider text-zinc-500">Stress pillar</h3>
+            <p className="text-zinc-400">
+              When included, uses the{' '}
+              <span className="text-zinc-200">average</span> of all stress ratings you logged today (1 = calm … 5 = very
+              stressed), inverted into a higher-is-better 0–100 score.
+            </p>
+          </section>
+
+          <section className="space-y-2">
+            <h3 className="text-xs uppercase tracking-wider text-zinc-500">Mindfulness pillar</h3>
+            <p className="text-zinc-400">
+              When included, maps logged minutes (capped around 30) into a smoother 0–100 curve so the first ten minutes lift
+              the score fastest, then it levels off — still nothing without minutes on readiness.
+            </p>
+          </section>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function RecoveryView() {
   const date = todayIso();
   const prefs = useRecoveryPrefs(); // always defined; live-updates when meta row changes
@@ -227,6 +393,11 @@ export function RecoveryView() {
     [sleep, nutrition, stress],
   );
   const macroTrend = useMacroTrendAdvice(date);
+  const [recoveryHelpOpen, setRecoveryHelpOpen] = useState(false);
+  const compositeExplainWeights = useMemo(
+    () => compositeWeightsForRecovery((stress?.length ?? 0) > 0, readiness?.mindfulnessMinutes != null),
+    [stress, readiness?.mindfulnessMinutes],
+  );
 
   return (
     <PageShell className="p-4 space-y-4">
@@ -251,7 +422,16 @@ export function RecoveryView() {
       </div>
 
       <div className="rounded-2xl bg-zinc-900 border border-zinc-800 p-4">
-        <div className="text-xs uppercase tracking-wider text-zinc-500">Daily recovery</div>
+        <div className="flex items-start justify-between gap-2">
+          <div className="text-xs uppercase tracking-wider text-zinc-500 shrink-0">Daily recovery</div>
+          <button
+            type="button"
+            onClick={() => setRecoveryHelpOpen(true)}
+            className="shrink-0 text-xs font-medium text-amber-500 hover:text-amber-400 pb-0.5"
+          >
+            More
+          </button>
+        </div>
         <div className="text-3xl font-semibold mt-1">{score.compositeScore}</div>
         <div className="text-sm text-zinc-400 mt-1">
           Band: <span className="text-zinc-200 capitalize">{score.band}</span>
@@ -265,6 +445,12 @@ export function RecoveryView() {
           <Stat label="Mindfulness" value={score.mindfulnessScore ?? '—'} />
         </div>
       </div>
+
+      <DailyRecoveryExplainSheet
+        open={recoveryHelpOpen}
+        onClose={() => setRecoveryHelpOpen(false)}
+        weights={compositeExplainWeights}
+      />
 
       <TrackerReminderCard />
 
