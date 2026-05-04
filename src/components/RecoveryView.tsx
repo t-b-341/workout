@@ -216,6 +216,21 @@ export function RecoveryView() {
 
   return (
     <PageShell className="p-4 space-y-4">
+      <MacroTrendCallout advice={macroTrend} title="Fueling trend (days before today)" />
+
+      <div className="rounded-2xl bg-zinc-900 border border-zinc-800 p-4 space-y-2">
+        <div className="text-sm font-medium">Today&apos;s recommendations</div>
+        <div className="space-y-1.5 text-sm text-zinc-300">
+          {performanceRecommendations.map((line) => (
+            <div key={line}>• {line}</div>
+          ))}
+        </div>
+        <div className="border-t border-zinc-800 pt-2" />
+        <div className="text-sm text-zinc-300">{plan.intensityNote}</div>
+        <div className="text-sm text-zinc-300">{plan.cardioNote}</div>
+        <div className="text-sm text-zinc-300">{plan.nutritionNote}</div>
+      </div>
+
       <div className="rounded-2xl bg-zinc-900 border border-zinc-800 p-4">
         <div className="text-xs uppercase tracking-wider text-zinc-500">Daily recovery</div>
         <div className="text-3xl font-semibold mt-1">{score.compositeScore}</div>
@@ -238,25 +253,11 @@ export function RecoveryView() {
 
       <SleepSection date={date} existing={sleep} />
       <StressSection date={date} existing={stress} />
-      <InjuryTrackingPanel date={date} />
       <BodyweightQuickLog date={date} />
       <HydrationSection date={date} existing={hydration} prefs={prefs} />
       <NutritionSection date={date} existing={nutrition} prefs={prefs} />
 
-      <MacroTrendCallout advice={macroTrend} title="Fueling trend (days before today)" />
-
-      <div className="rounded-2xl bg-zinc-900 border border-zinc-800 p-4 space-y-2">
-        <div className="text-sm font-medium">Today&apos;s recommendations</div>
-        <div className="space-y-1.5 text-sm text-zinc-300">
-          {performanceRecommendations.map((line) => (
-            <div key={line}>• {line}</div>
-          ))}
-        </div>
-        <div className="border-t border-zinc-800 pt-2" />
-        <div className="text-sm text-zinc-300">{plan.intensityNote}</div>
-        <div className="text-sm text-zinc-300">{plan.cardioNote}</div>
-        <div className="text-sm text-zinc-300">{plan.nutritionNote}</div>
-      </div>
+      <InjuryTrackingPanel date={date} />
     </PageShell>
   );
 }
