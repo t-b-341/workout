@@ -10,7 +10,7 @@ import {
   useTemplates,
 } from '@/lib/hooks';
 import { localDelete, localUpsert, flushDirty, pullAll } from '@/lib/sync';
-import type { Lift, Prescription, ReadinessLog, SessionLog, SessionTemplate, SetLog, TemplateId } from '@/lib/types';
+import type { Lift, Prescription, SessionLog, SessionTemplate, SetLog, TemplateId } from '@/lib/types';
 import { getDb } from '@/lib/db';
 import { defaultTemplateForLocalDate, sortTemplatesProgramOrder } from '@/lib/seed';
 import {
@@ -29,14 +29,15 @@ import {
 } from '@/lib/exportRoutineMarkdown';
 import { isoWeekOf, startOfWeekIso } from '@/lib/stats';
 import { liftForSnap, snapWorkingWeight } from '@/lib/progression';
-import { prFeed } from '@/lib/stats';
 import {
+  clearMesoBoundaryPromptState,
   mesocyclePosition,
   saveMesoConfig,
   useMesoConfig,
   type MesocycleConfig,
   type MesocyclePosition,
 } from '@/lib/mesocycle';
+import { analyzeMesoLengthRecommendation, type MesoLengthRecommendation } from '@/lib/mesoRecommendation';
 import {
   patchGoalSessionPrefs,
   reorderFitnessGoals,
@@ -46,6 +47,7 @@ import {
   useGoalSessionPrefs,
   type FitnessGoal,
 } from '@/lib/goals';
+import { MesoBoundaryPromptCard } from './MesoBoundaryPromptCard';
 import { LooseDecimalField, LooseIntField } from './WeightStepper';
 import { PageShell } from './PageShell';
 
@@ -784,14 +786,6 @@ function addWeeksToIsoWeek(weekLabel: string, n: number): string {
 
 // ---------- Mesocycle settings ----------
 
-type MesoLengthRecommendation = {
-  action: 'extend' | 'shorten' | 'keep';
-  suggestedAccumulation: number;
-  suggestedDeload: number;
-  reason: string;
-  signalSummary: string;
-};
-
 function MesocycleSettings() {
   const cfg = useMesoConfig();
   const lifts = useLifts();
@@ -859,6 +853,7 @@ function MesocycleSettings() {
       accumulation: mesoConfig.accumulation,
       deload: mesoConfig.deload,
     });
+    await clearMesoBoundaryPromptState();
     setEditing(false);
     setDraft(null);
   }
@@ -881,6 +876,7 @@ function MesocycleSettings() {
 
   return (
     <div className="rounded-2xl bg-zinc-900 border border-zinc-800 p-4 space-y-3">
+      <MesoBoundaryPromptCard />
       <div className="flex items-baseline justify-between gap-2 flex-wrap">
         <div>
           <div className="font-medium">Mesocycle</div>
@@ -1011,88 +1007,4 @@ function MesocycleSettings() {
       )}
     </div>
   );
-}
-
-const MESO_HEURISTICS = {
-  // Require clear momentum to extend.
-  minPrSignalsToExtend: 3,
-  minCompletionRateToExtend: 0.85,
-  maxModifiedRateToExtend: 0.1,
-  maxAvgSorenessToExtend: 2.8,
-  minAvgMotivationToExtend: 3.2,
-  // Be more sensitive to accumulating fatigue.
-  highSorenessToShorten: 3.4,
-  lowMotivationToShorten: 2.4,
-  highModifiedRateToShorten: 0.2,
-  lowCompletionRateToShorten: 0.65,
-} as const;
-
-function analyzeMesoLengthRecommendation(
-  cfg: MesocycleConfig,
-  sessions: SessionLog[],
-  sets: SetLog[],
-  readiness: ReadinessLog[],
-  lifts: Lift[],
-  today: string,
-): MesoLengthRecommendation {
-  const cycleDays = (cfg.accumulation + cfg.deload) * 7;
-  const fromIso = addDaysIso(today, -cycleDays + 1);
-  const cycleSessions = sessions.filter((s) => s.date >= fromIso && s.date <= today);
-  const cycleSessionIds = new Set(cycleSessions.map((s) => s.id));
-  const cycleSets = sets.filter((s) => cycleSessionIds.has(s.sessionLogId));
-  const cycleReadiness = readiness.filter((r) => r.date >= fromIso && r.date <= today);
-
-  const prs = prFeed(cycleSets, cycleSessions, lifts).length;
-  const completedSessions = cycleSessions.filter((s) => Boolean(s.completedAt)).length;
-  const completionRate = cycleSessions.length > 0 ? completedSessions / cycleSessions.length : 0;
-
-  const modifiedSets = cycleSets.filter((s) => s.status !== 'completed').length;
-  const modifiedRate = cycleSets.length > 0 ? modifiedSets / cycleSets.length : 0;
-  const avgSoreness = cycleReadiness.length > 0
-    ? cycleReadiness.reduce((sum, r) => sum + r.soreness, 0) / cycleReadiness.length
-    : 0;
-  const avgMotivation = cycleReadiness.length > 0
-    ? cycleReadiness.reduce((sum, r) => sum + r.motivation, 0) / cycleReadiness.length
-    : 0;
-
-  const h = MESO_HEURISTICS;
-  const highFatigue =
-    avgSoreness >= h.highSorenessToShorten
-    || avgMotivation <= h.lowMotivationToShorten
-    || modifiedRate >= h.highModifiedRateToShorten
-    || (cycleSessions.length > 0 && completionRate <= h.lowCompletionRateToShorten);
-  const strongMomentum =
-    prs >= h.minPrSignalsToExtend
-    && completionRate >= h.minCompletionRateToExtend
-    && modifiedRate <= h.maxModifiedRateToExtend
-    && avgSoreness <= h.maxAvgSorenessToExtend
-    && avgMotivation >= h.minAvgMotivationToExtend;
-
-  if (strongMomentum && cfg.accumulation < 12) {
-    const next = cfg.accumulation + 1;
-    return {
-      action: 'extend',
-      suggestedAccumulation: next,
-      suggestedDeload: cfg.deload,
-      reason: 'Momentum looks good (PRs + strong completion + low fatigue). Extending accumulation by 1 week is likely productive.',
-      signalSummary: `${prs} PR signals, ${Math.round(completionRate * 100)}% session completion, ${Math.round(modifiedRate * 100)}% modified sets`,
-    };
-  }
-  if (highFatigue && cfg.accumulation > 1) {
-    const next = cfg.accumulation - 1;
-    return {
-      action: 'shorten',
-      suggestedAccumulation: next,
-      suggestedDeload: cfg.deload,
-      reason: 'Fatigue signals are elevated. Shortening accumulation by 1 week should reduce overshooting and improve next-block quality.',
-      signalSummary: `soreness ${avgSoreness.toFixed(1)}/5, motivation ${avgMotivation.toFixed(1)}/5, ${Math.round(modifiedRate * 100)}% modified sets`,
-    };
-  }
-  return {
-    action: 'keep',
-    suggestedAccumulation: cfg.accumulation,
-    suggestedDeload: cfg.deload,
-    reason: 'Current block length looks balanced from available cycle signals.',
-    signalSummary: `${prs} PR signals, soreness ${avgSoreness ? avgSoreness.toFixed(1) : 'n/a'}/5, motivation ${avgMotivation ? avgMotivation.toFixed(1) : 'n/a'}/5`,
-  };
 }

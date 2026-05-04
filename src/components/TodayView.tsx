@@ -53,6 +53,7 @@ import { SessionContextDock } from './SessionContextDock';
 import { PageShell } from './PageShell';
 import { StartWorkoutButton, WorkoutStopwatchBar } from './WorkoutSessionTimer';
 import { TrainingMindsetCard } from './TrainingMindsetCard';
+import { MesoBoundaryPromptCard } from './MesoBoundaryPromptCard';
 import { MacroTrendCallout } from './MacroTrendCallout';
 import { MindfulnessTodayCard } from './MindfulnessTodayCard';
 import { DayNotesCard } from './DayNotesCard';
@@ -172,6 +173,7 @@ export function TodayView() {
   return (
     <PageShell className={`p-4 space-y-4 ${showSessionDock ? 'pb-24' : ''}`}>
       <SyncStatusBar />
+      <MesoBoundaryPromptCard />
       <MacroTrendTodayBanner />
       <WeekActivityStrip />
       {session.completedAt && (
