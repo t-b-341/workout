@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from 'react';
 import {
+  useAllBodyweight,
   useAllReadiness,
   useAllSets,
   useLifts,
@@ -797,6 +798,7 @@ function MesocycleSettings() {
   const sessions = useSessionsAfterReadiness();
   const sets = useAllSets();
   const readiness = useAllReadiness();
+  const bodyweightLogs = useAllBodyweight();
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState<MesocycleFormDraft | null>(null);
 
@@ -983,6 +985,7 @@ function MesocycleSettings() {
         sets={sets ?? []}
         readiness={readiness ?? []}
         lifts={lifts ?? []}
+        bodyweightLogs={bodyweightLogs ?? []}
         today={today}
       />
 

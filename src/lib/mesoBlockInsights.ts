@@ -15,7 +15,12 @@ import {
 } from '@/lib/mesoRecommendation';
 import { prFeed } from '@/lib/stats';
 import { addDaysIso } from '@/lib/time';
-import type { Lift, ReadinessLog, SessionLog, SetLog } from '@/lib/types';
+import {
+  bodyweightLbForSessionVolume,
+  readinessBySessionId,
+  strengthVolumeLbForSet,
+} from '@/lib/p1AssistedVolume';
+import type { BodyweightLog, Lift, ReadinessLog, SessionLog, SetLog } from '@/lib/types';
 
 function inDateRange(d: string, from: string, to: string): boolean {
   return d >= from && d <= to;
@@ -36,6 +41,14 @@ export type MesoWeekStat = {
   avgMotivation: number | null;
   modifiedSetRate: number | null;
   sessionCompletionRate: number | null;
+  /** Sum of strength tonnage (lb) for completed non-cardio sets in the week. */
+  strengthVolumeLb: number | null;
+  /** Mean RPE on completed sets that logged RPE in the week. */
+  avgRpe: number | null;
+  /** Mean morning HRV (RMSSD) on check-in days in the week with a reading. */
+  avgHrvRmssd: number | null;
+  /** Share of that week’s logged sessions that were skip/light or started but not completed. */
+  sessionShortenedRate: number | null;
 };
 
 /** Per-week snapshot for one mesocycle block (`mesoIndex` ≥ 1). */
@@ -47,6 +60,7 @@ export function buildMesoWeekStats(
   readiness: ReadinessLog[],
   lifts: Lift[],
   today: string,
+  bodyweightLogs: BodyweightLog[] = [],
 ): MesoWeekStat[] | null {
   const range = blockDateRangeForMesoIndex(cfg, mesoIndex);
   const blockStart = blockStartMondayForMesoIndex(cfg, mesoIndex);
@@ -55,6 +69,9 @@ export function buildMesoWeekStats(
   const totalWeeks = cfg.accumulation + cfg.deload;
   const prItems = prFeed(sets, sessions, lifts);
   const out: MesoWeekStat[] = [];
+  const sessionById = new Map(sessions.map((s) => [s.id, s]));
+  const rxBySession = readinessBySessionId(readiness);
+  const liftById = new Map(lifts.map((l) => [l.id, l]));
 
   for (let w = 1; w <= totalWeeks; w++) {
     const weekStart = addDaysIso(blockStart, (w - 1) * 7);
@@ -73,6 +90,43 @@ export function buildMesoWeekStats(
     const completionRate = sessionDays > 0 ? completed / sessionDays : null;
 
     const weekRx = readiness.filter((r) => inDateRange(r.date, weekStart, weekEnd));
+
+    let strengthVolumeLb: number | null = null;
+    let avgRpe: number | null = null;
+    let avgHrvRmssd: number | null = null;
+    let sessionShortenedRate: number | null = null;
+
+    if (!isFuture) {
+      let vol = 0;
+      for (const st of weekSets) {
+        const sess = sessionById.get(st.sessionLogId);
+        if (!sess) continue;
+        const rx = rxBySession.get(st.sessionLogId);
+        const bw = bodyweightLbForSessionVolume(sess, rx, bodyweightLogs);
+        vol += strengthVolumeLbForSet(st, liftById.get(st.liftId), bw);
+      }
+      strengthVolumeLb = vol > 0 ? vol : weekSets.some((s) => s.status === 'completed') ? 0 : null;
+
+      const rpeVals = weekSets
+        .filter((st) => st.status === 'completed' && st.rpe != null && !Number.isNaN(st.rpe))
+        .map((st) => st.rpe!);
+      avgRpe = rpeVals.length > 0 ? rpeVals.reduce((a, b) => a + b, 0) / rpeVals.length : null;
+
+      const hrvVals = weekRx
+        .filter((r) => r.hrvRmssd != null && !r.hrvSkipped && !Number.isNaN(r.hrvRmssd!))
+        .map((r) => r.hrvRmssd!);
+      avgHrvRmssd = hrvVals.length > 0 ? hrvVals.reduce((a, b) => a + b, 0) / hrvVals.length : null;
+
+      if (weekSessions.length > 0) {
+        let shortish = 0;
+        for (const s of weekSessions) {
+          if (s.mode === 'skip' || s.mode === 'light') shortish += 1;
+          else if (s.startedAt && !s.completedAt) shortish += 1;
+        }
+        sessionShortenedRate = shortish / weekSessions.length;
+      }
+    }
+
     const avgSoreness =
       !isFuture && weekRx.length > 0
         ? weekRx.reduce((a, r) => a + r.soreness, 0) / weekRx.length
@@ -108,9 +162,93 @@ export function buildMesoWeekStats(
       avgMotivation,
       modifiedSetRate: isFuture ? null : modRate,
       sessionCompletionRate: isFuture ? null : completionRate,
+      strengthVolumeLb: isFuture ? null : strengthVolumeLb,
+      avgRpe: isFuture ? null : avgRpe,
+      avgHrvRmssd: isFuture ? null : avgHrvRmssd,
+      sessionShortenedRate: isFuture ? null : sessionShortenedRate,
     });
   }
   return out;
+}
+
+function mean(xs: number[]): number {
+  if (xs.length === 0) return 0;
+  return xs.reduce((a, b) => a + b, 0) / xs.length;
+}
+
+function accumulationHalfTrend(
+  accWeeks: MesoWeekStat[],
+  pick: (w: MesoWeekStat) => number | null,
+  relFlat: number,
+): 'up' | 'down' | 'flat' | 'unknown' {
+  const rows = accWeeks.filter((w) => !w.isFuture);
+  const nums: number[] = [];
+  for (const w of rows) {
+    const v = pick(w);
+    if (v != null && !Number.isNaN(v)) nums.push(v);
+  }
+  if (nums.length < 2) return 'unknown';
+  const mid = Math.ceil(nums.length / 2);
+  const first = mean(nums.slice(0, mid));
+  const second = mean(nums.slice(mid));
+  const span = Math.max(Math.abs(first), Math.abs(second), 1e-6);
+  const rel = (second - first) / span;
+  if (Math.abs(rel) < relFlat) return 'flat';
+  return rel > 0 ? 'up' : 'down';
+}
+
+export type MesoAccumulationTrends = {
+  volume: string;
+  rpe: string;
+  hrv: string;
+  shortened: string;
+};
+
+/** Compares early vs late accumulation weeks (logged only). For mid- and end-of-meso analysis. */
+export function formatAccumulationTrendLines(weekStats: MesoWeekStat[]): MesoAccumulationTrends {
+  const acc = weekStats.filter((w) => !w.isDeload);
+  if (acc.filter((w) => !w.isFuture).length < 2) {
+    const msg =
+      'Need at least two logged accumulation weeks to compare early vs late trends.';
+    return { volume: msg, rpe: msg, hrv: msg, shortened: msg };
+  }
+
+  const vTrend = accumulationHalfTrend(acc, (w) => w.strengthVolumeLb, 0.09);
+  const rTrend = accumulationHalfTrend(acc, (w) => w.avgRpe, 0.08);
+  const hTrend = accumulationHalfTrend(acc, (w) => w.avgHrvRmssd, 0.08);
+  const sTrend = accumulationHalfTrend(acc, (w) => w.sessionShortenedRate, 0.12);
+
+  const volMap: Record<typeof vTrend, string> = {
+    up: 'Tonnage increased from early to late accumulation.',
+    down: 'Tonnage decreased from early to late accumulation.',
+    flat: 'Tonnage stayed relatively stable week to week.',
+    unknown: 'Not enough volume data to compare halves of accumulation.',
+  };
+  const rpeMap: Record<typeof rTrend, string> = {
+    up: 'Average set RPE drifted higher through the block.',
+    down: 'Average set RPE drifted lower through the block.',
+    flat: 'Average set RPE stayed similar across weeks.',
+    unknown: 'Not enough RPE data to compare trends.',
+  };
+  const hrvMap: Record<typeof hTrend, string> = {
+    up: 'Morning HRV (RMSSD) moved higher on average in later weeks.',
+    down: 'Morning HRV (RMSSD) moved lower on average in later weeks.',
+    flat: 'Morning HRV stayed in a similar range.',
+    unknown: 'Not enough HRV readings to compare trends.',
+  };
+  const shortMap: Record<typeof sTrend, string> = {
+    up: 'Skip/light or incomplete sessions became more common later in accumulation.',
+    down: 'Skip/light or incomplete sessions became less common later in accumulation.',
+    flat: 'The rate of skip/light or incomplete sessions stayed similar.',
+    unknown: 'Not enough session data to compare shortened-session rates.',
+  };
+
+  return {
+    volume: volMap[vTrend],
+    rpe: rpeMap[rTrend],
+    hrv: hrvMap[hTrend],
+    shortened: shortMap[sTrend],
+  };
 }
 
 export type MesoBlockReport = {
@@ -118,6 +256,7 @@ export type MesoBlockReport = {
   weekStats: MesoWeekStat[];
   lengthRecommendation: MesoLengthRecommendation;
   trendSummary: string;
+  accumulationTrends: MesoAccumulationTrends;
   /** From optional session strategy tags in the completed block. */
   tagSummary: string | null;
   strategyBullets: string[];
@@ -223,6 +362,7 @@ export function buildCompletedMesoBlockReport(
   readiness: ReadinessLog[],
   lifts: Lift[],
   today: string,
+  bodyweightLogs: BodyweightLog[] = [],
 ): MesoBlockReport | null {
   const rec = analyzeCompletedBlockRecommendation(
     cfg,
@@ -241,12 +381,14 @@ export function buildCompletedMesoBlockReport(
     readiness,
     lifts,
     today,
+    bodyweightLogs,
   );
   if (!weekStats) return null;
 
   const accWeeks = weekStats.filter((w) => !w.isDeload);
   const deloadWeeks = weekStats.filter((w) => w.isDeload);
   const trendSummary = buildTrendSummary(accWeeks, deloadWeeks);
+  const accumulationTrends = formatAccumulationTrendLines(weekStats);
 
   const range = blockDateRangeForMesoIndex(cfg, completedMesoIndex);
   const blockSessions = range
@@ -261,6 +403,7 @@ export function buildCompletedMesoBlockReport(
     weekStats,
     lengthRecommendation: rec,
     trendSummary,
+    accumulationTrends,
     tagSummary,
     strategyBullets,
   };

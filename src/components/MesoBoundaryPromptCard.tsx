@@ -1,7 +1,13 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { useAllReadiness, useAllSets, useLifts, useSessionsAfterReadiness } from '@/lib/hooks';
+import {
+  useAllBodyweight,
+  useAllReadiness,
+  useAllSets,
+  useLifts,
+  useSessionsAfterReadiness,
+} from '@/lib/hooks';
 import {
   saveMesoBoundaryPromptDismissed,
   saveMesoConfig,
@@ -20,6 +26,7 @@ export function MesoBoundaryPromptCard() {
   const sessions = useSessionsAfterReadiness();
   const sets = useAllSets();
   const readiness = useAllReadiness();
+  const bodyweightLogs = useAllBodyweight();
   const [busy, setBusy] = useState(false);
 
   const today = todayIso();
@@ -35,10 +42,11 @@ export function MesoBoundaryPromptCard() {
       readiness ?? [],
       lifts ?? [],
       today,
+      bodyweightLogs ?? [],
     );
     if (!report) return null;
     return { ctx, report };
-  }, [cfg, lifts, readiness, sessions, sets, stored, today]);
+  }, [bodyweightLogs, cfg, lifts, readiness, sessions, sets, stored, today]);
 
   if (!payload || !cfg) return null;
 
@@ -99,6 +107,24 @@ export function MesoBoundaryPromptCard() {
       <p className="text-xs text-zinc-400 leading-relaxed border-t border-zinc-800 pt-2 mt-1">
         {report.trendSummary}
       </p>
+      <ul className="text-[11px] text-zinc-500 list-disc pl-4 space-y-0.5 border-t border-zinc-800/80 pt-2 mt-1">
+        <li>
+          <span className="text-zinc-600">Volume · </span>
+          {report.accumulationTrends.volume}
+        </li>
+        <li>
+          <span className="text-zinc-600">RPE · </span>
+          {report.accumulationTrends.rpe}
+        </li>
+        <li>
+          <span className="text-zinc-600">HRV · </span>
+          {report.accumulationTrends.hrv}
+        </li>
+        <li>
+          <span className="text-zinc-600">Skipped / shortened · </span>
+          {report.accumulationTrends.shortened}
+        </li>
+      </ul>
       {report.tagSummary && (
         <p className="text-xs text-violet-200/85 leading-relaxed">{report.tagSummary}</p>
       )}

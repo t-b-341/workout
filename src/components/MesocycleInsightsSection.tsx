@@ -2,35 +2,90 @@
 
 import { useMemo } from 'react';
 import type { MesocycleConfig, MesocyclePosition } from '@/lib/mesocycle';
-import { buildCompletedMesoBlockReport, buildMesoWeekStats, type MesoWeekStat } from '@/lib/mesoBlockInsights';
+import {
+  buildCompletedMesoBlockReport,
+  buildMesoWeekStats,
+  formatAccumulationTrendLines,
+  type MesoAccumulationTrends,
+  type MesoWeekStat,
+} from '@/lib/mesoBlockInsights';
 import { fmtDate } from '@/lib/time';
-import type { Lift, ReadinessLog, SessionLog, SetLog } from '@/lib/types';
+import type { BodyweightLog, Lift, ReadinessLog, SessionLog, SetLog } from '@/lib/types';
+
+function fmtVolLb(n: number | null): string {
+  if (n == null) return '—';
+  if (n >= 10_000) return `${(n / 1000).toFixed(1)}k`;
+  return Math.round(n).toLocaleString();
+}
+
+function AccumulationTrendsBlock({ trends }: { trends: MesoAccumulationTrends }) {
+  return (
+    <div className="rounded-lg border border-zinc-800/80 bg-zinc-900/40 p-2.5 space-y-1.5">
+      <div className="text-[11px] uppercase tracking-wider text-zinc-500">
+        Accumulation trends (early vs late weeks)
+      </div>
+      <ul className="space-y-1 text-xs text-zinc-400 list-disc pl-4 leading-snug">
+        <li>
+          <span className="text-zinc-500">Volume · </span>
+          {trends.volume}
+        </li>
+        <li>
+          <span className="text-zinc-500">Avg RPE · </span>
+          {trends.rpe}
+        </li>
+        <li>
+          <span className="text-zinc-500">HRV · </span>
+          {trends.hrv}
+        </li>
+        <li>
+          <span className="text-zinc-500">Skipped / shortened sessions · </span>
+          {trends.shortened}
+        </li>
+      </ul>
+    </div>
+  );
+}
 
 function WeekRow({ w }: { w: MesoWeekStat }) {
   return (
     <div
-      className={`grid grid-cols-2 sm:grid-cols-4 gap-x-2 gap-y-1 text-xs border-b border-zinc-800/80 pb-2 last:border-0 ${
+      className={`space-y-1 border-b border-zinc-800/80 pb-2 last:border-0 ${
         w.isFuture ? 'opacity-50' : ''
       }`}
     >
-      <div className="text-zinc-300 font-medium">
-        {w.label}
-        {w.isFuture && <span className="text-zinc-600 font-normal"> · upcoming</span>}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-x-2 gap-y-1 text-xs">
+        <div className="text-zinc-300 font-medium">
+          {w.label}
+          {w.isFuture && <span className="text-zinc-600 font-normal"> · upcoming</span>}
+        </div>
+        <div className="text-zinc-500 sm:col-span-1">
+          {fmtDate(w.weekStart, 'MMM d')} – {fmtDate(w.weekEnd, 'd')}
+        </div>
+        <div className="text-zinc-400">
+          Sessions: {w.isFuture ? '—' : `${w.sessionsCompleted}/${w.sessionDays || 0} done`}
+        </div>
+        <div className="text-zinc-400">
+          PRs: {w.isFuture ? '—' : w.prCount}
+          {!w.isFuture && w.avgSoreness != null && (
+            <span className="text-zinc-600 ml-2">soreness {w.avgSoreness.toFixed(1)}</span>
+          )}
+        </div>
       </div>
-      <div className="text-zinc-500 sm:col-span-1">
-        {fmtDate(w.weekStart, 'MMM d')} – {fmtDate(w.weekEnd, 'd')}
-      </div>
-      <div className="text-zinc-400">
-        Sessions: {w.isFuture ? '—' : `${w.sessionsCompleted}/${w.sessionDays || 0} done`}
-      </div>
-      <div className="text-zinc-400">
-        PRs: {w.isFuture ? '—' : w.prCount}
-        {!w.isFuture && w.avgSoreness != null && (
-          <span className="text-zinc-600 ml-2">
-            soreness {w.avgSoreness.toFixed(1)}
-          </span>
-        )}
-      </div>
+      {!w.isFuture && (
+        <div className="text-[11px] text-zinc-500 leading-relaxed pl-0 sm:pl-0">
+          <span className="text-zinc-600">Vol </span>
+          {fmtVolLb(w.strengthVolumeLb)} lb
+          <span className="text-zinc-700 mx-1.5">·</span>
+          <span className="text-zinc-600">RPE </span>
+          {w.avgRpe != null ? w.avgRpe.toFixed(1) : '—'}
+          <span className="text-zinc-700 mx-1.5">·</span>
+          <span className="text-zinc-600">HRV </span>
+          {w.avgHrvRmssd != null ? `${w.avgHrvRmssd.toFixed(0)} ms` : '—'}
+          <span className="text-zinc-700 mx-1.5">·</span>
+          <span className="text-zinc-600">Short </span>
+          {w.sessionShortenedRate != null ? `${Math.round(w.sessionShortenedRate * 100)}%` : '—'}
+        </div>
+      )}
     </div>
   );
 }
@@ -42,6 +97,7 @@ export function MesocycleInsightsSection({
   sets,
   readiness,
   lifts,
+  bodyweightLogs,
   today,
 }: {
   cfg: MesocycleConfig;
@@ -50,12 +106,27 @@ export function MesocycleInsightsSection({
   sets: SetLog[];
   readiness: ReadinessLog[];
   lifts: Lift[];
+  bodyweightLogs: BodyweightLog[];
   today: string;
 }) {
   const currentWeeks = useMemo(() => {
     if (!position) return null;
-    return buildMesoWeekStats(cfg, position.mesoIndex, sessions, sets, readiness, lifts, today);
-  }, [cfg, lifts, position, readiness, sessions, sets, today]);
+    return buildMesoWeekStats(
+      cfg,
+      position.mesoIndex,
+      sessions,
+      sets,
+      readiness,
+      lifts,
+      today,
+      bodyweightLogs,
+    );
+  }, [bodyweightLogs, cfg, lifts, position, readiness, sessions, sets, today]);
+
+  const currentAccumTrends = useMemo(() => {
+    if (!currentWeeks?.length) return null;
+    return formatAccumulationTrendLines(currentWeeks);
+  }, [currentWeeks]);
 
   const previousReport = useMemo(() => {
     if (!position || position.mesoIndex < 2) return null;
@@ -67,8 +138,9 @@ export function MesocycleInsightsSection({
       readiness,
       lifts,
       today,
+      bodyweightLogs,
     );
-  }, [cfg, lifts, position, readiness, sessions, sets, today]);
+  }, [bodyweightLogs, cfg, lifts, position, readiness, sessions, sets, today]);
 
   return (
     <div className="space-y-4">
@@ -83,8 +155,9 @@ export function MesocycleInsightsSection({
           <div className="text-xs uppercase tracking-wider text-zinc-500">This mesocycle — week by week</div>
           <p className="text-[11px] text-zinc-600">
             Meso {position.mesoIndex}, week {position.weekInMeso} of {position.totalWeeks}
-            {position.isDeload ? ' · deload' : ''}. Trends use sessions, sets, PRs, and daily check-ins.
+            {position.isDeload ? ' · deload' : ''}. Trends use sessions, sets, PRs, HRV, and daily check-ins.
           </p>
+          {currentAccumTrends && <AccumulationTrendsBlock trends={currentAccumTrends} />}
           <div className="space-y-2 pt-1">{currentWeeks.map((w) => (
             <WeekRow key={w.weekInBlock} w={w} />
           ))}</div>
@@ -104,6 +177,7 @@ export function MesocycleInsightsSection({
             Last mesocycle (Meso {previousReport.mesoIndex}) — recap
           </div>
           <p className="text-sm text-zinc-300 leading-relaxed">{previousReport.trendSummary}</p>
+          <AccumulationTrendsBlock trends={previousReport.accumulationTrends} />
           {previousReport.tagSummary && (
             <p className="text-sm text-violet-200/90 leading-relaxed">{previousReport.tagSummary}</p>
           )}
