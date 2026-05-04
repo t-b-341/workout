@@ -1,3 +1,5 @@
+import type { SessionStrategyTagId } from './sessionStrategyTags';
+
 export type Equipment =
   | 'barbell'
   | 'dumbbell'
@@ -142,6 +144,8 @@ export type SessionLog = {
   effortScale?: -1 | 0 | 1;
   /** Set when the readiness check is submitted or skipped — gates History until present. */
   readinessCompletedAt?: string;
+  /** Optional strategy tags for this session (how you ran it). See `sessionStrategyTags.ts`. */
+  tags?: SessionStrategyTagId[];
 };
 
 export type CardioType = 'liss' | 'intervals';

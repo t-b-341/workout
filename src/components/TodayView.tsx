@@ -56,6 +56,7 @@ import { TrainingMindsetCard } from './TrainingMindsetCard';
 import { MesoBoundaryPromptCard } from './MesoBoundaryPromptCard';
 import { MacroTrendCallout } from './MacroTrendCallout';
 import { MindfulnessTodayCard } from './MindfulnessTodayCard';
+import { SessionStrategyTagsCard } from './SessionStrategyTagsCard';
 import { DayNotesCard } from './DayNotesCard';
 import {
   setGoalCheckedForSession,
@@ -200,6 +201,7 @@ export function TodayView() {
         }}
       />
       {!sundayGateActive && <SessionGoalsCard sessionId={session.id} />}
+      {!needsReadiness && session.mode !== 'skip' && <SessionStrategyTagsCard session={session} />}
       <MindfulnessTodayCard session={session} readiness={readiness} />
       <DayNotesCard date={todayIso()} />
       {(weeklyFlags.bodyweightOverdue || weeklyFlags.measurementsOverdue) && (

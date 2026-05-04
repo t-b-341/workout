@@ -8,10 +8,8 @@ import {
   useMesoBoundaryPromptState,
   useMesoConfig,
 } from '@/lib/mesocycle';
-import {
-  analyzeCompletedBlockRecommendation,
-  mesoBoundaryPromptContext,
-} from '@/lib/mesoRecommendation';
+import { buildCompletedMesoBlockReport } from '@/lib/mesoBlockInsights';
+import { mesoBoundaryPromptContext } from '@/lib/mesoRecommendation';
 import { todayIso } from '@/lib/time';
 
 /** Shown on Today and Program in week 1 of meso 2+ until dismiss or apply (Dexie dedupe). */
@@ -29,21 +27,23 @@ export function MesoBoundaryPromptCard() {
     if (cfg === undefined || stored === undefined) return null;
     const ctx = mesoBoundaryPromptContext(today, cfg, stored);
     if (!ctx) return null;
-    const rec = analyzeCompletedBlockRecommendation(
+    const report = buildCompletedMesoBlockReport(
       cfg,
       ctx.completedMesoIndex,
       sessions ?? [],
       sets ?? [],
       readiness ?? [],
       lifts ?? [],
+      today,
     );
-    if (!rec) return null;
-    return { ctx, rec };
+    if (!report) return null;
+    return { ctx, report };
   }, [cfg, lifts, readiness, sessions, sets, stored, today]);
 
   if (!payload || !cfg) return null;
 
-  const { ctx, rec } = payload;
+  const { ctx, report } = payload;
+  const rec = report.lengthRecommendation;
   const mesoCfg = cfg;
 
   async function dismiss() {
@@ -96,6 +96,17 @@ export function MesoBoundaryPromptCard() {
         </span>{' '}
         ({rec.suggestedAccumulation + rec.suggestedDeload} weeks).
       </p>
+      <p className="text-xs text-zinc-400 leading-relaxed border-t border-zinc-800 pt-2 mt-1">
+        {report.trendSummary}
+      </p>
+      {report.tagSummary && (
+        <p className="text-xs text-violet-200/85 leading-relaxed">{report.tagSummary}</p>
+      )}
+      <ul className="text-[11px] text-zinc-500 list-disc pl-4 space-y-0.5">
+        {report.strategyBullets.slice(0, 4).map((b, i) => (
+          <li key={i}>{b}</li>
+        ))}
+      </ul>
       <p className="text-xs text-zinc-500">{rec.reason}</p>
       <p className="text-[11px] text-zinc-600">Signals: {rec.signalSummary}</p>
       <div className="flex gap-2 flex-wrap pt-1">

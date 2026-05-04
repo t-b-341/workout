@@ -29,6 +29,7 @@ import {
 } from '@/lib/exportRoutineMarkdown';
 import { isoWeekOf, startOfWeekIso } from '@/lib/stats';
 import { liftForSnap, snapWorkingWeight } from '@/lib/progression';
+import { MesocycleInsightsSection } from './MesocycleInsightsSection';
 import {
   clearMesoBoundaryPromptState,
   mesocyclePosition,
@@ -37,7 +38,11 @@ import {
   type MesocycleConfig,
   type MesocyclePosition,
 } from '@/lib/mesocycle';
-import { analyzeMesoLengthRecommendation, type MesoLengthRecommendation } from '@/lib/mesoRecommendation';
+import {
+  analyzeMesoLengthRecommendation,
+  MESO_DELOAD_EXECUTION_GUIDANCE,
+  type MesoLengthRecommendation,
+} from '@/lib/mesoRecommendation';
 import {
   patchGoalSessionPrefs,
   reorderFitnessGoals,
@@ -959,6 +964,27 @@ function MesocycleSettings() {
           </button>
         </div>
       </div>
+
+      <div
+        className={`rounded-xl border p-3 space-y-1.5 ${
+          here?.isDeload
+            ? 'border-indigo-500/40 bg-indigo-950/25'
+            : 'border-zinc-800 bg-zinc-950/50'
+        }`}
+      >
+        <div className="text-xs uppercase tracking-wider text-zinc-500">Deload — how to run it</div>
+        <p className="text-sm text-zinc-300 leading-relaxed">{MESO_DELOAD_EXECUTION_GUIDANCE}</p>
+      </div>
+
+      <MesocycleInsightsSection
+        cfg={mesoConfig}
+        position={here}
+        sessions={sessions ?? []}
+        sets={sets ?? []}
+        readiness={readiness ?? []}
+        lifts={lifts ?? []}
+        today={today}
+      />
 
       {editing && draft && (
         <div className="border-t border-zinc-800 pt-3 grid grid-cols-1 sm:grid-cols-3 gap-3">

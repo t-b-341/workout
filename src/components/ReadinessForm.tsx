@@ -132,6 +132,11 @@ export function ReadinessForm({
         )}
       </div>
 
+      <p className="text-xs text-amber-500/90">
+        Your answers (including Skip HRV) are saved when you finish below — use{' '}
+        <span className="font-medium text-zinc-300">Save check-in</span> or Preview → Accept / Keep mode.
+      </p>
+
       <p className="text-xs text-zinc-500">
         Meditation / mindfulness minutes are logged in the separate card on this tab (not in this check-in).
       </p>
@@ -156,17 +161,29 @@ export function ReadinessForm({
       )}
 
       {!recommended ? (
-        <button
-          type="button"
-          onClick={() =>
-            setRecommended(
-              recommendMode(sleep, soreness, motivation, {
-                hrvRmssd: hrvSkipped ? undefined : hrvRmssd,
-                hrvSkipped,
-              }),
-            )}
-          className="w-full h-12 rounded-xl bg-zinc-800 font-medium"
-        >Preview recommendation</button>
+        <div className="flex flex-col gap-2 sm:flex-row">
+          <button
+            type="button"
+            onClick={() => void submit(false)}
+            disabled={busy}
+            className="flex-1 h-12 rounded-xl bg-amber-500 text-zinc-950 font-semibold disabled:opacity-50"
+          >
+            Save check-in
+          </button>
+          <button
+            type="button"
+            onClick={() =>
+              setRecommended(
+                recommendMode(sleep, soreness, motivation, {
+                  hrvRmssd: hrvSkipped ? undefined : hrvRmssd,
+                  hrvSkipped,
+                }),
+              )}
+            className="flex-1 h-12 rounded-xl bg-zinc-800 font-medium"
+          >
+            Preview recommendation
+          </button>
+        </div>
       ) : (
         <div className="rounded-xl border border-zinc-800 bg-zinc-950 p-3 space-y-3">
           <div>

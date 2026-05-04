@@ -18,6 +18,13 @@ export type MesoLengthRecommendation = {
   signalSummary: string;
 };
 
+/**
+ * Training execution (not derived from heuristics). Shown on Program → Mesocycle,
+ * especially during the configured deload week(s).
+ */
+export const MESO_DELOAD_EXECUTION_GUIDANCE =
+  'Run the same, take 1-2 sets off, 10-15% off weights and work up again to new limits.';
+
 export const MESO_HEURISTICS = {
   // Require clear momentum to extend.
   minPrSignalsToExtend: 3,
