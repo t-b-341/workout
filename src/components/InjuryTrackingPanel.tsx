@@ -1,15 +1,14 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { format, subDays } from 'date-fns';
-import { useAllBodyReadiness, useAllInjuryEpisodes, useBodyReadinessForDate } from '@/lib/hooks';
+import { format } from 'date-fns';
+import { useAllInjuryEpisodes } from '@/lib/hooks';
 import {
   INJURY_SITE_GROUPS,
   labelForSiteKey,
   type InjurySiteKey,
 } from '@/lib/injurySites';
 import { flushDirty, localUpsert } from '@/lib/sync';
-import { todayIso } from '@/lib/time';
 import type { InjuryEpisode, InjuryKind } from '@/lib/types';
 
 function activeEpisodeForSite(episodes: InjuryEpisode[], siteKey: string): InjuryEpisode | undefined {
@@ -23,10 +22,8 @@ function daysBetween(startIso: string, endIso: string): number {
   return Math.max(0, Math.round(ms / (24 * 60 * 60 * 1000)));
 }
 
-export function InjuryTrackingPanel({ date }: { date: string }) {
+export function InjuryTrackingPanel() {
   const episodes = useAllInjuryEpisodes();
-  const readinessToday = useBodyReadinessForDate(date);
-  const allReadiness = useAllBodyReadiness();
 
   const activeBySite = useMemo(() => {
     const m = new Map<string, InjuryEpisode>();
@@ -46,17 +43,6 @@ export function InjuryTrackingPanel({ date }: { date: string }) {
       .sort((a, b) => (a.endedAt! < b.endedAt! ? 1 : -1))
       .slice(0, 18);
   }, [episodes]);
-
-  const readinessTrend = useMemo(() => {
-    const end = new Date(`${date}T12:00:00`);
-    const days: { date: string; score: number | null }[] = [];
-    const byDate = new Map((allReadiness ?? []).map((r) => [r.date, r.score]));
-    for (let i = 13; i >= 0; i--) {
-      const d = format(subDays(end, i), 'yyyy-MM-dd');
-      days.push({ date: d, score: byDate.get(d) ?? null });
-    }
-    return days;
-  }, [allReadiness, date]);
 
   async function setSiteActive(siteKey: InjurySiteKey, active: boolean) {
     if (!episodes) return;
@@ -93,22 +79,13 @@ export function InjuryTrackingPanel({ date }: { date: string }) {
     await flushDirty().catch(() => {});
   }
 
-  async function saveReadinessScore(score: 1 | 2 | 3 | 4 | 5) {
-    await localUpsert('body_readiness_logs', {
-      id: `body-readiness-${date}`,
-      date,
-      score,
-    });
-    await flushDirty().catch(() => {});
-  }
-
   const activeList = useMemo(() => {
     return Array.from(activeBySite.entries()).sort((a, b) =>
       labelForSiteKey(a[0] as InjurySiteKey).localeCompare(labelForSiteKey(b[0] as InjurySiteKey)),
     );
   }, [activeBySite]);
 
-  if (episodes === undefined || allReadiness === undefined) {
+  if (episodes === undefined) {
     return (
       <div className="rounded-2xl bg-zinc-900 border border-zinc-800 p-4 text-sm text-zinc-500">
         Loading injury data…
@@ -122,61 +99,8 @@ export function InjuryTrackingPanel({ date }: { date: string }) {
         <div className="text-sm font-medium text-zinc-100">Current injuries &amp; body state</div>
         <p className="text-xs text-zinc-500 mt-1">
           Checked sites stay on day to day until you turn them off — use for anything affecting training
-          (acute flare-ups or chronic / overuse). Log how your body feels today to spot trends next to
-          active issues.
+          (acute flare-ups or chronic / overuse).
         </p>
-      </div>
-
-      <div className="rounded-xl border border-zinc-800 bg-zinc-950 p-3 space-y-3">
-        <div className="text-xs uppercase tracking-wider text-zinc-500">Body readiness today</div>
-        <p className="text-[11px] text-zinc-500">
-          1 = poor / very compromised · 5 = great · Optional daily check-in ({date === todayIso() ? 'today' : date})
-        </p>
-        <div className="flex flex-wrap gap-2">
-          {([1, 2, 3, 4, 5] as const).map((n) => (
-            <button
-              key={n}
-              type="button"
-              onClick={() => void saveReadinessScore(n)}
-              className={`h-10 min-w-[2.5rem] rounded-lg text-sm font-medium ${
-                readinessToday?.score === n
-                  ? 'bg-amber-500 text-zinc-950'
-                  : 'bg-zinc-800 text-zinc-300 hover:bg-zinc-700'
-              }`}
-            >
-              {n}
-            </button>
-          ))}
-        </div>
-
-        <div className="space-y-1">
-          <div className="flex justify-between text-[11px] text-zinc-500">
-            <span>Last 14 days</span>
-            <span className="font-mono text-zinc-600">older → newer</span>
-          </div>
-          <div className="flex items-end gap-0.5 h-14">
-            {readinessTrend.map((d) => (
-              <div key={d.date} className="flex-1 flex flex-col justify-end min-w-0 group">
-                <div
-                  className={`w-full rounded-t-sm transition-colors ${
-                    d.score == null
-                      ? 'bg-zinc-800 h-1'
-                      : d.score <= 2
-                        ? 'bg-rose-600'
-                        : d.score === 3
-                          ? 'bg-amber-600'
-                          : 'bg-emerald-600'
-                  }`}
-                  style={{
-                    height: d.score != null ? `${(d.score / 5) * 100}%` : '4px',
-                    minHeight: d.score != null ? '8px' : '4px',
-                  }}
-                  title={`${d.date}${d.score != null ? ` · ${d.score}/5` : ' · no log'}`}
-                />
-              </div>
-            ))}
-          </div>
-        </div>
       </div>
 
       {activeList.length > 0 && (

@@ -15,7 +15,6 @@ import { buildMacroTrendAdvice, priorDatesExclusive } from './macroTrend';
 import { filterSessionsAfterReadiness } from './sessionFilters';
 import type {
   BodyMeasurementLog,
-  BodyReadinessLog,
   BodyweightLog,
   CardioLog,
   HydrationLog,
@@ -300,20 +299,6 @@ export function useAllInjuryEpisodes(): InjuryEpisode[] | undefined {
   return useLiveQuery(async () => {
     const all = await getDb().injury_episodes.toArray();
     return all.sort((a, b) => (a.startedAt < b.startedAt ? 1 : -1));
-  }, []);
-}
-
-export function useBodyReadinessForDate(date: string): BodyReadinessLog | undefined {
-  return useLiveQuery(async () => {
-    const matches = await getDb().body_readiness_logs.where('date').equals(date).toArray();
-    return matches[0];
-  }, [date]);
-}
-
-export function useAllBodyReadiness(): BodyReadinessLog[] | undefined {
-  return useLiveQuery(async () => {
-    const all = await getDb().body_readiness_logs.toArray();
-    return all.sort((a, b) => (a.date < b.date ? 1 : -1));
   }, []);
 }
 

@@ -257,7 +257,7 @@ export function RecoveryView() {
       <HydrationSection date={date} existing={hydration} prefs={prefs} />
       <NutritionSection date={date} existing={nutrition} prefs={prefs} />
 
-      <InjuryTrackingPanel date={date} />
+      <InjuryTrackingPanel />
     </PageShell>
   );
 }
