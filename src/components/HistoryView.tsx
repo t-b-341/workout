@@ -33,6 +33,7 @@ import {
 import { Sparkline, MiniBars } from './Sparkline';
 import { ReadinessSummary } from './ReadinessSummary';
 import { SessionEditSheet } from './SessionEditSheet';
+import { NutritionLogEditSheet } from './NutritionLogEditSheet';
 import { PageShell } from './PageShell';
 import { MUSCLE_GROUPS, PATTERNS } from '@/lib/seed';
 import { defaultWellnessTargets, useWellnessTargets, type WellnessTargets } from '@/lib/wellnessTargets';
@@ -848,6 +849,7 @@ function macroPct(actual: number, target: number): string | null {
 }
 
 function DietList({ logs }: { logs: NutritionLog[] }) {
+  const [editing, setEditing] = useState<NutritionLog | null>(null);
   const sorted = useMemo(
     () => [...logs].sort((a, b) => b.date.localeCompare(a.date)),
     [logs],
@@ -872,14 +874,26 @@ function DietList({ logs }: { logs: NutritionLog[] }) {
 
   return (
     <div className="space-y-3">
+      {editing && (
+        <NutritionLogEditSheet key={editing.id} log={editing} onClose={() => setEditing(null)} />
+      )}
       <div className="rounded-2xl bg-zinc-900 border border-zinc-800 p-4 space-y-3">
         <div className="flex items-baseline justify-between gap-2 flex-wrap">
           <div>
             <div className="text-xs uppercase tracking-wider text-zinc-500">Latest day</div>
             <div className="text-lg font-medium text-zinc-100">{fmtDate(latest.date, 'EEE, MMM d')}</div>
           </div>
-          <div className="text-right text-sm text-zinc-400">
-            {sorted.length} day{sorted.length === 1 ? '' : 's'} logged
+          <div className="flex items-center gap-2">
+            <span className="text-sm text-zinc-400">
+              {sorted.length} day{sorted.length === 1 ? '' : 's'} logged
+            </span>
+            <button
+              type="button"
+              onClick={() => setEditing(latest)}
+              className="text-xs px-2 h-8 rounded-md border border-zinc-700 text-zinc-400 hover:text-amber-400 hover:border-zinc-600"
+            >
+              Edit
+            </button>
           </div>
         </div>
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-sm">
@@ -943,11 +957,20 @@ function DietList({ logs }: { logs: NutritionLog[] }) {
                   )}
                 </div>
               </div>
-              <div className="text-right shrink-0">
-                <div className="font-mono text-sm text-amber-400">
-                  {n.caloriesActual}
-                  <span className="text-zinc-500 text-xs"> / {n.caloriesTarget} kcal</span>
+              <div className="flex items-center gap-2 shrink-0">
+                <div className="text-right">
+                  <div className="font-mono text-sm text-amber-400">
+                    {n.caloriesActual}
+                    <span className="text-zinc-500 text-xs"> / {n.caloriesTarget} kcal</span>
+                  </div>
                 </div>
+                <button
+                  type="button"
+                  onClick={() => setEditing(n)}
+                  className="text-xs px-2 h-8 rounded-md border border-zinc-700 text-zinc-400 hover:text-amber-400 hover:border-zinc-600"
+                >
+                  Edit
+                </button>
               </div>
             </div>
             <div className="grid grid-cols-3 gap-2 text-xs font-mono">
