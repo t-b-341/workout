@@ -1,6 +1,7 @@
 'use client';
 
 import { getDb } from './db';
+import { localUpsert } from './sync';
 
 export const MINDFULNESS_MINUTES_MAX = 180;
 
@@ -31,4 +32,12 @@ export async function takePendingMindfulnessMinutes(sessionId: string): Promise<
   const m = (row.value as { minutes?: unknown }).minutes;
   if (typeof m !== 'number' || !Number.isFinite(m)) return undefined;
   return clampMindfulnessMinutes(m);
+}
+
+/** Updates mindfulness minutes without dropping other readiness fields (e.g. `hrvSkipped`). */
+export async function saveReadinessMindfulnessMinutes(readinessId: string, minutes: number): Promise<void> {
+  const v = clampMindfulnessMinutes(minutes);
+  const cur = await getDb().readiness_logs.get(readinessId);
+  if (!cur) return;
+  await localUpsert('readiness_logs', { ...cur, mindfulnessMinutes: v });
 }

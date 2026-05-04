@@ -9,8 +9,8 @@ import {
   clampMindfulnessMinutes,
   mindfulnessPendingMetaKey,
   MINDFULNESS_MINUTES_MAX,
+  saveReadinessMindfulnessMinutes,
 } from '@/lib/mindfulnessPending';
-import { localUpsert } from '@/lib/sync';
 import type { ReadinessLog, SessionLog } from '@/lib/types';
 
 function minutesFromDraft(minutesStr: string): number {
@@ -56,7 +56,7 @@ export function MindfulnessTodayCard({
   async function persistMinutes(m: number) {
     const v = clampMindfulnessMinutes(m);
     if (readiness) {
-      await localUpsert('readiness_logs', { ...readiness, mindfulnessMinutes: v });
+      await saveReadinessMindfulnessMinutes(readiness.id, v);
       await getDb().meta.delete(pendingKey);
     } else {
       await getDb().meta.put({ key: pendingKey, value: { minutes: v } });

@@ -259,6 +259,23 @@ export async function flushDirty() {
   }
 }
 
+/** Ensures `hrv_skipped` and cleared numeric columns round-trip to Postgres on upsert. */
+function readinessPushPayload(row: ReadinessLog): Record<string, unknown> {
+  const base = toRemote(row) as Record<string, unknown>;
+  if (row.hrvSkipped === true) {
+    return {
+      ...base,
+      hrv_skipped: true,
+      hrv_rmssd: null,
+      hrv_measured_min: null,
+    };
+  }
+  if (row.hrvSkipped === false) {
+    return { ...base, hrv_skipped: false };
+  }
+  return base;
+}
+
 async function pushOne(item: DirtyRow): Promise<Error | null> {
   const supabase = createClient();
   const db = getDb();
@@ -274,11 +291,10 @@ async function pushOne(item: DirtyRow): Promise<Error | null> {
   // its trigger so we don't fight the canonical value.
   const { updatedAt: _ignore, ...rest } = row as Record<string, unknown>;
   void _ignore;
-  let payload = toRemote(rest) as Record<string, unknown>;
-  // Supabase upsert omits undefined keys — cleared locals must send null to wipe RMSSD on skip.
-  if (item.table === 'readiness_logs' && (rest as ReadinessLog).hrvSkipped === true) {
-    payload = { ...payload, hrv_rmssd: null, hrv_measured_min: null };
-  }
+  const payload =
+    item.table === 'readiness_logs'
+      ? readinessPushPayload(rest as ReadinessLog)
+      : (toRemote(rest) as Record<string, unknown>);
   const { error } = await supabase.from(item.table).upsert(payload);
   return error ?? null;
 }
