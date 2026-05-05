@@ -15,7 +15,7 @@ import {
 } from '@/lib/hooks';
 import { localUpsert, flushDirty } from '@/lib/sync';
 import { fmtDate, todayIso } from '@/lib/time';
-import type { Prescription, SessionLog, SessionTemplate, SetLog, TemplateId } from '@/lib/types';
+import type { Lift, Prescription, SessionLog, SessionTemplate, SetLog, TemplateId } from '@/lib/types';
 import { CardioBanner } from './CardioBanner';
 import { MindfulnessWeeklyBanner } from './MindfulnessWeeklyBanner';
 import { SessionHeader } from './SessionHeader';
@@ -43,6 +43,7 @@ import {
   readSundayMondayEarlyUnlocked,
   writeSundayMondayEarlyUnlocked,
 } from '@/lib/sundayMondayEarly';
+import { applyStandardDeload } from '@/lib/deload';
 import { applyEffortScale, effortLabel } from '@/lib/effort';
 import { BodyweightQuickLog } from './BodyweightQuickLog';
 import { BodyMeasurementsQuickLog } from './BodyMeasurementsQuickLog';
@@ -342,7 +343,7 @@ export function TodayView() {
           {(displayPrescriptions ?? []).map((p) => {
             const lift = lifts.find((l) => l.id === p.liftId);
             if (!lift) return null;
-            const adjusted = applyEffortScale(applySessionMode(p, session), session);
+            const adjusted = applyEffortScale(applySessionMode(p, session, lift), session);
             const snapped = {
               ...adjusted,
               weight: snapWorkingWeight(adjusted.weight, liftForSnap(p.liftId)),
@@ -608,9 +609,9 @@ function DailyCheckinStatusBanner({
   );
 }
 
-function applySessionMode(p: Prescription, s: SessionLog): Prescription {
+function applySessionMode(p: Prescription, s: SessionLog, lift: Lift): Prescription {
   if (s.deload) {
-    return { ...p, weight: Math.round(p.weight * 0.6) };
+    return applyStandardDeload(p, lift);
   }
   if (s.mode === 'light') {
     return { ...p, weight: Math.round(p.weight * 0.8) };

@@ -175,7 +175,8 @@ export function SessionHeader({
       </div>
       {session.deload && (
         <div className="text-xs text-indigo-400">
-          Deload active — mains shown at 60%; halve accessory sets. No progression.
+          Deload active — mains ~60% load; accessories ~half volume (sets, cardio time, or interval rounds).
+          No progression.
         </div>
       )}
     </div>
