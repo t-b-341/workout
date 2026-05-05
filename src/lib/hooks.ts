@@ -41,6 +41,23 @@ export function usePrescriptions(templateId?: TemplateId): Prescription[] | unde
   }, [templateId]);
 }
 
+/** All prescriptions keyed by template, each list sorted by `order`. */
+export function usePrescriptionsByTemplate(): Map<TemplateId, Prescription[]> | undefined {
+  return useLiveQuery(async () => {
+    const rows = await getDb().prescriptions.toArray();
+    const by = new Map<TemplateId, Prescription[]>();
+    for (const p of rows) {
+      const list = by.get(p.templateId) ?? [];
+      list.push(p);
+      by.set(p.templateId, list);
+    }
+    for (const list of by.values()) {
+      list.sort((a, b) => a.order - b.order);
+    }
+    return by;
+  }, []);
+}
+
 export function useLifts() {
   return useLiveQuery(() => getDb().lifts.toArray(), []);
 }

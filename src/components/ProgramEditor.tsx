@@ -8,6 +8,7 @@ import {
   useAllSets,
   useLifts,
   usePrescriptions,
+  usePrescriptionsByTemplate,
   useSessionsAfterReadiness,
   useTemplates,
 } from '@/lib/hooks';
@@ -18,7 +19,6 @@ import { defaultTemplateForLocalDate, sortTemplatesProgramOrder } from '@/lib/se
 import {
   readTodayPlanPreference,
   todayPlanPreferenceIsForToday,
-  writeTodayPlanPreference,
 } from '@/lib/todayPlanPreference';
 import { buildFullLocalExport } from '@/lib/exportLocalDump';
 import { fmtDate, todayIso } from '@/lib/time';
@@ -58,6 +58,7 @@ import {
 import { MesoBoundaryPromptCard } from './MesoBoundaryPromptCard';
 import { LooseDecimalField, LooseIntField } from './WeightStepper';
 import { PageShell } from './PageShell';
+import { ScheduleWorkoutSheet } from './ScheduleWorkoutSheet';
 import { sortLiftsWithFavoritesFirst, toggleFavoriteLift, useFavoriteLiftIds } from '@/lib/favoriteLifts';
 
 /** Editable meso fields while the form is open — numbers as strings so the
@@ -326,7 +327,11 @@ export function ProgramEditor() {
         </div>
       </div>
 
-      <Schedule templates={templates} onSelectTemplate={(id) => setTemplateOverride(id)} />
+      <Schedule
+        templates={templates}
+        lifts={lifts}
+        onSelectTemplate={(id) => setTemplateOverride(id)}
+      />
 
       <div className="flex flex-wrap gap-2">
         {templatesProgramOrder.map((t) => (
@@ -621,16 +626,20 @@ type ScheduleWeek = {
 
 function Schedule({
   templates,
+  lifts,
   onSelectTemplate,
 }: {
   templates: SessionTemplate[];
+  lifts: Lift[];
   onSelectTemplate: (id: TemplateId) => void;
 }) {
   const sessions = useSessionsAfterReadiness();
   const sets = useAllSets();
   const meso = useMesoConfig();
+  const prescriptionsByTemplate = usePrescriptionsByTemplate();
   const [weeksToShow, setWeeksToShow] = useState<WeekCount>(4);
   const [open, setOpen] = useState(true);
+  const [previewRow, setPreviewRow] = useState<ScheduleRow | null>(null);
 
   const weeks = useMemo(
     () => buildSchedule(templates, sessions ?? [], sets ?? [], weeksToShow, meso),
@@ -638,6 +647,7 @@ function Schedule({
   );
 
   return (
+    <>
     <div className="rounded-2xl bg-zinc-900 border border-zinc-800">
       <div className="p-4 flex items-center justify-between gap-2">
         <button
@@ -650,7 +660,7 @@ function Schedule({
             Schedule
           </div>
           <div className="text-xs text-zinc-500 ml-4">
-            Next {weeksToShow} weeks · {templates.length}-day split
+            Next {weeksToShow} weeks · {templates.length}-day split · tap a workout for an estimated preview (no hypothetical progression).
           </div>
         </button>
         <div className="flex items-center gap-1 rounded-lg bg-zinc-950 border border-zinc-800 p-1">
@@ -698,7 +708,7 @@ function Schedule({
                   <ScheduleRowItem
                     key={`${w.weekLabel}-${r.template.id}-${r.date}`}
                     row={r}
-                    onSelectTemplate={onSelectTemplate}
+                    onOpenPreview={() => setPreviewRow(r)}
                   />
                 ))}
               </div>
@@ -707,15 +717,30 @@ function Schedule({
         </div>
       )}
     </div>
+    <ScheduleWorkoutSheet
+      row={previewRow}
+      onClose={() => setPreviewRow(null)}
+      templatePrescriptions={
+        previewRow == null
+          ? undefined
+          : prescriptionsByTemplate === undefined
+            ? undefined
+            : (prescriptionsByTemplate.get(previewRow.template.id) ?? [])
+      }
+      lifts={lifts}
+      meso={meso}
+      onSelectTemplate={onSelectTemplate}
+    />
+    </>
   );
 }
 
 function ScheduleRowItem({
   row,
-  onSelectTemplate,
+  onOpenPreview,
 }: {
   row: ScheduleRow;
-  onSelectTemplate: (id: TemplateId) => void;
+  onOpenPreview: () => void;
 }) {
   const dayName = fmtDate(row.date, 'EEE');
   const monthDay = fmtDate(row.date, 'M/d');
@@ -727,12 +752,7 @@ function ScheduleRowItem({
   return (
     <button
       type="button"
-      onClick={() => {
-        if (row.status === 'today') {
-          writeTodayPlanPreference({ date: row.date, templateId: row.template.id });
-        }
-        onSelectTemplate(row.template.id);
-      }}
+      onClick={onOpenPreview}
       className={`w-full text-left flex items-center gap-2 px-3 py-2 ${tone} hover:bg-zinc-800/50 transition-colors`}
     >
       <div className="w-14 shrink-0 text-xs text-zinc-500 font-mono">
