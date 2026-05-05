@@ -24,7 +24,9 @@ export function WeightStepper({
   unit = 'lb',
 }: Props) {
   const inc =
-    stepIncrement ?? (lift.equipment === 'dumbbell' || lift.equipment === 'carry' ? 2.5 : 5);
+    stepIncrement ??
+    lift.increment ??
+    (lift.equipment === 'dumbbell' || lift.equipment === 'carry' ? 2.5 : 5);
   const min = allowNegative ? -200 : 0;
 
   const snap = (n: number) => {

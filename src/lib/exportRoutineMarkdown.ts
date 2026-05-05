@@ -50,8 +50,8 @@ export const PROGRESSION_RULES_MARKDOWN = `
 
 ### Load increments
 
-- Default step is **5 lb** unless the prescription sets a different \`increment\`.
-- After computing the next load, the app **snaps** to valid jumps by equipment (e.g. barbell **nearest 5 lb**).
+- Default step follows each lift in the catalog (e.g. **5 lb** most barbells, **2.5 lb** dumbbells and weighted pull-up added load), unless the prescription overrides \`increment\`.
+- After computing the next load, the app **snaps** to valid jumps by lift (e.g. barbell **nearest 5 lb**, pull-up added load **nearest 2.5 lb**).
 - **Per-side / dumbbell** movements use a **2.5 lb** ladder (when dumbbells are available — see equipment constraint below).
 
 ### Pull-up variants (\`p1_eccentric\`, \`p1_assisted\`, \`p1_bw\`)

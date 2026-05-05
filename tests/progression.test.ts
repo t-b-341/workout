@@ -286,6 +286,40 @@ describe('decideProgression — p1 assisted', () => {
   });
 });
 
+describe('decideProgression — p1 bodyweight weighted', () => {
+  const PRESC_ID = 'U3-p1_bw';
+
+  it('advances added load by catalog 2.5 lb (snap keeps quarter plates)', () => {
+    const presc = makePrescription({
+      id: PRESC_ID,
+      templateId: 'U3' as TemplateId,
+      liftId: 'p1_bw',
+      weight: 10,
+      sets: 3,
+      repMin: 2,
+      repMax: 2,
+    });
+    const sets: SetLog[] = [0, 1, 2].map((i) => ({
+      id: `${SESSION_ID}-${PRESC_ID}-${i}-X`,
+      sessionLogId: SESSION_ID,
+      liftId: 'p1_bw',
+      prescriptionId: PRESC_ID,
+      setIndex: i,
+      weight: 10,
+      reps: 2,
+      status: 'completed' as SetStatus,
+    }));
+    const dec = decideProgression(
+      presc,
+      sets,
+      makeSession({ templateId: 'U3' as TemplateId }),
+    );
+    expect(dec.advanced).toBe(true);
+    expect(dec.nextWeight).toBe(12.5);
+    expect(dec.reason).toMatch(/\+2\.5/);
+  });
+});
+
 describe('snapBarbell', () => {
   it('rounds to nearest 5', () => {
     expect(snapBarbell(137)).toBe(135);

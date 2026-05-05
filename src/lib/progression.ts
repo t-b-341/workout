@@ -12,6 +12,11 @@ export function liftForSnap(liftId: string): SnapLiftRef {
   return { id: liftId, equipment: 'barbell', loadUnit: 'lb' };
 }
 
+/** Default progression / step size from catalog (lb). Fallback 5 for unknown IDs. */
+export function catalogLiftIncrementLb(liftId: string): number {
+  return LIFTS.find((x) => x.id === liftId)?.increment ?? 5;
+}
+
 /** Nearest 2.5 lb. */
 export function snapQuarterLb(weight: number): number {
   return Math.round(weight / 2.5) * 2.5;
@@ -131,7 +136,8 @@ export function decideProgression(
     }
   }
 
-  const step = prescription.increment ?? liftIncrementOverride ?? 5;
+  const step =
+    prescription.increment ?? liftIncrementOverride ?? catalogLiftIncrementLb(prescription.liftId);
   const liftMeta = liftForSnap(prescription.liftId);
 
   /** Positive weight = counterweight assistance; progress by reducing assist toward 0 (unassisted). */
