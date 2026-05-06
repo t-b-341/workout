@@ -10,6 +10,7 @@ import type {
   HydrationLog,
   InjuryEpisode,
   Lift,
+  MindfulnessLog,
   NutritionLog,
   Prescription,
   ReadinessLog,
@@ -45,6 +46,7 @@ export type FullLocalExport = {
   hydration_logs: HydrationLog[];
   sleep_logs: SleepLog[];
   stress_logs: StressLog[];
+  mindfulness_logs: MindfulnessLog[];
   injury_episodes: InjuryEpisode[];
   body_readiness_logs: BodyReadinessLog[];
   dirty: DirtyRow[];
@@ -81,6 +83,7 @@ export async function buildFullLocalExport(): Promise<FullLocalExport> {
     hydration_logs,
     sleep_logs,
     stress_logs,
+    mindfulness_logs,
     injury_episodes,
     body_readiness_logs,
     dirty,
@@ -99,6 +102,7 @@ export async function buildFullLocalExport(): Promise<FullLocalExport> {
     db.hydration_logs.toArray(),
     db.sleep_logs.toArray(),
     db.stress_logs.toArray(),
+    db.mindfulness_logs.toArray(),
     db.injury_episodes.toArray(),
     db.body_readiness_logs.toArray(),
     db.dirty.toArray(),
@@ -123,6 +127,7 @@ export async function buildFullLocalExport(): Promise<FullLocalExport> {
     hydration_logs,
     sleep_logs,
     stress_logs,
+    mindfulness_logs,
     injury_episodes,
     body_readiness_logs,
     dirty,

@@ -8,6 +8,7 @@ export const DELOAD_ACCESSORY_LIFT_IDS = new Set<string>([
   'pec_flyes',
   'rdf',
   'supinated_barbell_curls',
+  'pronated_barbell_curls',
   'ubr',
   'planks',
   'ab_rollouts',

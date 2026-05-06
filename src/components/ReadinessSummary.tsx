@@ -52,7 +52,7 @@ export function ReadinessSummary({
   if (canEdit && editing && session) {
     return (
       <ReadinessEditForm
-        key={`${readiness.id}-${readiness.sleepHours}-${readiness.soreness}-${readiness.motivation}-${readiness.mindfulnessMinutes ?? ''}`}
+        key={`${readiness.id}-${readiness.sleepHours}-${readiness.soreness}-${readiness.motivation}`}
         readiness={readiness}
         session={session}
         onDone={() => setEditing(false)}
@@ -93,11 +93,6 @@ export function ReadinessSummary({
           hrv {readiness.hrvRmssd}
         </span>
       ) : null}
-      {readiness.mindfulnessMinutes != null && (
-        <span className={`${chipBase} bg-violet-900/40 text-violet-200`}>
-          mindfulness {readiness.mindfulnessMinutes}m
-        </span>
-      )}
     </div>
   );
 

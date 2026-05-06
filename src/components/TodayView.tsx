@@ -222,7 +222,7 @@ export function TodayView() {
       />
       {!sundayGateActive && <SessionGoalsCard sessionId={session.id} />}
       {!needsReadiness && session.mode !== 'skip' && <SessionStrategyTagsCard session={session} />}
-      <MindfulnessTodayCard session={session} readiness={readiness} />
+      <MindfulnessTodayCard session={session} />
       <DayNotesCard date={todayIso()} />
       {(weeklyFlags.bodyweightOverdue || weeklyFlags.measurementsOverdue) && (
         <WeeklyTrackingReminder

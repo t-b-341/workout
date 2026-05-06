@@ -2,7 +2,7 @@
 
 import { useLiveQuery } from 'dexie-react-hooks';
 import { getDb } from './db';
-import { MINDFULNESS_MINUTES_MAX } from './mindfulnessPending';
+import { WELLNESS_GOAL_MINDFULNESS_MAX } from './mindfulnessPending';
 import { CARDIO_WEEKLY_TARGET_MIN } from './seed';
 
 const META_KEY = 'wellness:targets:v1';
@@ -33,11 +33,11 @@ export function normalizeWellnessTargets(raw: unknown): WellnessTargets {
   const n = (x: unknown, fallback: number) =>
     typeof x === 'number' && Number.isFinite(x) ? x : fallback;
   return {
-    mindfulnessDailyMin: clampInt(n(v.mindfulnessDailyMin, d.mindfulnessDailyMin), 1, MINDFULNESS_MINUTES_MAX),
+    mindfulnessDailyMin: clampInt(n(v.mindfulnessDailyMin, d.mindfulnessDailyMin), 1, WELLNESS_GOAL_MINDFULNESS_MAX),
     mindfulnessWeeklyMin: clampInt(
       n(v.mindfulnessWeeklyMin, d.mindfulnessWeeklyMin),
       1,
-      MINDFULNESS_MINUTES_MAX * 7,
+      WELLNESS_GOAL_MINDFULNESS_MAX * 7,
     ),
     cardioWeeklyMin: clampInt(n(v.cardioWeeklyMin, d.cardioWeeklyMin), 1, 3000),
   };

@@ -9,6 +9,7 @@ import type {
   RecoveryScore,
   SleepLog,
   StressLog,
+  MindfulnessLog,
 } from './types';
 
 function clamp(value: number, min: number, max: number): number {
@@ -159,7 +160,16 @@ export function stressScoreFromAverageRating(avgRating: number): number {
   return Math.round(clamp(((6 - avgRating) / 5) * 100, 0, 100));
 }
 
-/** Logged mindfulness minutes (capped); omitted readiness field → excluded from composite. */
+/** Sum of logged durations for the day; time-only entries add 0. */
+export function mindfulnessMinutesFromLogs(logs: MindfulnessLog[]): number {
+  let s = 0;
+  for (const e of logs) {
+    if (e.durationMin != null) s += e.durationMin;
+  }
+  return s;
+}
+
+/** Logged mindfulness minutes (capped); empty logs → excluded from composite pillar. */
 export function mindfulnessScore(minutes: number): number {
   const m = Math.max(0, minutes);
   return Math.round(clamp(55 + (Math.min(m, 30) / 30) * 45, 0, 100));
@@ -199,6 +209,8 @@ export function buildRecoveryScore(input: {
   readiness?: ReadinessLog;
   /** All stress check-ins for this calendar day (any count). */
   stress?: StressLog[];
+  /** All mindfulness entries for this calendar day (any count). */
+  mindfulness?: MindfulnessLog[];
 }): RecoveryScore {
   const s = sleepScore(input.sleep);
   const h = hydrationScore(input.hydration);
@@ -207,13 +219,15 @@ export function buildRecoveryScore(input: {
   const avgR =
     input.stress && input.stress.length > 0 ? averageStressRating(input.stress) : null;
   const st = avgR != null ? stressScoreFromAverageRating(avgR) : undefined;
-  const mind =
-    input.readiness?.mindfulnessMinutes != null
-      ? mindfulnessScore(input.readiness.mindfulnessMinutes)
-      : undefined;
+  const mindLogs = input.mindfulness ?? [];
+  const mindMinTotal = mindfulnessMinutesFromLogs(mindLogs);
+  const legacyMin = input.readiness?.mindfulnessMinutes;
+  const effectiveMin =
+    mindLogs.length > 0 ? mindMinTotal : legacyMin != null ? Math.max(0, legacyMin) : undefined;
+  const mind = effectiveMin != null ? mindfulnessScore(effectiveMin) : undefined;
 
   const hasStress = (input.stress?.length ?? 0) > 0;
-  const hasMindfulness = input.readiness?.mindfulnessMinutes != null;
+  const hasMindfulness = mindLogs.length > 0 || input.readiness?.mindfulnessMinutes != null;
 
   const w = compositeWeightsForRecovery(hasStress, hasMindfulness);
   const compositeScore = Math.round(

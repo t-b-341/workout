@@ -211,10 +211,27 @@ export type ReadinessLog = {
   hrvSkipped?: boolean;
   /** Optional bodyweight logged alongside readiness. */
   bodyweight?: number;
-  /** Minutes of mindfulness practice today (0–180); app or unguided. */
+  /**
+   * Legacy: mindfulness is now `mindfulness_logs` (multiple entries per day).
+   * Kept for deserializing old rows / server payloads.
+   */
   mindfulnessMinutes?: number;
   /** ISO timestamp (for ordering in case of multiple). */
   createdAt: string;
+};
+
+/** Mindfulness session: optional 1–60 min duration and/or wall-clock log time. */
+export type MindfulnessLog = {
+  id: string;
+  /** Calendar day (local) for filtering. */
+  date: string;
+  /** ISO timestamp when logged. */
+  loggedAt: string;
+  /**
+   * Session length in minutes (1–60). When omitted, this row is **time-only**
+   * (counts toward check-in frequency, 0 min toward duration totals).
+   */
+  durationMin?: number;
 };
 
 export type NutritionLog = {
@@ -311,7 +328,7 @@ export type RecoveryScore = {
   readinessScore: number;
   /** Included when `buildRecoveryScore` was called with ≥1 stress check-in for that day. */
   stressScore?: number;
-  /** Included when that day’s readiness log had `mindfulnessMinutes` set. */
+  /** Included when `buildRecoveryScore` was called with ≥1 mindfulness log for that day. */
   mindfulnessScore?: number;
   compositeScore: number;
   band: RecoveryBand;

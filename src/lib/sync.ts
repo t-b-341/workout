@@ -13,6 +13,7 @@ import type {
   CardioLog,
   HydrationLog,
   InjuryEpisode,
+  MindfulnessLog,
   NutritionLog,
   Prescription,
   ReadinessLog,
@@ -43,6 +44,7 @@ const FLUSH_TABLE_TIER: Record<RemoteTable, number> = {
   hydration_logs: 3,
   sleep_logs: 3,
   stress_logs: 3,
+  mindfulness_logs: 3,
   injury_episodes: 3,
   body_readiness_logs: 3,
 };
@@ -76,6 +78,7 @@ const TABLE_TO_LOCAL: Record<RemoteTable, keyof ReturnType<typeof getDb> & strin
   hydration_logs: 'hydration_logs',
   sleep_logs: 'sleep_logs',
   stress_logs: 'stress_logs',
+  mindfulness_logs: 'mindfulness_logs',
   injury_episodes: 'injury_episodes',
   body_readiness_logs: 'body_readiness_logs',
 };
@@ -92,6 +95,7 @@ const ALL_TABLES: RemoteTable[] = [
   'hydration_logs',
   'sleep_logs',
   'stress_logs',
+  'mindfulness_logs',
   'injury_episodes',
   'body_readiness_logs',
 ];
@@ -172,6 +176,9 @@ async function persistRows(table: RemoteTable, rows: RowPayload[]) {
       return;
     case 'stress_logs':
       await db.stress_logs.bulkPut(rows.map((r) => fromRemote<StressLog>(r)));
+      return;
+    case 'mindfulness_logs':
+      await db.mindfulness_logs.bulkPut(rows.map((r) => fromRemote<MindfulnessLog>(r)));
       return;
     case 'injury_episodes':
       await db.injury_episodes.bulkPut(rows.map((r) => fromRemote<InjuryEpisode>(r)));

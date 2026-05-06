@@ -6,6 +6,7 @@ import {
   useAllNutrition,
   useHydrationForDate,
   useMacroTrendAdvice,
+  useMindfulnessForDate,
   useNutritionForDate,
   useSleepForDate,
   useStressForDate,
@@ -39,6 +40,7 @@ import { MacroTrendCallout } from './MacroTrendCallout';
 import { PageShell } from './PageShell';
 import { TrackerReminderCard } from './TrackerReminderCard';
 import { WellnessTargetsCard } from './WellnessTargetsCard';
+import { MindfulnessEntriesSection } from './MindfulnessEntriesSection';
 
 function clamp(n: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, n));
@@ -269,8 +271,8 @@ function DailyRecoveryExplainSheet({
               ))}
             </ul>
             <p className="text-xs text-zinc-500">
-              Stress only gets a slot after at least one stress check-in today. Mindfulness only counts when you enter
-              mindfulness minutes on Today&apos;s readiness. Otherwise those weights shift into the other pillars (see row
+              Stress only gets a slot after at least one stress check-in today. Mindfulness only counts after at least one
+              mindfulness entry today (timed or time-only). Otherwise those weights shift into the other pillars (see row
               above).
             </p>
           </section>
@@ -358,8 +360,9 @@ function DailyRecoveryExplainSheet({
           <section className="space-y-2">
             <h3 className="text-xs uppercase tracking-wider text-zinc-500">Mindfulness pillar</h3>
             <p className="text-zinc-400">
-              When included, maps logged minutes (capped around 30) into a smoother 0–100 curve so the first ten minutes lift
-              the score fastest, then it levels off — still nothing without minutes on readiness.
+              When included, uses the sum of duration minutes you logged today (each entry 1–60 min; time-only rows add 0 to
+              the minute total but still include the pillar). The composite curve is the same as before — minutes saturate
+              around 30 for scoring.
             </p>
           </section>
         </div>
@@ -375,13 +378,23 @@ export function RecoveryView() {
   const hydration = useHydrationForDate(date);
   const sleep = useSleepForDate(date);
   const stress = useStressForDate(date);
+  const mindfulness = useMindfulnessForDate(date);
   const todayPlanTemplateId = useTodayPlanTemplateId();
   const session = useTodaySession(todayPlanTemplateId);
   const readiness = useReadinessForSession(session?.id);
 
   const score = useMemo(
-    () => buildRecoveryScore({ date, sleep, hydration, nutrition, readiness, stress: stress ?? [] }),
-    [date, sleep, hydration, nutrition, readiness, stress],
+    () =>
+      buildRecoveryScore({
+        date,
+        sleep,
+        hydration,
+        nutrition,
+        readiness,
+        stress: stress ?? [],
+        mindfulness: mindfulness ?? [],
+      }),
+    [date, sleep, hydration, nutrition, readiness, stress, mindfulness],
   );
   const plan = useMemo(() => recoveryPlan(score.band), [score.band]);
   const performanceRecommendations = useMemo(
@@ -395,18 +408,24 @@ export function RecoveryView() {
   const macroTrend = useMacroTrendAdvice(date);
   const [recoveryHelpOpen, setRecoveryHelpOpen] = useState(false);
   const compositeExplainWeights = useMemo(
-    () => compositeWeightsForRecovery((stress?.length ?? 0) > 0, readiness?.mindfulnessMinutes != null),
-    [stress, readiness?.mindfulnessMinutes],
+    () =>
+      compositeWeightsForRecovery(
+        (stress?.length ?? 0) > 0,
+        (mindfulness?.length ?? 0) > 0 || readiness?.mindfulnessMinutes != null,
+      ),
+    [stress, mindfulness, readiness?.mindfulnessMinutes],
   );
 
   return (
     <PageShell className="p-4 space-y-4">
       <MacroTrendCallout advice={macroTrend} title="Fueling trend (days before today)" />
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <DidYouEatQuickSection date={date} existing={nutrition} prefs={prefs} />
-        <StressSection date={date} entries={stress ?? []} />
-      </div>
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <DidYouEatQuickSection date={date} existing={nutrition} prefs={prefs} />
+          <StressSection date={date} entries={stress ?? []} />
+        </div>
+
+        <MindfulnessEntriesSection date={date} />
 
       <div className="rounded-2xl bg-zinc-900 border border-zinc-800 p-4 space-y-2">
         <div className="text-sm font-medium">Today&apos;s recommendations</div>

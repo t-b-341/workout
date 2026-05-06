@@ -9,6 +9,7 @@ import type {
   HydrationLog,
   InjuryEpisode,
   Lift,
+  MindfulnessLog,
   NutritionLog,
   Prescription,
   ReadinessLog,
@@ -33,6 +34,7 @@ export type DirtyRow = {
     | 'hydration_logs'
     | 'sleep_logs'
     | 'stress_logs'
+    | 'mindfulness_logs'
     | 'injury_episodes'
     | 'body_readiness_logs';
   rowId: string;
@@ -55,6 +57,7 @@ export class WorkoutDB extends Dexie {
   hydration_logs!: Table<HydrationLog, string>;
   sleep_logs!: Table<SleepLog, string>;
   stress_logs!: Table<StressLog, string>;
+  mindfulness_logs!: Table<MindfulnessLog, string>;
   injury_episodes!: Table<InjuryEpisode, string>;
   body_readiness_logs!: Table<BodyReadinessLog, string>;
   dirty!: Table<DirtyRow, string>;
@@ -228,10 +231,57 @@ export class WorkoutDB extends Dexie {
         }
       }
     });
+    // v9 — mindfulness: timestamped entries (duration 1–60 min optional); migrate from readiness + clear pending meta.
+    this.version(9).stores({
+      lifts: 'id, name',
+      templates: 'id, dayOfWeek',
+      prescriptions: 'id, templateId, liftId, [templateId+order]',
+      session_logs: 'id, date, templateId',
+      set_logs: 'id, sessionLogId, liftId, [sessionLogId+liftId+setIndex]',
+      cardio_logs: 'id, date, sessionLogId',
+      bodyweight_logs: 'id, date, isoWeek',
+      body_measurement_logs: 'id, date',
+      readiness_logs: 'id, sessionLogId, date',
+      nutrition_logs: 'id, date',
+      hydration_logs: 'id, date',
+      sleep_logs: 'id, date',
+      stress_logs: 'id, date, loggedAt',
+      mindfulness_logs: 'id, date, loggedAt',
+      injury_episodes: 'id, siteKey, startedAt',
+      body_readiness_logs: 'id, date',
+      dirty: 'id, table, rowId, enqueuedAt',
+      meta: 'key',
+    }).upgrade(async (tx) => {
+      const mtable = tx.table('mindfulness_logs');
+      const rtable = tx.table('readiness_logs');
+      const rows = await rtable.toArray();
+      for (const r of rows) {
+        const mm = (r as { mindfulnessMinutes?: number }).mindfulnessMinutes;
+        if (mm == null || mm <= 0 || !Number.isFinite(mm)) continue;
+        const dur = Math.min(60, Math.max(1, Math.round(mm)));
+        const rid = (r as { id: string }).id;
+        const date = (r as { date: string }).date;
+        const createdAt = (r as { createdAt: string }).createdAt;
+        await mtable.put({
+          id: `mindfulness-migrate-${rid}`,
+          date,
+          loggedAt: createdAt,
+          durationMin: dur,
+        });
+      }
+
+      const metat = tx.table('meta');
+      const metaRows = await metat.toArray();
+      for (const row of metaRows) {
+        if (String(row.key).startsWith('mindfulness:pending:')) {
+          await metat.delete(row.key);
+        }
+      }
+    });
   }
 }
 
-export const SCHEMA_VERSION = 8;
+export const SCHEMA_VERSION = 9;
 
 let _db: WorkoutDB | null = null;
 export function getDb(): WorkoutDB {

@@ -4,11 +4,6 @@ import { useEffect, useMemo, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { format } from 'date-fns';
 import { getDb } from './db';
-import {
-  clampMindfulnessMinutes,
-  MINDFULNESS_PENDING_META_PREFIX,
-  sessionDateFromMindfulnessSessionId,
-} from './mindfulnessPending';
 import { loadWellnessTargets } from './wellnessTargets';
 import { defaultTemplateForLocalDate } from './seed';
 import { readTodayPlanPreference, todayPlanPreferenceIsForToday } from './todayPlanPreference';
@@ -21,6 +16,7 @@ import type {
   CardioLog,
   HydrationLog,
   InjuryEpisode,
+  MindfulnessLog,
   NutritionLog,
   Prescription,
   ReadinessLog,
@@ -146,8 +142,7 @@ export function useThisWeekCardio() {
 }
 
 /**
- * Mindfulness minutes this ISO week: per calendar day, max of readiness logs
- * (multiple sessions/day) merged with any `mindfulness:pending:*` meta for that date.
+ * Mindfulness minutes this ISO week: sum of `durationMin` on each log (time-only rows add 0).
  */
 export function useThisWeekMindfulness() {
   return useLiveQuery(async () => {
@@ -155,37 +150,24 @@ export function useThisWeekMindfulness() {
     const { start, end } = weekRange();
     const startStr = format(start, 'yyyy-MM-dd');
     const endStr = format(end, 'yyyy-MM-dd');
-    const byDate = new Map<string, number>();
-
-    const readiness = await db.readiness_logs.toArray();
-    for (const r of readiness) {
-      if (r.date < startStr || r.date > endStr) continue;
-      const m = r.mindfulnessMinutes;
-      if (m == null || m <= 0) continue;
-      const cm = clampMindfulnessMinutes(m);
-      byDate.set(r.date, Math.max(byDate.get(r.date) ?? 0, cm));
-    }
-
-    const metaRows = await db.meta.toArray();
-    for (const row of metaRows) {
-      if (!row.key.startsWith(MINDFULNESS_PENDING_META_PREFIX)) continue;
-      const sessionId = row.key.slice(MINDFULNESS_PENDING_META_PREFIX.length);
-      const d = sessionDateFromMindfulnessSessionId(sessionId);
-      if (!d || d < startStr || d > endStr) continue;
-      const v = row.value;
-      const rawMin =
-        v && typeof v === 'object' && 'minutes' in v && typeof (v as { minutes: unknown }).minutes === 'number'
-          ? (v as { minutes: number }).minutes
-          : 0;
-      const cm = clampMindfulnessMinutes(rawMin);
-      if (cm <= 0) continue;
-      byDate.set(d, Math.max(byDate.get(d) ?? 0, cm));
-    }
-
-    const total = [...byDate.values()].reduce((a, b) => a + b, 0);
+    const all = await db.mindfulness_logs.toArray();
+    const items = all.filter((m: MindfulnessLog) => m.date >= startStr && m.date <= endStr);
+    const total = items.reduce((s, m) => s + (m.durationMin ?? 0), 0);
     const targets = await loadWellnessTargets();
-    return { total, target: targets.mindfulnessWeeklyMin };
+    return { total, target: targets.mindfulnessWeeklyMin, items };
   }, []);
+}
+
+/** Latest mindfulness entries for a calendar day (any count). */
+export function useMindfulnessForDate(date: string): MindfulnessLog[] | undefined {
+  return useLiveQuery(async () => {
+    const matches = await getDb().mindfulness_logs.where('date').equals(date).toArray();
+    return matches;
+  }, [date]);
+}
+
+export function useAllMindfulness(): MindfulnessLog[] | undefined {
+  return useLiveQuery(async () => getDb().mindfulness_logs.toArray(), []);
 }
 
 /** Latest bodyweight entry this ISO week (any day), or undefined. */

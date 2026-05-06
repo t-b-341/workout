@@ -36,6 +36,8 @@ export const LIFTS: Lift[] = [
     pattern: 'horiz-pull', muscleGroups: ['rear-delt', 'traps'] },
   { id: 'supinated_barbell_curls', name: 'Supinated Barbell Curls', equipment: 'barbell', loadUnit: 'lb', repUnit: 'reps', increment: 5,
     pattern: 'horiz-pull', muscleGroups: ['biceps', 'forearms'] },
+  { id: 'pronated_barbell_curls', name: 'Pronated Barbell Curls', equipment: 'barbell', loadUnit: 'lb', repUnit: 'reps', increment: 5, notes: 'Overhand grip',
+    pattern: 'horiz-pull', muscleGroups: ['biceps', 'forearms'] },
 
   // Upper - bodyweight pullup variants (P1). Added-load snap rules: `LIFT_IDS_PULLUP_ADDED_LOAD` in progression.ts.
   { id: 'p1_eccentric', name: 'P1 Weighted Eccentric', equipment: 'bodyweight', loadUnit: 'lb', repUnit: 'reps', increment: 2.5, notes: '5 sec eccentric, weighted (added load)',

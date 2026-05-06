@@ -12,6 +12,7 @@ import {
   useAllStress,
   useAllNutrition,
   useAllInjuryEpisodes,
+  useAllMindfulness,
   useSessionsAfterReadiness,
   useAllSets,
   useLifts,
@@ -69,6 +70,7 @@ import type {
   SetLog,
   StressLog,
   SessionTemplate,
+  MindfulnessLog,
 } from '@/lib/types';
 
 type Tab =
@@ -111,6 +113,7 @@ export function HistoryView() {
   const stress = useAllStress();
   const nutrition = useAllNutrition();
   const episodes = useAllInjuryEpisodes();
+  const mindfulness = useAllMindfulness();
   const wellnessTargets = useWellnessTargets();
   const wkTargets = wellnessTargets ?? defaultWellnessTargets();
 
@@ -125,7 +128,8 @@ export function HistoryView() {
     !readiness ||
     !stress ||
     !nutrition ||
-    !episodes
+    !episodes ||
+    !mindfulness
   ) {
     return <div className="p-6 text-zinc-500">Loading…</div>;
   }
@@ -166,6 +170,7 @@ export function HistoryView() {
           lifts={lifts}
           readiness={readiness}
           stress={stress}
+          mindfulness={mindfulness}
           bodyweights={bodyweights}
           wellnessTargets={wkTargets}
         />
@@ -556,6 +561,7 @@ function WeeksList({
   lifts,
   readiness,
   stress,
+  mindfulness,
   bodyweights,
   wellnessTargets,
 }: {
@@ -565,10 +571,11 @@ function WeeksList({
   lifts: Lift[];
   readiness: ReadinessLog[];
   stress: StressLog[];
+  mindfulness: MindfulnessLog[];
   bodyweights: BodyweightLog[];
   wellnessTargets: WellnessTargets;
 }) {
-  const weeks = buildWeeklySummaries(sessions, sets, cardio, lifts, readiness, bodyweights);
+  const weeks = buildWeeklySummaries(sessions, sets, cardio, lifts, readiness, bodyweights, mindfulness);
   const muscleWeeks = useMemo(
     () => buildWeeklyMuscleVolume(sessions, sets, lifts, bodyweights, readiness),
     [sessions, sets, lifts, bodyweights, readiness],

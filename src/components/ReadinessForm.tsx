@@ -1,7 +1,6 @@
 'use client';
 
 import { useState } from 'react';
-import { takePendingMindfulnessMinutes } from '@/lib/mindfulnessPending';
 import { recommendMode, type ReadinessRecommendation } from '@/lib/recommendMode';
 import { localUpsert } from '@/lib/sync';
 import { isoWeekStringFromIsoDate } from '@/lib/time';
@@ -39,8 +38,6 @@ export function ReadinessForm({
         hrvRmssd: hrvSkipped ? undefined : hrvRmssd,
         hrvSkipped,
       });
-      const takenMindfulness = await takePendingMindfulnessMinutes(session.id);
-      const mindfulnessMinutes = takenMindfulness ?? 1;
       const row: ReadinessLog = {
         id: `readiness-${session.id}`,
         sessionLogId: session.id,
@@ -50,7 +47,6 @@ export function ReadinessForm({
         motivation,
         hrvSkipped,
         bodyweight: showBwInput ? bw : undefined,
-        mindfulnessMinutes,
         createdAt: new Date().toISOString(),
       };
       if (!hrvSkipped) {
@@ -138,7 +134,7 @@ export function ReadinessForm({
       </p>
 
       <p className="text-xs text-zinc-500">
-        Meditation / mindfulness minutes are logged in the separate card on this tab (not in this check-in).
+        Meditation / mindfulness is logged on Today and Recovery — multiple timed entries per day.
       </p>
 
       {showBwInput && (
@@ -357,7 +353,7 @@ export function ReadinessEditForm({
       </div>
 
       <p className="text-xs text-zinc-500">
-        Meditation / mindfulness minutes are in the separate card on the Today tab.
+        Meditation / mindfulness — use Today or Recovery to log timed entries.
       </p>
 
       {hadBw && (

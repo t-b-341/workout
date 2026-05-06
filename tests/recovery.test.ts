@@ -17,8 +17,8 @@ describe('recovery scoring', () => {
     expect(score.stressScore).toBeUndefined();
   });
 
-  it('includes mindfulness in composite when readiness logs minutes', () => {
-    const readinessLow = {
+  it('includes mindfulness in composite when mindfulness logs include duration', () => {
+    const readiness = {
       id: 'r',
       sessionLogId: 's1',
       date: '2026-04-27',
@@ -26,17 +26,25 @@ describe('recovery scoring', () => {
       soreness: 2,
       motivation: 3,
       hrvSkipped: true,
-      mindfulnessMinutes: 0,
       createdAt: '2026-04-27T12:00:00.000Z',
     };
-    const readinessHigh = { ...readinessLow, mindfulnessMinutes: 30 };
     expect(mindfulnessScore(30)).toBeGreaterThan(mindfulnessScore(0));
 
-    const base = { date: '2026-04-27' };
-    const withLow = buildRecoveryScore({ ...base, readiness: readinessLow });
-    const withHigh = buildRecoveryScore({ ...base, readiness: readinessHigh });
+    const base = { date: '2026-04-27', readiness };
+    const withLow = buildRecoveryScore({ ...base, mindfulness: [] });
+    const withHigh = buildRecoveryScore({
+      ...base,
+      mindfulness: [
+        {
+          id: 'm1',
+          date: '2026-04-27',
+          loggedAt: '2026-04-27T08:00:00.000Z',
+          durationMin: 30,
+        },
+      ],
+    });
     expect(withHigh.mindfulnessScore).toBeDefined();
-    expect(withLow.mindfulnessScore).toBeDefined();
+    expect(withLow.mindfulnessScore).toBeUndefined();
     expect(withHigh.compositeScore).toBeGreaterThan(withLow.compositeScore);
   });
 
@@ -57,10 +65,21 @@ describe('recovery scoring', () => {
       soreness: 2,
       motivation: 3,
       hrvSkipped: true,
-      mindfulnessMinutes: 15,
       createdAt: '2026-04-27T12:00:00.000Z',
     };
-    const both = buildRecoveryScore({ date: '2026-04-27', stress, readiness });
+    const both = buildRecoveryScore({
+      date: '2026-04-27',
+      stress,
+      readiness,
+      mindfulness: [
+        {
+          id: 'm1',
+          date: '2026-04-27',
+          loggedAt: '2026-04-27T09:00:00.000Z',
+          durationMin: 15,
+        },
+      ],
+    });
     const stressOnly = buildRecoveryScore({ date: '2026-04-27', stress });
     expect(both.stressScore).toBeDefined();
     expect(both.mindfulnessScore).toBeDefined();
