@@ -100,6 +100,7 @@ function liftFields(): SchemaEntry {
       loadUnit: 'LoadUnit enum',
       repUnit: 'RepUnit enum',
       increment: 'number',
+      loadScale: '"normal" | "inverse" | undefined (defaults to "normal")',
       notes: 'string | undefined',
       muscleGroups: 'MuscleGroup[] | undefined',
       pattern: 'MovementPattern | undefined',

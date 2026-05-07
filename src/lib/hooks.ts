@@ -16,6 +16,7 @@ import type {
   CardioLog,
   HydrationLog,
   InjuryEpisode,
+  Lift,
   MindfulnessLog,
   NutritionLog,
   Prescription,
@@ -55,7 +56,15 @@ export function usePrescriptionsByTemplate(): Map<TemplateId, Prescription[]> | 
 }
 
 export function useLifts() {
-  return useLiveQuery(() => getDb().lifts.toArray(), []);
+  const normalizeLoadScale = (loadScale: Lift['loadScale']): 'normal' | 'inverse' =>
+    loadScale === 'inverse' ? 'inverse' : 'normal';
+  return useLiveQuery(async () => {
+    const rows = await getDb().lifts.toArray();
+    return rows.map((lift) => ({
+      ...lift,
+      loadScale: normalizeLoadScale(lift.loadScale),
+    }));
+  }, []);
 }
 
 export function useTemplates() {

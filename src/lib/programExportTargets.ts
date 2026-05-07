@@ -274,7 +274,7 @@ export const DEFAULT_PROGRAM_TARGETS_STORED: readonly ProgramTargetStored[] = [
     targetSets: null,
     currentValue: null,
     unit: 'lb',
-    liftId: 'p1_assisted',
+    liftId: 'p1_eccentric',
   },
   {
     id: 'bbr',

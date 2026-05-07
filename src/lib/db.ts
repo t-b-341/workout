@@ -422,10 +422,41 @@ export class WorkoutDB extends Dexie {
       dirty: 'id, table, rowId, enqueuedAt',
       meta: 'key',
     });
+    // v13 — lift loadScale metadata: default "normal", with p1_assisted = "inverse".
+    this.version(13).stores({
+      lifts: 'id, name',
+      templates: 'id, dayOfWeek',
+      prescriptions: 'id, templateId, liftId, [templateId+order]',
+      session_logs: 'id, date, templateId',
+      set_logs: 'id, sessionLogId, liftId, [sessionLogId+liftId+setIndex]',
+      cardio_logs: 'id, date, sessionLogId',
+      bodyweight_logs: 'id, date, isoWeek',
+      body_measurement_logs: 'id, date',
+      readiness_logs: 'id, sessionLogId, date',
+      nutrition_logs: 'id, date',
+      hydration_logs: 'id, date',
+      sleep_logs: 'id, date',
+      stress_logs: 'id, date, loggedAt',
+      mindfulness_logs: 'id, date, loggedAt',
+      injury_episodes: 'id, siteKey, startedAt',
+      body_readiness_logs: 'id, date',
+      dirty: 'id, table, rowId, enqueuedAt',
+      meta: 'key',
+    }).upgrade(async (tx) => {
+      const lifts = tx.table('lifts');
+      const rows = await lifts.toArray();
+      for (const row of rows) {
+        const lift = row as Record<string, unknown>;
+        const id = String(lift.id ?? '');
+        const desired = id === 'p1_assisted' ? 'inverse' : 'normal';
+        if (lift.loadScale === desired) continue;
+        await lifts.update(id, { loadScale: desired });
+      }
+    });
   }
 }
 
-export const SCHEMA_VERSION = 12;
+export const SCHEMA_VERSION = 13;
 
 let _db: WorkoutDB | null = null;
 export function getDb(): WorkoutDB {

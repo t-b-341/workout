@@ -71,6 +71,10 @@ function intentOf(s: SetLog): SetIntent {
   return 'working';
 }
 
+function normalizedLoadScale(loadScale: Lift['loadScale']): 'normal' | 'inverse' {
+  return loadScale === 'inverse' ? 'inverse' : 'normal';
+}
+
 function dayTypeOf(n: NutritionLog, sessions: SessionLog[]): NutritionDayType {
   if (n.dayType && (NUTRITION_DAY_TYPES as readonly string[]).includes(n.dayType)) return n.dayType;
   return defaultNutritionDayType(n.date, sessions);
@@ -128,7 +132,7 @@ export type FullLocalExport = {
 export async function buildFullLocalExport(): Promise<FullLocalExport> {
   const db = getDb();
   const [
-    lifts,
+    liftsRaw,
     templates,
     prescriptions,
     session_logs,
@@ -166,6 +170,10 @@ export async function buildFullLocalExport(): Promise<FullLocalExport> {
     db.dirty.toArray(),
     db.meta.toArray(),
   ]);
+  const lifts = liftsRaw.map((lift) => ({
+    ...lift,
+    loadScale: normalizedLoadScale(lift.loadScale),
+  }));
 
   const exportedAt = new Date().toISOString();
   const mesoConfig = await loadMesoConfig();

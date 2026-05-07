@@ -12,6 +12,7 @@ export type Equipment =
 
 export type LoadUnit = 'lb' | 'kg' | 'bodyweight' | 'none';
 export type RepUnit = 'reps' | 'seconds' | 'lengths' | 'minutes';
+export type LoadScale = 'normal' | 'inverse';
 
 export type MuscleGroup =
   | 'chest'
@@ -51,6 +52,8 @@ export type Lift = {
   repUnit: RepUnit;
   /** Smallest weight increment (lb). 5 for barbell, 2.5 for DB. */
   increment: number;
+  /** How to interpret weight progression. Defaults to 'normal'. */
+  loadScale?: LoadScale;
   /** Notes shown on the lift card (tempo, cues, etc). */
   notes?: string;
   /** Primary + secondary muscles trained. Empty for cardio. */

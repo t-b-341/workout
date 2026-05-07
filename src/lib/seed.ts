@@ -43,7 +43,7 @@ export const LIFTS: Lift[] = [
   { id: 'p1_eccentric', name: 'P1 Weighted Eccentric', equipment: 'bodyweight', loadUnit: 'lb', repUnit: 'reps', increment: 2.5, notes: '5 sec eccentric, weighted (added load)',
     pattern: 'vert-pull', muscleGroups: ['lats', 'biceps', 'mid-back'] },
   { id: 'p1_assisted', name: 'P1 Assisted', equipment: 'bodyweight', loadUnit: 'lb', repUnit: 'reps', increment: 5, notes: 'Counterweight assistance in 5 lb steps; lower lb = lighter band / closer to full bodyweight (0 = unassisted), then weighted variants; optional negative for eccentric overload',
-    pattern: 'vert-pull', muscleGroups: ['lats', 'biceps', 'mid-back'] },
+    loadScale: 'inverse', pattern: 'vert-pull', muscleGroups: ['lats', 'biceps', 'mid-back'] },
   { id: 'p1_bw', name: 'P1 (Bodyweight)', equipment: 'bodyweight', loadUnit: 'bodyweight', repUnit: 'reps', increment: 2.5, notes: 'Unassisted; tracked as added load (0 = bodyweight)',
     pattern: 'vert-pull', muscleGroups: ['lats', 'biceps', 'mid-back'] },
 
