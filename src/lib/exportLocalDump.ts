@@ -7,6 +7,7 @@ import { computeExportSummary } from './exportSummary';
 import { loadFitnessGoals, type FitnessGoal } from './goals';
 import { loadMesoConfig } from './mesocycle';
 import { defaultNutritionDayType } from './nutritionDayType';
+import { loadExportProgramTargetsForSummary } from './programExportTargets';
 import type {
   BodyMeasurementLog,
   BodyReadinessLog,
@@ -197,6 +198,8 @@ export async function buildFullLocalExport(): Promise<FullLocalExport> {
     ...bodyweight_logs.map((b) => b.date),
   ];
 
+  const programTargetsForSummary = await loadExportProgramTargetsForSummary();
+
   const summary = computeExportSummary({
     exportedAtIso: exportedAt,
     session_logs,
@@ -206,6 +209,7 @@ export async function buildFullLocalExport(): Promise<FullLocalExport> {
     bodyweight_logs,
     extraDates: extraDatesForRange,
     mesoConfig,
+    programTargets: programTargetsForSummary,
   });
 
   return {

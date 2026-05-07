@@ -341,10 +341,91 @@ export class WorkoutDB extends Dexie {
         await nutT.update(r.id, { dayType });
       }
     });
+    // v11 — SCHEMA_VERSION bump; backfill fitness goal goal-weight-200 structured fields when missing.
+    this.version(11).stores({
+      lifts: 'id, name',
+      templates: 'id, dayOfWeek',
+      prescriptions: 'id, templateId, liftId, [templateId+order]',
+      session_logs: 'id, date, templateId',
+      set_logs: 'id, sessionLogId, liftId, [sessionLogId+liftId+setIndex]',
+      cardio_logs: 'id, date, sessionLogId',
+      bodyweight_logs: 'id, date, isoWeek',
+      body_measurement_logs: 'id, date',
+      readiness_logs: 'id, sessionLogId, date',
+      nutrition_logs: 'id, date',
+      hydration_logs: 'id, date',
+      sleep_logs: 'id, date',
+      stress_logs: 'id, date, loggedAt',
+      mindfulness_logs: 'id, date, loggedAt',
+      injury_episodes: 'id, siteKey, startedAt',
+      body_readiness_logs: 'id, date',
+      dirty: 'id, table, rowId, enqueuedAt',
+      meta: 'key',
+    }).upgrade(async (tx) => {
+      const meta = tx.table('meta');
+      const row = await meta.get('fitness:goals');
+      const val = row?.value;
+      if (!Array.isArray(val)) return;
+
+      let changed = false;
+      const next = val.map((entry: Record<string, unknown>) => {
+        if (entry.id !== 'goal-weight-200') return entry;
+        const hasMetric =
+          typeof entry.metric === 'string'
+          && entry.metric.trim().length > 0
+          && typeof entry.target === 'number'
+          && Number.isFinite(entry.target)
+          && typeof entry.unit === 'string'
+          && entry.unit.trim().length > 0
+          && (entry.direction === 'above' ||
+            entry.direction === 'below' ||
+            entry.direction === 'exact');
+        if (hasMetric) return entry;
+        changed = true;
+        return {
+          ...entry,
+          metric: typeof entry.metric === 'string' && entry.metric.trim() ? entry.metric : 'bodyweight',
+          target:
+            typeof entry.target === 'number' && Number.isFinite(entry.target) ? entry.target : 200,
+          unit: typeof entry.unit === 'string' && entry.unit.trim() ? entry.unit : 'lb',
+          direction:
+            entry.direction === 'above' ||
+            entry.direction === 'below' ||
+            entry.direction === 'exact'
+              ? entry.direction
+              : 'below',
+        };
+      });
+
+      if (changed) {
+        await meta.put({ key: 'fitness:goals', value: next });
+      }
+    });
+    // v12 — SCHEMA_VERSION bump only (structured programTargets + fitness goal numerics shipped in exports).
+    this.version(12).stores({
+      lifts: 'id, name',
+      templates: 'id, dayOfWeek',
+      prescriptions: 'id, templateId, liftId, [templateId+order]',
+      session_logs: 'id, date, templateId',
+      set_logs: 'id, sessionLogId, liftId, [sessionLogId+liftId+setIndex]',
+      cardio_logs: 'id, date, sessionLogId',
+      bodyweight_logs: 'id, date, isoWeek',
+      body_measurement_logs: 'id, date',
+      readiness_logs: 'id, sessionLogId, date',
+      nutrition_logs: 'id, date',
+      hydration_logs: 'id, date',
+      sleep_logs: 'id, date',
+      stress_logs: 'id, date, loggedAt',
+      mindfulness_logs: 'id, date, loggedAt',
+      injury_episodes: 'id, siteKey, startedAt',
+      body_readiness_logs: 'id, date',
+      dirty: 'id, table, rowId, enqueuedAt',
+      meta: 'key',
+    });
   }
 }
 
-export const SCHEMA_VERSION = 10;
+export const SCHEMA_VERSION = 12;
 
 let _db: WorkoutDB | null = null;
 export function getDb(): WorkoutDB {

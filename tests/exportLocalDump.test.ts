@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { buildExportSchemaDocumentation } from '@/lib/exportModelSchema';
 import { computeExportSummary } from '@/lib/exportSummary';
+import { DEFAULT_PROGRAM_TARGETS_STORED, programTargetToExportRow } from '@/lib/programExportTargets';
 import type { Lift, ReadinessLog, SessionLog, SetLog, BodyweightLog } from '@/lib/types';
 import { defaultMesoConfig } from '@/lib/mesocycle';
 
@@ -13,7 +14,7 @@ describe('buildExportSchemaDocumentation', () => {
     expect(doc.nutrition_logs?.fields.dayType).toContain('liss');
     expect(doc.fitness_goals?.fields.metric).toContain('null');
     expect(doc.summary?.fields.sessionCount).toBe('number');
-    expect(doc.summary?.fields['programTargets[]']).toContain('text: string');
+    expect(doc.summary?.fields['programTargets[].metric']).toContain('1rm');
   });
 });
 
@@ -75,6 +76,7 @@ describe('computeExportSummary', () => {
       bodyweight_logs,
       extraDates: [],
       mesoConfig: defaultMesoConfig('2026-05-07'),
+      programTargets: DEFAULT_PROGRAM_TARGETS_STORED.map(programTargetToExportRow),
     });
 
     expect(summary.sessionCount).toBe(1);
@@ -82,6 +84,17 @@ describe('computeExportSummary', () => {
     expect(summary.totalVolumeLbReps).toBe(100 * 5 + 120 * 3);
     expect(summary.prFlags).toEqual([{ liftId: 'squat', weight: 120, date: '2026-05-01' }]);
     expect(summary.programTargets.length).toBe(21);
-    expect(summary.programTargets.find((x) => x.id === 'dl')?.text).toContain('450');
+    expect(summary.programTargets.find((x) => x.id === 'dl')).toEqual({
+      id: 'dl',
+      label: 'DL',
+      text: expect.stringContaining('450'),
+      metric: '1rm',
+      targetValue: 450,
+      targetReps: null,
+      targetSets: null,
+      currentValue: 435,
+      unit: 'lb',
+      liftId: 'dl',
+    });
   });
 });

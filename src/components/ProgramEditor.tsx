@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
+import { useLiveQuery } from 'dexie-react-hooks';
 import {
   useAllBodyweight,
   useAllReadiness,
@@ -55,6 +56,16 @@ import {
   useGoalSessionPrefs,
   type FitnessGoal,
 } from '@/lib/goals';
+import {
+  deriveProgramTargetText,
+  loadProgramTargetsStored,
+  saveProgramTargetsStored,
+  type ProgramTargetMetric,
+  type ProgramTargetStored,
+  type ProgramTargetUnit,
+  PROGRAM_TARGET_METRICS,
+  PROGRAM_TARGET_UNITS,
+} from '@/lib/programExportTargets';
 import { MesoBoundaryPromptCard } from './MesoBoundaryPromptCard';
 import { LooseDecimalField, LooseIntField } from './WeightStepper';
 import { PageShell } from './PageShell';
@@ -500,9 +511,247 @@ export function ProgramEditor() {
       </div>
 
       <GoalsPanel />
+      <ProgramTargetsEditor lifts={lifts} />
       <MesocycleSettings />
     </PageShell>
   );
+}
+
+function ProgramTargetsEditor({ lifts }: { lifts: Pick<Lift, 'id' | 'name'>[] }) {
+  const stored = useLiveQuery(() => loadProgramTargetsStored());
+  const [draft, setDraft] = useState<ProgramTargetStored[] | null>(null);
+  const [dirty, setDirty] = useState(false);
+
+  useEffect(() => {
+    if (stored !== undefined && !dirty) setDraft(stored.map((x) => ({ ...x })));
+  }, [stored, dirty]);
+
+  function emptyPt(id: string): ProgramTargetStored {
+    return {
+      id,
+      label: 'New',
+      metric: '1rm',
+      targetValue: null,
+      targetReps: null,
+      targetSets: null,
+      currentValue: null,
+      unit: 'lb',
+      liftId: null,
+    };
+  }
+
+  async function saveAll() {
+    if (!draft) return;
+    await saveProgramTargetsStored(draft);
+    setDirty(false);
+  }
+
+  function revert() {
+    if (stored) {
+      setDraft(stored.map((x) => ({ ...x })));
+      setDirty(false);
+    }
+  }
+
+  function patchRow(i: number, patch: Partial<ProgramTargetStored>) {
+    setDirty(true);
+    setDraft((prev) => {
+      const base = prev ?? [...(stored ?? [])];
+      const next = [...base];
+      if (!next[i]) return base;
+      next[i] = { ...next[i]!, ...patch };
+      return next;
+    });
+  }
+
+  const rows = draft ?? stored;
+  const loadingRows = rows === undefined;
+
+  if (loadingRows) {
+    return (
+      <div className="rounded-2xl bg-zinc-900 border border-zinc-800 p-4 text-sm text-zinc-500">
+        Loading export targets…
+      </div>
+    );
+  }
+
+  return (
+    <div className="rounded-2xl bg-zinc-900 border border-zinc-800 p-4 space-y-3">
+      <div className="font-medium">Full JSON export — program targets</div>
+      <p className="text-xs text-zinc-500">
+        These rows become <span className="font-mono text-zinc-400">summary.programTargets</span> with numeric
+        fields for analysis; the text line is generated automatically.
+      </p>
+      <div className="flex flex-wrap gap-2">
+        <button
+          type="button"
+          onClick={() => {
+            const id = `pt-${Date.now().toString(36)}`;
+            setDirty(true);
+            setDraft((prev) => [...(prev ?? [...(stored ?? [])]), emptyPt(id)]);
+          }}
+          className="h-9 px-3 rounded-lg bg-zinc-800 text-sm"
+        >
+          Add target
+        </button>
+        <button type="button" onClick={revert} className="h-9 px-3 rounded-lg bg-zinc-800 text-sm" disabled={!dirty}>
+          Reset
+        </button>
+        <button
+          type="button"
+          onClick={() => void saveAll()}
+          disabled={!dirty || !draft}
+          className="h-9 px-3 rounded-lg bg-amber-500 text-zinc-950 text-sm font-medium disabled:opacity-40"
+        >
+          Save
+        </button>
+      </div>
+      <div className="space-y-3 max-h-[min(70dvh,560px)] overflow-y-auto pr-1">
+        {rows.map((row, i) => (
+          <div key={row.id} className="rounded-xl border border-zinc-800 bg-zinc-950 p-3 space-y-2">
+            <div className="flex justify-between gap-2">
+              <span className="text-xs font-mono text-zinc-500 truncate">{row.id}</span>
+              <button
+                type="button"
+                className="text-xs text-rose-400 shrink-0"
+                onClick={() => {
+                  setDirty(true);
+                  setDraft((prev) => {
+                    const base = prev ?? [...(stored ?? [])];
+                    return base.filter((_, j) => j !== i);
+                  });
+                }}
+              >
+                Remove
+              </button>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+              <label className="text-[11px] text-zinc-500">
+                Label
+                <input
+                  value={row.label}
+                  onChange={(e) => patchRow(i, { label: e.target.value })}
+                  className="mt-0.5 block w-full h-8 rounded-lg bg-zinc-900 border border-zinc-800 px-2 text-xs"
+                />
+              </label>
+              <label className="text-[11px] text-zinc-500">
+                Metric
+                <select
+                  value={row.metric}
+                  onChange={(e) => patchRow(i, { metric: e.target.value as ProgramTargetMetric })}
+                  className="mt-0.5 block w-full h-8 rounded-lg bg-zinc-900 border border-zinc-800 px-2 text-xs"
+                >
+                  {PROGRAM_TARGET_METRICS.map((m) => (
+                    <option key={m} value={m}>
+                      {m}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="text-[11px] text-zinc-500">
+                Unit
+                <select
+                  value={row.unit}
+                  onChange={(e) => patchRow(i, { unit: e.target.value as ProgramTargetUnit })}
+                  className="mt-0.5 block w-full h-8 rounded-lg bg-zinc-900 border border-zinc-800 px-2 text-xs"
+                >
+                  {PROGRAM_TARGET_UNITS.map((u) => (
+                    <option key={u} value={u}>
+                      {u}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              {(['targetValue', 'targetReps', 'targetSets', 'currentValue'] as const).map((k) => (
+                <label key={k} className="text-[11px] text-zinc-500">
+                  {k}
+                  <input
+                    value={row[k] ?? ''}
+                    onChange={(e) => {
+                      const s = e.target.value;
+                      if (s.trim() === '') {
+                        patchRow(i, { [k]: null });
+                        return;
+                      }
+                      const n = Number(s);
+                      patchRow(i, { [k]: Number.isFinite(n) ? n : null });
+                    }}
+                    inputMode="decimal"
+                    className="mt-0.5 block w-full h-8 rounded-lg bg-zinc-900 border border-zinc-800 px-2 text-xs font-mono"
+                  />
+                </label>
+              ))}
+              <label className="text-[11px] text-zinc-500 sm:col-span-2">
+                liftId (
+                <span className="font-mono">lifts[]</span>, optional)
+                <select
+                  value={row.liftId ?? ''}
+                  onChange={(e) => patchRow(i, { liftId: e.target.value.trim() ? e.target.value : null })}
+                  aria-label="Linked lift id"
+                  className="mt-0.5 block w-full h-8 rounded-lg bg-zinc-900 border border-zinc-800 px-2 text-xs"
+                >
+                  <option value="">— none —</option>
+                  {lifts.map((l) => (
+                    <option key={l.id} value={l.id}>
+                      {l.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+            <div className="text-[11px] text-zinc-500 border-t border-zinc-800 pt-2 italic">
+              <span className="text-zinc-600 not-italic uppercase tracking-wide text-[10px]">Derived text · </span>
+              {deriveProgramTargetText(row)}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/** Best-effort parse for prompting only — exporter still stores whatever the user saves. */
+function inferFitnessGoalStructuredFromText(text: string): {
+  metric: string;
+  target: number;
+  unit: string;
+  direction: 'above' | 'below' | 'exact';
+} | null {
+  const t = text.trim();
+  if (!t) return null;
+
+  const bulk =
+    /\bgain\b[^\d]{0,60}?\b(?:to|up\s+to|until)\s+(\d{2,4})\s*(?:lbs?\b|\bpounds?\b)?/i.exec(t);
+  if (bulk && Number.isFinite(Number(bulk[1]))) {
+    return {
+      metric: 'bodyweight',
+      target: Number(bulk[1]),
+      unit: 'lb',
+      direction: 'above',
+    };
+  }
+
+  const down =
+    /\b(?:lose\s+(?:weight|fat)\b[^\n]{0,80}?\b(?:down\s+)?to\s+(\d{2,4})|(?:down\s+|weigh\b[^\n]{0,40}?to\s+)(\d{2,4}))\s*(?:lbs?\b|\bpounds?\b|#|\bkilos?\b)?/i.exec(
+      t,
+    );
+  const dn = down ? Number(down[1] ?? down[2]) : NaN;
+  if (Number.isFinite(dn)) {
+    return { metric: 'bodyweight', target: dn, unit: 'lb', direction: 'below' };
+  }
+
+  const nakedTo = /\bto\s+(\d{2,4})\s*(?:lbs?\b|\bpounds?\b|\b#\b)/i.exec(t);
+  if (nakedTo && Number.isFinite(Number(nakedTo[1]))) {
+    const lowerish = /\b(?:lose|cut|lighter|fat|trim|reduce|below|under)/i.test(t);
+    return {
+      metric: 'bodyweight',
+      target: Number(nakedTo[1]),
+      unit: 'lb',
+      direction: lowerish ? 'below' : 'exact',
+    };
+  }
+
+  return null;
 }
 
 function GoalNumericTargetEditor({ goal }: { goal: FitnessGoal }) {
@@ -511,6 +760,19 @@ function GoalNumericTargetEditor({ goal }: { goal: FitnessGoal }) {
   const [unit, setUnit] = useState(goal.unit ?? '');
   const [dir, setDir] = useState<'above' | 'below' | 'exact'>(goal.direction ?? 'above');
   const [busy, setBusy] = useState(false);
+
+  const inferred =
+    useMemo(() => {
+      const hasAnyStored =
+        Boolean(goal.metric?.trim())
+        || Boolean(goal.unit?.trim())
+        || (typeof goal.target === 'number' && Number.isFinite(goal.target))
+        || goal.direction === 'above'
+        || goal.direction === 'below'
+        || goal.direction === 'exact';
+      if (hasAnyStored) return null;
+      return inferFitnessGoalStructuredFromText(goal.text);
+    }, [goal.metric, goal.unit, goal.target, goal.direction, goal.text]);
 
   useEffect(() => {
     setMetric(goal.metric ?? '');
@@ -538,6 +800,29 @@ function GoalNumericTargetEditor({ goal }: { goal: FitnessGoal }) {
 
   return (
     <div className="mt-2 pl-7 space-y-2 border-t border-zinc-800 pt-2">
+      {inferred ? (
+        <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-2 py-2 text-[11px] text-amber-100/95">
+          <div className="text-zinc-300">
+            Looks like a measurable target:{' '}
+            <span className="font-mono text-amber-200/95">
+              {inferred.metric} · {inferred.direction} · {inferred.target} · {inferred.unit}
+            </span>
+            . Fill the fields if that matches your intent.
+          </div>
+          <button
+            type="button"
+            className="mt-1.5 text-xs px-2 h-7 rounded-md bg-amber-500/90 text-zinc-950 font-medium"
+            onClick={() => {
+              setMetric(inferred.metric);
+              setTargetStr(String(inferred.target));
+              setUnit(inferred.unit);
+              setDir(inferred.direction);
+            }}
+          >
+            Copy into fields
+          </button>
+        </div>
+      ) : null}
       <div className="text-[11px] text-zinc-500">Optional numeric target (export + analysis)</div>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
         <label className="text-xs text-zinc-500">
@@ -600,18 +885,39 @@ function GoalsPanel() {
   const [newGoal, setNewGoal] = useState('');
   const [category, setCategory] = useState<FitnessGoal['category']>('long-term');
   const [draggingId, setDraggingId] = useState<string | null>(null);
+  const [newMetric, setNewMetric] = useState('');
+  const [newTargetStr, setNewTargetStr] = useState('');
+  const [newUnit, setNewUnit] = useState('');
+  const [newDirection, setNewDirection] = useState<'above' | 'below' | 'exact'>('below');
+
+  const newGoalSuggestion = useMemo(() => inferFitnessGoalStructuredFromText(newGoal), [newGoal]);
 
   if (!goals || !sessionGoalPrefs) return null;
 
   async function addGoal() {
     const text = newGoal.trim();
     if (!text) return;
+    const parsed = parseFloat(newTargetStr);
+    const hasNumeric = newTargetStr.trim() !== '' && Number.isFinite(parsed);
+    const hinted = inferFitnessGoalStructuredFromText(text);
     await upsertFitnessGoal({
       id: `goal-${Date.now().toString(36)}`,
       text,
       category,
+      ...(hasNumeric
+        ? {
+          metric: newMetric.trim() || hinted?.metric,
+          unit: newUnit.trim() || hinted?.unit,
+          target: parsed,
+          direction: newDirection,
+        }
+        : {}),
     });
     setNewGoal('');
+    setNewMetric('');
+    setNewTargetStr('');
+    setNewUnit('');
+    setNewDirection('below');
   }
 
   return (
@@ -689,6 +995,78 @@ function GoalsPanel() {
         >
           Add
         </button>
+      </div>
+      <div className="rounded-xl border border-zinc-800 bg-zinc-950 p-3 space-y-3">
+        {newGoalSuggestion ? (
+          <div className="rounded-lg border border-amber-500/25 bg-amber-500/5 px-2 py-2 text-[11px] text-zinc-300">
+            Looks measurable from the goal wording:{' '}
+            <span className="font-mono text-amber-100/95">
+              {newGoalSuggestion.metric} · {newGoalSuggestion.direction} · {newGoalSuggestion.target}{' '}
+              {newGoalSuggestion.unit}
+            </span>
+            .
+            <button
+              type="button"
+              className="block mt-2 text-xs px-2 h-7 rounded-md bg-amber-500/90 text-zinc-950 font-medium"
+              onClick={() => {
+                setNewMetric(newGoalSuggestion.metric);
+                setNewTargetStr(String(newGoalSuggestion.target));
+                setNewUnit(newGoalSuggestion.unit);
+                setNewDirection(newGoalSuggestion.direction);
+              }}
+            >
+              Fill optional fields below
+            </button>
+          </div>
+        ) : null}
+        <div className="text-[11px] text-zinc-500">
+          Optional — metric, target, unit, direction (exported as structured fields when you enter a numeric target).
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2">
+          <label className="text-xs text-zinc-500">
+            Metric
+            <input
+              value={newMetric}
+              onChange={(e) => setNewMetric(e.target.value)}
+              placeholder="bodyweight …"
+              className="mt-1 block w-full h-9 rounded-lg bg-zinc-900 border border-zinc-800 px-2 text-sm"
+            />
+          </label>
+          <label className="text-xs text-zinc-500">
+            Target
+            <input
+              value={newTargetStr}
+              onChange={(e) => setNewTargetStr(e.target.value)}
+              placeholder="number"
+              inputMode="decimal"
+              className="mt-1 block w-full h-9 rounded-lg bg-zinc-900 border border-zinc-800 px-2 text-sm font-mono"
+            />
+          </label>
+          <label className="text-xs text-zinc-500">
+            Unit
+            <input
+              value={newUnit}
+              onChange={(e) => setNewUnit(e.target.value)}
+              placeholder="lb …"
+              className="mt-1 block w-full h-9 rounded-lg bg-zinc-900 border border-zinc-800 px-2 text-sm"
+            />
+          </label>
+          <label className="text-xs text-zinc-500 sm:col-span-2 lg:col-span-2">
+            Direction
+            <select
+              value={newDirection}
+              onChange={(e) =>
+                setNewDirection(e.target.value as 'above' | 'below' | 'exact')
+              }
+              aria-label="New goal target direction"
+              className="mt-1 block w-full h-9 rounded-lg bg-zinc-900 border border-zinc-800 px-2 text-sm"
+            >
+              <option value="above">Above</option>
+              <option value="below">Below</option>
+              <option value="exact">Exact</option>
+            </select>
+          </label>
+        </div>
       </div>
     </div>
   );

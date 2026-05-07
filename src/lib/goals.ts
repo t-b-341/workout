@@ -23,11 +23,37 @@ const GOALS_META_KEY = 'fitness:goals';
 const GOAL_CHECKS_META_KEY = 'fitness:goal-checks';
 const GOAL_PREFS_META_KEY = 'fitness:goal-prefs';
 
+/** Ensure known goals inherit structured numeric fields when missing (export + analysis). */
+function applyInheritedGoalStructuredFields(goal: FitnessGoal): FitnessGoal {
+  if (goal.id !== 'goal-weight-200') return goal;
+  const hasStructured =
+    Boolean(goal.metric?.trim())
+    && typeof goal.target === 'number'
+    && Number.isFinite(goal.target)
+    && Boolean(goal.unit?.trim())
+    && (goal.direction === 'above' || goal.direction === 'below' || goal.direction === 'exact');
+  if (hasStructured) return goal;
+
+  return {
+    ...goal,
+    metric: goal.metric?.trim() || 'bodyweight',
+    target: typeof goal.target === 'number' && Number.isFinite(goal.target) ? goal.target : 200,
+    unit: goal.unit?.trim() || 'lb',
+    direction: goal.direction === 'below' || goal.direction === 'above' || goal.direction === 'exact'
+      ? goal.direction
+      : 'below',
+  };
+}
+
 const DEFAULT_GOALS: FitnessGoal[] = [
   {
     id: 'goal-weight-200',
     text: 'Lose weight down to 200 lbs',
     category: 'long-term',
+    metric: 'bodyweight',
+    target: 200,
+    unit: 'lb',
+    direction: 'below',
   },
   {
     id: 'goal-quality-life',
@@ -83,8 +109,8 @@ export function normalizeGoals(value: unknown): FitnessGoal[] {
     // Replace legacy combined front-squat goal with split goals below.
     .filter((x) => x.id !== 'goal-front-squat-wrist-friendly')
     .filter((x) => x.id.length > 0 && x.text.length > 0);
-  if (cleaned.length === 0) return DEFAULT_GOALS;
-  return cleaned;
+  if (cleaned.length === 0) return DEFAULT_GOALS.map(applyInheritedGoalStructuredFields);
+  return cleaned.map(applyInheritedGoalStructuredFields);
 }
 
 function normalizeChecks(value: unknown): GoalChecksBySession {

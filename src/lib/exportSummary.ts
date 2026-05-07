@@ -1,5 +1,5 @@
 import type { ExportSummary } from './exportModelSchema';
-import { EXPORT_SUMMARY_PROGRAM_TARGETS } from './exportSummaryProgramTargets';
+import type { SummaryProgramTarget } from './programExportTargets';
 import type { BodyweightLog, Lift, ReadinessLog, SessionLog, SetLog } from './types';
 import {
   bodyweightLbForSessionVolume,
@@ -31,6 +31,7 @@ export function computeExportSummary(args: {
   /** Nutrition + other daily logs extend the visible calendar window. */
   extraDates?: string[];
   mesoConfig: MesocycleConfig;
+  programTargets: SummaryProgramTarget[];
 }): ExportSummary {
   const {
     exportedAtIso,
@@ -41,6 +42,7 @@ export function computeExportSummary(args: {
     bodyweight_logs,
     extraDates = [],
     mesoConfig,
+    programTargets,
   } = args;
 
   const liftById = new Map(lifts.map((l) => [l.id, l]));
@@ -84,6 +86,6 @@ export function computeExportSummary(args: {
     prFlags,
     activePhaseName,
     activePhaseWeek,
-    programTargets: EXPORT_SUMMARY_PROGRAM_TARGETS.map(({ id, text }) => ({ id, text })),
+    programTargets,
   };
 }

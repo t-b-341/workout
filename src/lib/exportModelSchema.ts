@@ -4,8 +4,13 @@ import {
   SESSION_LABEL_TYPES,
   SET_INTENTS,
 } from './types';
+import {
+  PROGRAM_TARGET_METRICS,
+  PROGRAM_TARGET_UNITS,
+  type SummaryProgramTarget,
+} from './programExportTargets';
 
-import type { SummaryProgramTarget } from './exportSummaryProgramTargets';
+export type { SummaryProgramTarget } from './programExportTargets';
 
 export type ExportedFitnessGoal = {
   id: string;
@@ -26,7 +31,7 @@ export type ExportSummary = {
   prFlags: Array<{ liftId: string; weight: number; date: string }>;
   activePhaseName: 'accumulation' | 'deload' | null;
   activePhaseWeek: number | null;
-  /** Canonical training targets / notes bundled with computed summary stats (see `exportSummaryProgramTargets.ts`). */
+  /** Canonical training targets / notes bundled with computed summary stats (see `programExportTargets.ts`). */
   programTargets: SummaryProgramTarget[];
 };
 
@@ -72,7 +77,16 @@ function summarySchema(): SchemaEntry {
       'prFlags[]': '{ liftId: string; weight: number; date: YYYY-MM-DD }[]',
       activePhaseName: `${joinEnums(['accumulation', 'deload'])} | null`,
       activePhaseWeek: 'number | null',
-      'programTargets[]': '{ id: string; text: string }[]',
+      'programTargets[].id': 'string',
+      'programTargets[].label': 'string',
+      'programTargets[].text': 'string (derived for humans)',
+      'programTargets[].metric': joinEnums(PROGRAM_TARGET_METRICS),
+      'programTargets[].targetValue': 'number | null',
+      'programTargets[].targetReps': 'number | null',
+      'programTargets[].targetSets': 'number | null',
+      'programTargets[].currentValue': 'number | null',
+      'programTargets[].unit': joinEnums(PROGRAM_TARGET_UNITS),
+      'programTargets[].liftId': 'string | null (lifts[].id)',
     },
   };
 }
