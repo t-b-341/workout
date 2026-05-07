@@ -1,4 +1,5 @@
 import type { ExportSummary } from './exportModelSchema';
+import { EXPORT_SUMMARY_PROGRAM_TARGETS } from './exportSummaryProgramTargets';
 import type { BodyweightLog, Lift, ReadinessLog, SessionLog, SetLog } from './types';
 import {
   bodyweightLbForSessionVolume,
@@ -83,5 +84,6 @@ export function computeExportSummary(args: {
     prFlags,
     activePhaseName,
     activePhaseWeek,
+    programTargets: EXPORT_SUMMARY_PROGRAM_TARGETS.map(({ id, text }) => ({ id, text })),
   };
 }

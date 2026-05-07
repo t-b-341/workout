@@ -13,6 +13,7 @@ describe('buildExportSchemaDocumentation', () => {
     expect(doc.nutrition_logs?.fields.dayType).toContain('liss');
     expect(doc.fitness_goals?.fields.metric).toContain('null');
     expect(doc.summary?.fields.sessionCount).toBe('number');
+    expect(doc.summary?.fields['programTargets[]']).toContain('text: string');
   });
 });
 
@@ -80,5 +81,7 @@ describe('computeExportSummary', () => {
     expect(summary.totalSets).toBe(2);
     expect(summary.totalVolumeLbReps).toBe(100 * 5 + 120 * 3);
     expect(summary.prFlags).toEqual([{ liftId: 'squat', weight: 120, date: '2026-05-01' }]);
+    expect(summary.programTargets.length).toBe(21);
+    expect(summary.programTargets.find((x) => x.id === 'dl')?.text).toContain('450');
   });
 });

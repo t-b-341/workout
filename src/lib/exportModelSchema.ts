@@ -5,6 +5,8 @@ import {
   SET_INTENTS,
 } from './types';
 
+import type { SummaryProgramTarget } from './exportSummaryProgramTargets';
+
 export type ExportedFitnessGoal = {
   id: string;
   text: string;
@@ -24,6 +26,8 @@ export type ExportSummary = {
   prFlags: Array<{ liftId: string; weight: number; date: string }>;
   activePhaseName: 'accumulation' | 'deload' | null;
   activePhaseWeek: number | null;
+  /** Canonical training targets / notes bundled with computed summary stats (see `exportSummaryProgramTargets.ts`). */
+  programTargets: SummaryProgramTarget[];
 };
 
 const joinEnums = (arr: readonly string[]) => arr.join(' | ');
@@ -68,6 +72,7 @@ function summarySchema(): SchemaEntry {
       'prFlags[]': '{ liftId: string; weight: number; date: YYYY-MM-DD }[]',
       activePhaseName: `${joinEnums(['accumulation', 'deload'])} | null`,
       activePhaseWeek: 'number | null',
+      'programTargets[]': '{ id: string; text: string }[]',
     },
   };
 }
