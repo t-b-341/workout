@@ -33,7 +33,9 @@ import { deriveMealMetrics, sortMealTimestamps } from '@/lib/mealTiming';
 import { replaceMealTimestampsForDay } from '@/lib/nutritionMealQuick';
 import { flushDirty, localDelete, localUpsert } from '@/lib/sync';
 import { todayIso } from '@/lib/time';
-import type { HydrationLog, NutritionLog, StressLog } from '@/lib/types';
+import type { HydrationLog, NutritionDayType, NutritionLog, StressLog } from '@/lib/types';
+import { NUTRITION_DAY_TYPES } from '@/lib/types';
+import { defaultNutritionDayType } from '@/lib/nutritionDayType';
 import { BodyweightQuickLog } from './BodyweightQuickLog';
 import { InjuryTrackingPanel } from './InjuryTrackingPanel';
 import { MacroTrendCallout } from './MacroTrendCallout';
@@ -1100,6 +1102,14 @@ function NutritionSectionForm({
   const [cA, setCA] = useState(existing?.carbsActualG ?? 0);
   const [fA, setFA] = useState(existing?.fatActualG ?? 0);
 
+  const [dayType, setDayType] = useState<NutritionDayType>(() =>
+    existing?.dayType ?? defaultNutritionDayType(date, []),
+  );
+
+  useEffect(() => {
+    setDayType(existing?.dayType ?? defaultNutritionDayType(date, []));
+  }, [existing?.id, date]);
+
   const targetKcal = useMemo(() => kcalFromMacros(pT, cT, fT), [pT, cT, fT]);
   const actualKcal = useMemo(() => kcalFromMacros(pA, cA, fA), [pA, cA, fA]);
   const fallbackCalories = useMemo(
@@ -1146,6 +1156,7 @@ function NutritionSectionForm({
     await localUpsert('nutrition_logs', {
       id: `nutrition-${date}`,
       date,
+      dayType,
       caloriesTarget: targetKcal,
       caloriesActual: actualKcal,
       proteinTargetG: pT,
@@ -1262,6 +1273,23 @@ function NutritionSectionForm({
       </div>
 
       <div className="space-y-3">
+        <div className="rounded-xl border border-zinc-800 bg-zinc-950 p-3 space-y-2">
+          <label htmlFor="recovery-nutrition-day-type" className="text-xs text-zinc-500">
+            Day type (saved with these targets)
+          </label>
+          <select
+            id="recovery-nutrition-day-type"
+            value={dayType}
+            onChange={(e) => setDayType(e.target.value as NutritionDayType)}
+            className="block w-full max-w-xs h-10 rounded-lg bg-zinc-950 border border-zinc-800 px-3 text-sm text-zinc-200"
+          >
+            {NUTRITION_DAY_TYPES.map((dt) => (
+              <option key={dt} value={dt}>
+                {dt === 'training' ? 'Training' : dt === 'liss' ? 'LISS cardio' : 'Rest'}
+              </option>
+            ))}
+          </select>
+        </div>
         <DerivedCaloriesRow
           targetKcal={targetKcal}
           actualKcal={actualKcal}

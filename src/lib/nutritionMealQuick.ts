@@ -1,6 +1,7 @@
 import { getDb } from './db';
 import { sortMealTimestamps } from './mealTiming';
 import { kcalFromMacros } from './macros';
+import { defaultNutritionDayType } from './nutritionDayType';
 import { localUpsert } from './sync';
 import type { RecoveryPrefs } from './recoveryPrefs';
 
@@ -17,6 +18,8 @@ export async function replaceMealTimestampsForDay(
   const id = `nutrition-${date}`;
   const row = await getDb().nutrition_logs.get(id);
   const nt = prefs.nutritionTargets;
+  const sessions = await getDb().session_logs.where('date').equals(date).toArray();
+  const dayType = row?.dayType ?? defaultNutritionDayType(date, sessions);
   const pT = row?.proteinTargetG ?? nt.proteinG;
   const cT = row?.carbsTargetG ?? nt.carbsG;
   const fT = row?.fatTargetG ?? nt.fatG;
@@ -42,6 +45,7 @@ export async function replaceMealTimestampsForDay(
   await localUpsert('nutrition_logs', {
     id,
     date,
+    dayType,
     caloriesTarget: targetKcal,
     caloriesActual: actualKcal,
     proteinTargetG: pT,

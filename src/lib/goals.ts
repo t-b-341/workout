@@ -7,6 +7,11 @@ export type FitnessGoal = {
   id: string;
   text: string;
   category: 'long-term' | 'current';
+  /** Optional structured target for export / tracking (text-only goals omit these). */
+  metric?: string;
+  target?: number;
+  unit?: string;
+  direction?: 'above' | 'below' | 'exact';
 };
 
 type GoalChecksBySession = Record<string, Record<string, boolean>>;
@@ -59,6 +64,20 @@ export function normalizeGoals(value: unknown): FitnessGoal[] {
         id: String(x.id ?? '').trim(),
         text: String(x.text ?? '').trim(),
         category: x.category === 'current' ? 'current' : 'long-term',
+        metric:
+          x.metric !== undefined && x.metric !== null && String(x.metric).trim().length > 0
+            ? String(x.metric).trim()
+            : undefined,
+        target:
+          typeof x.target === 'number' && Number.isFinite(x.target) ? x.target : undefined,
+        unit:
+          x.unit !== undefined && x.unit !== null && String(x.unit).trim().length > 0
+            ? String(x.unit).trim()
+            : undefined,
+        direction:
+          x.direction === 'above' || x.direction === 'below' || x.direction === 'exact'
+            ? x.direction
+            : undefined,
       }),
     )
     // Replace legacy combined front-squat goal with split goals below.

@@ -12,7 +12,17 @@ import {
   useSetsForSession,
 } from '@/lib/hooks';
 import { localDelete, localUpsert } from '@/lib/sync';
-import type { CardioLog, CardioType, Lift, Prescription, SessionLog, SetLog, SetStatus } from '@/lib/types';
+import type {
+  CardioLog,
+  CardioType,
+  Lift,
+  Prescription,
+  SessionLog,
+  SetIntent,
+  SetLog,
+  SetStatus,
+} from '@/lib/types';
+import { SET_INTENTS } from '@/lib/types';
 import { DecimalStepper, RepStepper, RirStepper, WeightStepper } from './WeightStepper';
 import { fmtDate } from '@/lib/time';
 import { platesPerSide } from '@/lib/plates';
@@ -54,6 +64,13 @@ const STATUS_COLOR: Record<SetStatus, string> = {
   substituted: 'bg-indigo-600',
 };
 
+const INTENT_LABEL: Record<SetIntent, string> = {
+  warmup: 'Warmup',
+  working: 'Working',
+  backoff: 'Backoff',
+  max_test: 'PR / max test',
+};
+
 export function LiftCard({ prescription, lift, session, pinned }: Props) {
   const sets = useSetsForSession(session.id);
   const history = useLastSessionsForLift(prescription.liftId, 3);
@@ -73,6 +90,7 @@ export function LiftCard({ prescription, lift, session, pinned }: Props) {
   const [openSubs, setOpenSubs] = useState<number | null>(null);
   const [reasonDraft, setReasonDraft] = useState('');
   const [substituteId, setSubstituteId] = useState<string>('');
+  const [pendingIntentByKey, setPendingIntentByKey] = useState<Record<string, SetIntent>>({});
 
   const liftSets = (sets ?? []).filter((s) => s.prescriptionId === prescription.id);
   const indexes = Array.from({ length: prescription.sets }, (_, i) => i);
@@ -120,6 +138,26 @@ export function LiftCard({ prescription, lift, session, pinned }: Props) {
     );
   }
 
+  function intentKey(setIndex: number, side?: 'L' | 'R') {
+    return `${setIndex}-${side ?? 'X'}`;
+  }
+
+  async function setIntentChoice(setIndex: number, side: 'L' | 'R' | undefined, nextIntent: SetIntent) {
+    const existing = getSet(setIndex, side);
+    const k = intentKey(setIndex, side);
+    if (!existing) {
+      setPendingIntentByKey((prev) => ({ ...prev, [k]: nextIntent }));
+      return;
+    }
+    await localUpsert('set_logs', { ...existing, intent: nextIntent });
+  }
+
+  function intentFor(setIndex: number, side?: 'L' | 'R'): SetIntent {
+    const existing = getSet(setIndex, side);
+    const k = intentKey(setIndex, side);
+    return pendingIntentByKey[k] ?? existing?.intent ?? 'working';
+  }
+
   async function logSet(args: {
     setIndex: number;
     side?: 'L' | 'R';
@@ -136,12 +174,15 @@ export function LiftCard({ prescription, lift, session, pinned }: Props) {
     const status = args.status ?? 'completed';
     const weight = snapWorkingWeight(args.weight, lift);
     const ctForRow = liftToCardioType(lift.id);
+    const k = intentKey(args.setIndex, args.side);
+    const intent = pendingIntentByKey[k] ?? existing?.intent ?? 'working';
     const row: SetLog = {
       id,
       sessionLogId: session.id,
       liftId: prescription.liftId,
       prescriptionId: prescription.id,
       setIndex: args.setIndex,
+      intent,
       weight,
       reps: args.reps,
       rir: shouldTrackRpeForReps(args.reps) && args.rir != null ? args.rir : undefined,
@@ -159,6 +200,12 @@ export function LiftCard({ prescription, lift, session, pinned }: Props) {
         : {}),
     };
     await localUpsert('set_logs', row);
+    setPendingIntentByKey((prev) => {
+      if (!(k in prev)) return prev;
+      const next = { ...prev };
+      delete next[k];
+      return next;
+    });
 
     // Stamp session start on first interaction.
     if (!session.startedAt) {
@@ -339,6 +386,22 @@ export function LiftCard({ prescription, lift, session, pinned }: Props) {
                     }
                     done={isDone}
                   />
+
+                  <label className="mt-3 block text-xs text-zinc-500">
+                    Set intent
+                    <select
+                      className="mt-1 block w-full max-w-xs h-9 rounded-lg bg-zinc-950 border border-zinc-800 px-2 text-sm text-zinc-200"
+                      aria-label={`Intent for set ${idx + 1}`}
+                      value={intentFor(idx, side)}
+                      onChange={(e) => void setIntentChoice(idx, side, e.target.value as SetIntent)}
+                    >
+                      {SET_INTENTS.map((it) => (
+                        <option key={it} value={it}>
+                          {INTENT_LABEL[it]}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
 
                   <div className="flex gap-2 mt-2 text-xs">
                     <button

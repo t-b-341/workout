@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   useAllBodyweight,
   useAllReadiness,
@@ -505,6 +505,95 @@ export function ProgramEditor() {
   );
 }
 
+function GoalNumericTargetEditor({ goal }: { goal: FitnessGoal }) {
+  const [metric, setMetric] = useState(goal.metric ?? '');
+  const [targetStr, setTargetStr] = useState(goal.target != null ? String(goal.target) : '');
+  const [unit, setUnit] = useState(goal.unit ?? '');
+  const [dir, setDir] = useState<'above' | 'below' | 'exact'>(goal.direction ?? 'above');
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    setMetric(goal.metric ?? '');
+    setTargetStr(goal.target != null ? String(goal.target) : '');
+    setUnit(goal.unit ?? '');
+    setDir(goal.direction ?? 'above');
+  }, [goal.id, goal.metric, goal.target, goal.unit, goal.direction]);
+
+  async function saveExtras() {
+    setBusy(true);
+    try {
+      const parsed = parseFloat(targetStr);
+      const hasNumeric = targetStr.trim() !== '' && Number.isFinite(parsed);
+      await upsertFitnessGoal({
+        ...goal,
+        metric: metric.trim() ? metric.trim() : undefined,
+        unit: unit.trim() ? unit.trim() : undefined,
+        target: hasNumeric ? parsed : undefined,
+        direction: hasNumeric ? dir : undefined,
+      });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="mt-2 pl-7 space-y-2 border-t border-zinc-800 pt-2">
+      <div className="text-[11px] text-zinc-500">Optional numeric target (export + analysis)</div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+        <label className="text-xs text-zinc-500">
+          Metric
+          <input
+            value={metric}
+            onChange={(e) => setMetric(e.target.value)}
+            placeholder="e.g. bodyweight"
+            className="mt-1 block w-full h-9 rounded-lg bg-zinc-900 border border-zinc-800 px-2 text-sm"
+          />
+        </label>
+        <label className="text-xs text-zinc-500">
+          Target
+          <input
+            value={targetStr}
+            onChange={(e) => setTargetStr(e.target.value)}
+            placeholder="number"
+            inputMode="decimal"
+            className="mt-1 block w-full h-9 rounded-lg bg-zinc-900 border border-zinc-800 px-2 text-sm font-mono"
+          />
+        </label>
+        <label className="text-xs text-zinc-500">
+          Unit
+          <input
+            value={unit}
+            onChange={(e) => setUnit(e.target.value)}
+            placeholder="lb, kg…"
+            className="mt-1 block w-full h-9 rounded-lg bg-zinc-900 border border-zinc-800 px-2 text-sm"
+          />
+        </label>
+        <label className="text-xs text-zinc-500">
+          Direction
+          <select
+            value={dir}
+            onChange={(e) => setDir(e.target.value as 'above' | 'below' | 'exact')}
+            aria-label="Target direction"
+            className="mt-1 block w-full h-9 rounded-lg bg-zinc-900 border border-zinc-800 px-2 text-sm"
+          >
+            <option value="above">Above</option>
+            <option value="below">Below</option>
+            <option value="exact">Exact</option>
+          </select>
+        </label>
+      </div>
+      <button
+        type="button"
+        disabled={busy}
+        onClick={() => void saveExtras()}
+        className="text-xs px-3 h-8 rounded-lg bg-zinc-800 text-zinc-200 hover:bg-zinc-700 disabled:opacity-50"
+      >
+        Save numeric fields
+      </button>
+    </div>
+  );
+}
+
 function GoalsPanel() {
   const goals = useFitnessGoals();
   const sessionGoalPrefs = useGoalSessionPrefs();
@@ -541,36 +630,38 @@ function GoalsPanel() {
       </div>
       <div className="space-y-2">
         {goals.map((g, idx) => (
-          <div
-            key={g.id}
-            draggable
-            onDragStart={() => setDraggingId(g.id)}
-            onDragOver={(e) => e.preventDefault()}
-            onDrop={() => {
-              if (!draggingId || draggingId === g.id) return;
-              const from = goals.findIndex((x) => x.id === draggingId);
-              const to = goals.findIndex((x) => x.id === g.id);
-              void reorderFitnessGoals(from, to);
-              setDraggingId(null);
-            }}
-            onDragEnd={() => setDraggingId(null)}
-            className={`flex items-center gap-2 rounded-lg bg-zinc-950 border px-3 py-2 ${
-              draggingId === g.id ? 'border-amber-500/60' : 'border-zinc-800'
-            }`}
-          >
-            <span className="text-zinc-500 cursor-grab" aria-hidden>⋮⋮</span>
-            <span className="w-5 text-xs text-zinc-500 font-mono">{idx + 1}</span>
-            <span className="flex-1 text-sm text-zinc-200">{g.text}</span>
-            <span className="text-[10px] uppercase tracking-wider px-2 py-0.5 rounded-full bg-zinc-800 text-zinc-400">
-              {g.category}
-            </span>
-            <button
-              type="button"
-              onClick={() => void removeFitnessGoal(g.id)}
-              className="text-xs text-rose-300 hover:text-rose-200"
+          <div key={g.id} className="rounded-lg bg-zinc-950 border border-zinc-800 px-3 py-2 space-y-1">
+            <div
+              draggable
+              onDragStart={() => setDraggingId(g.id)}
+              onDragOver={(e) => e.preventDefault()}
+              onDrop={() => {
+                if (!draggingId || draggingId === g.id) return;
+                const from = goals.findIndex((x) => x.id === draggingId);
+                const to = goals.findIndex((x) => x.id === g.id);
+                void reorderFitnessGoals(from, to);
+                setDraggingId(null);
+              }}
+              onDragEnd={() => setDraggingId(null)}
+              className={`flex items-center gap-2 ${
+                draggingId === g.id ? 'ring-1 ring-amber-500/60 rounded-md' : ''
+              }`}
             >
-              Remove
-            </button>
+              <span className="text-zinc-500 cursor-grab" aria-hidden>⋮⋮</span>
+              <span className="w-5 text-xs text-zinc-500 font-mono">{idx + 1}</span>
+              <span className="flex-1 text-sm text-zinc-200">{g.text}</span>
+              <span className="text-[10px] uppercase tracking-wider px-2 py-0.5 rounded-full bg-zinc-800 text-zinc-400">
+                {g.category}
+              </span>
+              <button
+                type="button"
+                onClick={() => void removeFitnessGoal(g.id)}
+                className="text-xs text-rose-300 hover:text-rose-200"
+              >
+                Remove
+              </button>
+            </div>
+            <GoalNumericTargetEditor goal={g} />
           </div>
         ))}
       </div>
@@ -583,6 +674,7 @@ function GoalsPanel() {
           className="h-10 rounded-lg bg-zinc-950 border border-zinc-800 px-3 text-sm"
         />
         <select
+          aria-label="New goal category"
           value={category}
           onChange={(e) => setCategory(e.target.value as FitnessGoal['category'])}
           className="h-10 rounded-lg bg-zinc-950 border border-zinc-800 px-2 text-sm"

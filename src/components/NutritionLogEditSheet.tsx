@@ -5,7 +5,9 @@ import { kcalFromMacros } from '@/lib/macros';
 import { deriveMealMetrics, sortMealTimestamps } from '@/lib/mealTiming';
 import { flushDirty, localUpsert } from '@/lib/sync';
 import { fmtDate } from '@/lib/time';
-import type { NutritionLog } from '@/lib/types';
+import type { NutritionDayType, NutritionLog } from '@/lib/types';
+import { NUTRITION_DAY_TYPES } from '@/lib/types';
+import { defaultNutritionDayType } from '@/lib/nutritionDayType';
 
 /** Copied from RecoveryView nutrition form — keeps History edits aligned with Check-In. */
 function GoalProgressBar({
@@ -222,6 +224,13 @@ export function NutritionLogEditSheet({
     sortMealTimestamps(log.mealTimestamps ?? []),
   );
   const [busy, setBusy] = useState(false);
+  const [dayType, setDayType] = useState<NutritionDayType>(() =>
+    log.dayType ?? defaultNutritionDayType(log.date, []),
+  );
+
+  useEffect(() => {
+    setDayType(log.dayType ?? defaultNutritionDayType(log.date, []));
+  }, [log.id, log.date, log.dayType]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -257,6 +266,7 @@ export function NutritionLogEditSheet({
     await localUpsert('nutrition_logs', {
       id: log.id,
       date: log.date,
+      dayType,
       caloriesTarget: targetKcal,
       caloriesActual: actualKcal,
       proteinTargetG: pT,
@@ -309,6 +319,24 @@ export function NutritionLogEditSheet({
           <p className="text-xs text-zinc-500">
             Calories follow macros (4 kcal/g protein &amp; carbs, 9 kcal/g fat). Same rules as Daily Check-In.
           </p>
+
+          <div>
+            <label htmlFor="nutrition-day-type" className="text-xs text-zinc-500">
+              Day type (saved with macro targets)
+            </label>
+            <select
+              id="nutrition-day-type"
+              value={dayType}
+              onChange={(e) => setDayType(e.target.value as NutritionDayType)}
+              className="mt-1 block w-full max-w-xs h-10 rounded-lg bg-zinc-950 border border-zinc-800 px-3 text-sm text-zinc-200"
+            >
+              {NUTRITION_DAY_TYPES.map((dt) => (
+                <option key={dt} value={dt}>
+                  {dt === 'training' ? 'Training' : dt === 'liss' ? 'LISS cardio' : 'Rest'}
+                </option>
+              ))}
+            </select>
+          </div>
 
           <DerivedCaloriesRow
             targetKcal={targetKcal}

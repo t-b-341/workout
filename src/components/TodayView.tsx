@@ -149,6 +149,7 @@ export function TodayView() {
         mode: 'standard',
         deload: false,
         watchFlags: [],
+        sessionType: 'standard',
       };
       await localUpsert('session_logs', row);
     })().catch(() => {});

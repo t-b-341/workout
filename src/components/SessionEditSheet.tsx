@@ -13,11 +13,22 @@ import type {
   CardioType,
   Lift,
   Prescription,
+  SessionLabelType,
   SessionLog,
+  SetIntent,
   SetLog,
   SetStatus,
 } from '@/lib/types';
+import { SESSION_LABEL_TYPES } from '@/lib/types';
 import { LooseDecimalField, LooseIntField, RirStepper, DecimalStepper } from './WeightStepper';
+
+const SESSION_FOCUS_UI: Record<SessionLabelType, string> = {
+  accumulation: 'Accumulation block',
+  deload: 'Deload week',
+  pr_test: 'PR / strength test',
+  abbreviated: 'Short session',
+  standard: 'Standard',
+};
 
 const STATUSES: SetStatus[] = ['completed', 'reduced', 'skipped', 'substituted'];
 
@@ -73,6 +84,7 @@ export function SessionEditSheet({ session, initialSets, onClose }: Props) {
   const prescriptions = usePrescriptions(session.templateId);
   const lifts = useLifts();
   const [notes, setNotes] = useState(session.notes ?? '');
+  const [sessionFocus, setSessionFocus] = useState<SessionLabelType>(session.sessionType ?? 'standard');
   const [rows, setRows] = useState<SetLog[]>(initialSets);
 
   useEffect(() => {
@@ -82,6 +94,10 @@ export function SessionEditSheet({ session, initialSets, onClose }: Props) {
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose]);
+
+  useEffect(() => {
+    setSessionFocus(session.sessionType ?? 'standard');
+  }, [session.id, session.sessionType]);
 
   const liftMap = useMemo(() => new Map((lifts ?? []).map((l) => [l.id, l])), [lifts]);
   const rxList = useMemo(() => prescriptions ?? [], [prescriptions]);
@@ -105,6 +121,7 @@ export function SessionEditSheet({ session, initialSets, onClose }: Props) {
       await localUpsert('session_logs', {
         ...session,
         notes: trimmed || undefined,
+        sessionType: sessionFocus,
       });
 
       for (const row of rows) {
@@ -116,6 +133,7 @@ export function SessionEditSheet({ session, initialSets, onClose }: Props) {
         const snapRef = { id: lift.id, equipment: lift.equipment, loadUnit: lift.loadUnit };
         const next: SetLog = {
           ...row,
+          intent: row.intent ?? 'working',
           weight: snapWorkingWeight(w, snapRef),
           reps: r,
           rir: shouldTrackRpeForReps(r) && row.rir != null ? row.rir : undefined,
@@ -182,6 +200,22 @@ export function SessionEditSheet({ session, initialSets, onClose }: Props) {
             />
           </div>
 
+          <div>
+            <label htmlFor="session-focus" className="text-xs font-medium uppercase tracking-wide text-zinc-500">
+              Session focus
+            </label>
+            <select
+              id="session-focus"
+              value={sessionFocus}
+              onChange={(e) => setSessionFocus(e.target.value as SessionLabelType)}
+              className="mt-2 block w-full max-w-xs h-10 rounded-xl bg-zinc-900 border border-zinc-800 px-3 text-sm text-zinc-200"
+            >
+              {SESSION_LABEL_TYPES.map((t) => (
+                <option key={t} value={t}>{SESSION_FOCUS_UI[t]}</option>
+              ))}
+            </select>
+          </div>
+
           {rows.length === 0 ? (
             <p className="text-sm text-zinc-500">No sets logged for this session.</p>
           ) : (
@@ -239,6 +273,21 @@ export function SessionEditSheet({ session, initialSets, onClose }: Props) {
                               {st}
                             </option>
                           ))}
+                        </select>
+                      </label>
+                      <label className="text-xs text-zinc-500 shrink-0 min-w-[120px]">
+                        Intent
+                        <select
+                          value={row.intent ?? 'working'}
+                          onChange={(e) =>
+                            patchRow(row.id, { intent: e.target.value as SetIntent })
+                          }
+                          className="mt-1 block w-full h-9 rounded-lg bg-zinc-950 border border-zinc-700 px-2 text-sm text-zinc-200"
+                        >
+                          <option value="warmup">Warmup</option>
+                          <option value="working">Working</option>
+                          <option value="backoff">Backoff</option>
+                          <option value="max_test">PR / max test</option>
                         </select>
                       </label>
                       {shouldTrackRpeForReps(row.reps) ? (

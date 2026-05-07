@@ -1,10 +1,25 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import type { SessionLog, SessionMode, SessionTemplate, WatchFlag } from '@/lib/types';
 import { localUpsert } from '@/lib/sync';
 import { fmtDate } from '@/lib/time';
 import { effortLabel } from '@/lib/effort';
+import type {
+  SessionLabelType,
+  SessionLog,
+  SessionMode,
+  SessionTemplate,
+  WatchFlag,
+} from '@/lib/types';
+import { SESSION_LABEL_TYPES } from '@/lib/types';
+
+const SESSION_TYPE_LABELS: Record<SessionLabelType, string> = {
+  accumulation: 'Accumulation block',
+  deload: 'Deload week',
+  pr_test: 'PR / strength test',
+  abbreviated: 'Short session',
+  standard: 'Standard',
+};
 
 const FLAGS: { id: WatchFlag; label: string }[] = [
   { id: 'erectors', label: 'Erectors' },
@@ -55,6 +70,10 @@ export function SessionHeader({
   }
   async function setEffortScale(effortScale: -1 | 0 | 1) {
     await localUpsert('session_logs', { ...session, effortScale });
+  }
+
+  async function setSessionType(sessionType: SessionLabelType) {
+    await localUpsert('session_logs', { ...session, sessionType });
   }
 
   const modeLabel = session.mode === 'standard' ? 'Standard' : session.mode === 'light' ? 'Light' : 'Skipped';
@@ -110,6 +129,20 @@ export function SessionHeader({
             >{on ? '⚠ ' : ''}{f.label}</button>
           );
         })}
+      </div>
+
+      <div className="flex flex-wrap items-center gap-2">
+        <label className="text-xs text-zinc-500 shrink-0">Session focus</label>
+        <select
+          aria-label="Session type label"
+          value={session.sessionType ?? 'standard'}
+          onChange={(e) => void setSessionType(e.target.value as SessionLabelType)}
+          className="h-9 min-w-[140px] flex-1 max-w-[220px] rounded-lg bg-zinc-900 border border-zinc-800 px-2 text-sm text-zinc-200"
+        >
+          {SESSION_LABEL_TYPES.map((t) => (
+            <option key={t} value={t}>{SESSION_TYPE_LABELS[t]}</option>
+          ))}
+        </select>
       </div>
 
       {showModes && (

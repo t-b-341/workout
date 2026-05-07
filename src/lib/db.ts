@@ -278,10 +278,73 @@ export class WorkoutDB extends Dexie {
         }
       }
     });
+
+    // v10 — set intent, session label type, nutrition day type (optional JSON fields;
+    // stores match v9; upgrade backfills defaults for analysis + export).
+    this.version(10).stores({
+      lifts: 'id, name',
+      templates: 'id, dayOfWeek',
+      prescriptions: 'id, templateId, liftId, [templateId+order]',
+      session_logs: 'id, date, templateId',
+      set_logs: 'id, sessionLogId, liftId, [sessionLogId+liftId+setIndex]',
+      cardio_logs: 'id, date, sessionLogId',
+      bodyweight_logs: 'id, date, isoWeek',
+      body_measurement_logs: 'id, date',
+      readiness_logs: 'id, sessionLogId, date',
+      nutrition_logs: 'id, date',
+      hydration_logs: 'id, date',
+      sleep_logs: 'id, date',
+      stress_logs: 'id, date, loggedAt',
+      mindfulness_logs: 'id, date, loggedAt',
+      injury_episodes: 'id, siteKey, startedAt',
+      body_readiness_logs: 'id, date',
+      dirty: 'id, table, rowId, enqueuedAt',
+      meta: 'key',
+    }).upgrade(async (tx) => {
+      const intentOk = new Set(['warmup', 'working', 'backoff', 'max_test']);
+      const stOk = new Set(['accumulation', 'deload', 'pr_test', 'abbreviated', 'standard']);
+
+      const setT = tx.table('set_logs');
+      for (const row of await setT.toArray()) {
+        const r = row as { id: string; intent?: string };
+        if (r.intent == null || !intentOk.has(r.intent)) {
+          await setT.update(r.id, { intent: 'working' });
+        }
+      }
+
+      const sessT = tx.table('session_logs');
+      for (const row of await sessT.toArray()) {
+        const r = row as { id: string; sessionType?: string };
+        if (r.sessionType == null || !stOk.has(r.sessionType)) {
+          await sessT.update(r.id, { sessionType: 'standard' });
+        }
+      }
+
+      const dayOk = new Set(['training', 'rest', 'liss']);
+      const sessions = await sessT.toArray() as Array<{
+        date: string;
+        completedAt?: string;
+        mode: string;
+      }>;
+      const nutT = tx.table('nutrition_logs');
+      for (const row of await nutT.toArray()) {
+        const r = row as { id: string; date: string; dayType?: string };
+        if (r.dayType != null && dayOk.has(r.dayType)) continue;
+        let dayType: 'training' | 'rest' = 'rest';
+        const sess = sessions.find(
+          (s) =>
+            s.date === r.date
+            && Boolean(s.completedAt)
+            && s.mode !== 'skip',
+        );
+        if (sess) dayType = 'training';
+        await nutT.update(r.id, { dayType });
+      }
+    });
   }
 }
 
-export const SCHEMA_VERSION = 9;
+export const SCHEMA_VERSION = 10;
 
 let _db: WorkoutDB | null = null;
 export function getDb(): WorkoutDB {

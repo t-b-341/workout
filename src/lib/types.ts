@@ -92,12 +92,20 @@ export type Prescription = {
 
 export type SetStatus = 'completed' | 'reduced' | 'skipped' | 'substituted';
 
+export const SET_INTENTS = ['warmup', 'working', 'backoff', 'max_test'] as const;
+export type SetIntent = (typeof SET_INTENTS)[number];
+
 export type SetLog = {
   id: string;
   sessionLogId: string;
   liftId: string;
   prescriptionId: string;
   setIndex: number;
+  /**
+   * How you intended this set: warmup accessories, nominal work, backoff, or a true limit test.
+   * Defaults to `working` when unset (migration + legacy rows).
+   */
+  intent?: SetIntent;
   weight: number;
   reps: number;
   /** Reps in reserve (effort) when reps <= 12. */
@@ -120,6 +128,16 @@ export type SetLog = {
 export type SessionMode = 'standard' | 'light' | 'skip';
 export type WatchFlag = 'erectors' | 'elbow' | 'shoulder';
 
+/** Program/session classification (orthogonal to prescribed `mode` / deload toggle). */
+export const SESSION_LABEL_TYPES = [
+  'accumulation',
+  'deload',
+  'pr_test',
+  'abbreviated',
+  'standard',
+] as const;
+export type SessionLabelType = (typeof SESSION_LABEL_TYPES)[number];
+
 export type SessionLog = {
   id: string;
   /** ISO date YYYY-MM-DD in local time. */
@@ -127,6 +145,8 @@ export type SessionLog = {
   templateId: TemplateId;
   mode: SessionMode;
   deload: boolean;
+  /** How you categorize this workout for analysis. Defaults `standard`. */
+  sessionType?: SessionLabelType;
   reason?: string;
   watchFlags: WatchFlag[];
   notes?: string;
@@ -234,10 +254,15 @@ export type MindfulnessLog = {
   durationMin?: number;
 };
 
+export const NUTRITION_DAY_TYPES = ['training', 'rest', 'liss'] as const;
+export type NutritionDayType = (typeof NUTRITION_DAY_TYPES)[number];
+
 export type NutritionLog = {
   id: string;
   /** ISO date YYYY-MM-DD. */
   date: string;
+  /** Day classification when this row was saved (frozen for export accuracy). */
+  dayType?: NutritionDayType;
   caloriesTarget: number;
   caloriesActual: number;
   proteinTargetG: number;
