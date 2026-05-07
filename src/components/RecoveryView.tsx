@@ -76,7 +76,8 @@ type MacroRecommendation = {
 
 function buildTodayPerformanceRecommendations(input: {
   sleepHours?: number;
-  nutrition?: NutritionLog;
+  /** Previous calendar day’s nutrition — same lagging signal as the recovery composite. */
+  nutritionLagged?: NutritionLog;
   stress?: StressLog[];
 }): string[] {
   const out: string[] = [];
@@ -85,7 +86,7 @@ function buildTodayPerformanceRecommendations(input: {
     out.push('Sleep earlier tonight so total sleep is at least 9 hours.');
   }
 
-  const n = input.nutrition;
+  const n = input.nutritionLagged;
   if (n) {
     const low: string[] = [];
     const calT = kcalFromMacros(n.proteinTargetG, n.carbsTargetG, n.fatTargetG);
@@ -95,10 +96,10 @@ function buildTodayPerformanceRecommendations(input: {
     if (n.carbsActualG < n.carbsTargetG) low.push('carbs');
     if (n.fatActualG < n.fatTargetG) low.push('fats');
     if (low.length > 0) {
-      out.push(`Hit your macro targets today — bring up ${low.join(', ')}.`);
+      out.push(`Yesterday was below target on ${low.join(', ')} — prioritize those today.`);
     }
   } else {
-    out.push('Log nutrition and hit calories, protein, carbs, and fats today.');
+    out.push('No nutrition log for yesterday yet; the recovery score uses yesterday as a lagging fueling signal.');
   }
 
   const stressHigh =
@@ -223,7 +224,7 @@ function DailyRecoveryExplainSheet({
   const lines: Array<{ title: string; pct: number }> = [
     { title: 'Sleep', pct: weights.sleep },
     { title: 'Hydration', pct: weights.hydration },
-    { title: 'Nutrition', pct: weights.nutrition },
+    { title: 'Nutrition (yesterday)', pct: weights.nutrition },
     { title: 'Readiness', pct: weights.readiness },
   ];
   if (weights.stress != null) lines.push({ title: "Stress (avg of today's check-ins)", pct: weights.stress });
@@ -299,9 +300,10 @@ function DailyRecoveryExplainSheet({
           <section className="space-y-2">
             <h3 className="text-xs uppercase tracking-wider text-zinc-500">Missing logs</h3>
             <p className="text-zinc-400">
-              If a pillar has no data yet today, its pillar score defaults to{' '}
+              If a pillar has no usable data yet, its pillar score defaults to{' '}
               <span className="font-mono text-zinc-200">60</span> so the composite can still compute. Log the section below
-              to replace that placeholder with a real signal.
+              to replace that placeholder with a real signal. Nutrition specifically needs{' '}
+              <span className="text-zinc-200">yesterday&apos;s</span> log for a non-placeholder score.
             </p>
           </section>
 
@@ -334,9 +336,13 @@ function DailyRecoveryExplainSheet({
           <section className="space-y-2">
             <h3 className="text-xs uppercase tracking-wider text-zinc-500">Nutrition pillar</h3>
             <ul className="text-zinc-400 space-y-1 list-disc list-inside">
+              <li>
+                Uses <span className="text-zinc-200">yesterday&apos;s</span> nutrition log (lagging): same-day fueling
+                doesn&apos;t move this pillar until tomorrow.
+              </li>
               <li>Blends macros vs targets — protein carries the most weight, then calories, then carbs and fat (each capped the same way as hydration so modest overshoot doesn’t explode the score).</li>
-              <li>Calorie target/actual are derived from your macro targets in the nutrition log.</li>
-              <li>Tiny bump when meal timing shows at least three eating occasions logged for the day.</li>
+              <li>Calorie target/actual are derived from your macro targets in that log.</li>
+              <li>Tiny bump when meal timing shows at least three eating occasions logged for that day.</li>
             </ul>
           </section>
 
@@ -373,8 +379,10 @@ function DailyRecoveryExplainSheet({
 
 export function RecoveryView() {
   const date = todayIso();
+  const yesterday = addDaysIso(date, -1);
   const prefs = useRecoveryPrefs(); // always defined; live-updates when meta row changes
   const nutrition = useNutritionForDate(date);
+  const nutritionLagged = useNutritionForDate(yesterday);
   const hydration = useHydrationForDate(date);
   const sleep = useSleepForDate(date);
   const stress = useStressForDate(date);
@@ -389,21 +397,21 @@ export function RecoveryView() {
         date,
         sleep,
         hydration,
-        nutrition,
+        nutrition: nutritionLagged,
         readiness,
         stress: stress ?? [],
         mindfulness: mindfulness ?? [],
       }),
-    [date, sleep, hydration, nutrition, readiness, stress, mindfulness],
+    [date, sleep, hydration, nutritionLagged, readiness, stress, mindfulness],
   );
   const plan = useMemo(() => recoveryPlan(score.band), [score.band]);
   const performanceRecommendations = useMemo(
     () => buildTodayPerformanceRecommendations({
       sleepHours: sleep?.sleepHours,
-      nutrition,
+      nutritionLagged,
       stress: stress ?? [],
     }),
-    [sleep, nutrition, stress],
+    [sleep, nutritionLagged, stress],
   );
   const macroTrend = useMacroTrendAdvice(date);
   const [recoveryHelpOpen, setRecoveryHelpOpen] = useState(false);
@@ -458,7 +466,7 @@ export function RecoveryView() {
         <div className="mt-3 grid grid-cols-2 gap-2 text-sm">
           <Stat label="Sleep" value={score.sleepScore} />
           <Stat label="Hydration" value={score.hydrationScore} />
-          <Stat label="Nutrition" value={score.nutritionScore} />
+          <Stat label="Nutrition (yesterday)" value={score.nutritionScore} />
           <Stat label="Readiness" value={score.readinessScore} />
           <Stat label="Stress" value={score.stressScore ?? '—'} />
           <Stat label="Mindfulness" value={score.mindfulnessScore ?? '—'} />
