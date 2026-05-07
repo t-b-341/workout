@@ -20,6 +20,7 @@ import type {
   SleepLog,
   StressLog,
 } from './types';
+import { TRAINING_PLAN_GOALS, type TrainingPlanGoalRow } from './trainingPlanGoals';
 
 /** Keys this app uses in `localStorage` (UI prefs only; not secrets). */
 const KNOWN_LOCALSTORAGE_KEYS = [
@@ -32,6 +33,8 @@ export type FullLocalExport = {
   kind: 'workout-full-local-v1';
   schemaVersion: number;
   exportedAt: string;
+  /** Overall program intent from `docs/program.md` (stable snapshot for backups / LLMs). */
+  training_plan_goals: TrainingPlanGoalRow[];
   localStorage: Record<string, string | null>;
   lifts: Lift[];
   templates: SessionTemplate[];
@@ -113,6 +116,7 @@ export async function buildFullLocalExport(): Promise<FullLocalExport> {
     kind: 'workout-full-local-v1',
     schemaVersion: SCHEMA_VERSION,
     exportedAt: new Date().toISOString(),
+    training_plan_goals: [...TRAINING_PLAN_GOALS],
     localStorage: snapshotKnownLocalStorage(),
     lifts,
     templates,
