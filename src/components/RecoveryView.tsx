@@ -8,11 +8,13 @@ import {
   useMacroTrendAdvice,
   useMindfulnessForDate,
   useNutritionForDate,
+  useAllCardio,
   useSleepForDate,
   useStressForDate,
   useTodayPlanTemplateId,
   useTodaySession,
   useReadinessForSession,
+  useAllSessions,
 } from '@/lib/hooks';
 import {
   averageStressRating,
@@ -35,7 +37,7 @@ import { flushDirty, localDelete, localUpsert } from '@/lib/sync';
 import { todayIso } from '@/lib/time';
 import type { HydrationLog, NutritionDayType, NutritionLog, StressLog } from '@/lib/types';
 import { NUTRITION_DAY_TYPES } from '@/lib/types';
-import { defaultNutritionDayType } from '@/lib/nutritionDayType';
+import { defaultNutritionDayType, resolveNutritionTargetsForDate } from '@/lib/nutritionDayType';
 import { BodyweightQuickLog } from './BodyweightQuickLog';
 import { InjuryTrackingPanel } from './InjuryTrackingPanel';
 import { MacroTrendCallout } from './MacroTrendCallout';
@@ -1134,20 +1136,51 @@ function NutritionSectionForm({
 }) {
   const allBodyweight = useAllBodyweight();
   const allNutrition = useAllNutrition();
+  const allSessions = useAllSessions();
+  const allCardio = useAllCardio();
   const nt = prefs.nutritionTargets;
   const [goal, setGoal] = useState<MacroGoal>('maintenance');
   const [trendWindow, setTrendWindow] = useState<TrendWindowDays>(14);
-  const [pT, setPT] = useState(existing?.proteinTargetG ?? nt.proteinG);
-  const [cT, setCT] = useState(existing?.carbsTargetG ?? nt.carbsG);
-  const [fT, setFT] = useState(existing?.fatTargetG ?? nt.fatG);
+  const resolvedDayTypeForNutrition = useMemo(
+    () => defaultNutritionDayType(date, allSessions ?? [], allCardio ?? []),
+    [date, allSessions, allCardio],
+  );
+  const historicalTargets = useMemo(
+    () =>
+      resolveNutritionTargetsForDate({
+        date,
+        resolvedDayType: resolvedDayTypeForNutrition,
+        nutritionLogs: allNutrition ?? [],
+        currentTargets: {
+          proteinG: nt.proteinG,
+          carbsG: nt.carbsG,
+          fatG: nt.fatG,
+        },
+      }),
+    [date, resolvedDayTypeForNutrition, allNutrition, nt.proteinG, nt.carbsG, nt.fatG],
+  );
+  const [pT, setPT] = useState(existing?.proteinTargetG ?? historicalTargets.proteinG);
+  const [cT, setCT] = useState(existing?.carbsTargetG ?? historicalTargets.carbsG);
+  const [fT, setFT] = useState(existing?.fatTargetG ?? historicalTargets.fatG);
+  const targetSyncKey = `${existing?.id ?? 'new'}|${historicalTargets.proteinG}|${historicalTargets.carbsG}|${historicalTargets.fatG}`;
+  const [targetSyncSeen, setTargetSyncSeen] = useState(targetSyncKey);
+  if (targetSyncKey !== targetSyncSeen) {
+    setTargetSyncSeen(targetSyncKey);
+    if (!existing) {
+      setPT(historicalTargets.proteinG);
+      setCT(historicalTargets.carbsG);
+      setFT(historicalTargets.fatG);
+    }
+  }
 
   const [pA, setPA] = useState(existing?.proteinActualG ?? 0);
   const [cA, setCA] = useState(existing?.carbsActualG ?? 0);
   const [fA, setFA] = useState(existing?.fatActualG ?? 0);
 
-  const defaultDayTypeForNutrition = useMemo(() => defaultNutritionDayType(date, []), [date]);
+  const defaultDayTypeForNutrition = resolvedDayTypeForNutrition;
   const dayTypeFromLog = existing?.dayType ?? defaultDayTypeForNutrition;
-  const nutritionDayTypeSyncKey = `${existing?.id ?? 'none'}|${String(existing?.dayType ?? '')}|${date}`;
+  const nutritionDayTypeSyncKey =
+    `${existing?.id ?? 'none'}|${String(existing?.dayType ?? '')}|${defaultDayTypeForNutrition}|${date}`;
   const [dayType, setDayType] = useState<NutritionDayType>(dayTypeFromLog);
   const [nutritionDayTypeKeySeen, setNutritionDayTypeKeySeen] = useState(nutritionDayTypeSyncKey);
   if (nutritionDayTypeSyncKey !== nutritionDayTypeKeySeen) {

@@ -8,6 +8,7 @@ import {
 import { isoWeekOf, sortSetsChronologically } from './stats';
 import type {
   BodyweightLog,
+  InjuryEpisode,
   Lift,
   NutritionDayType,
   NutritionLog,
@@ -102,7 +103,10 @@ export type InjuryFlagRow = {
   date: string;
   sessionId: string;
   sessionType: string;
-  flag: 'abbreviated' | 'high_skip_rate' | 'note_keyword';
+  flag: 'injury_episode' | 'abbreviated' | 'note_keyword' | 'high_skip_rate';
+  affectedSite: string | null;
+  liftId: string | null;
+  liftName: string | null;
   detail: string;
 };
 
@@ -151,19 +155,28 @@ export type MesoAnalysisReport = {
   sectionNullNotes?: Partial<Record<MesoAnalysisSectionKey, string>>;
 };
 
-const NOTE_KEYS = [
-  'pain',
-  'tweak',
-  'strain',
-  'sore',
-  'injury',
-  'hurt',
-  'wrist',
-  'back',
-  'knee',
-  'shoulder',
-  'elbow',
-] as const;
+const SITE_TO_LIFT_IDS = {
+  'wrist-L': ['front_squat', 'fs', 'p1_eccentric', 'p1_bw', 'p1_assisted', 'farmers_carry'],
+  'wrist-R': ['front_squat', 'fs', 'p1_eccentric', 'p1_bw', 'p1_assisted', 'farmers_carry'],
+  'lower-back': ['deadlift', 'dl', 'rdl', 'back_squat', 'bs', 'pp', 'deficit_bbr', 'bbr'],
+  'knee-L': ['back_squat', 'bs', 'bss', 'rdl', 'front_squat'],
+  'knee-R': ['back_squat', 'bs', 'bss', 'rdl', 'front_squat'],
+  'shoulder-L': ['ohp', 'pp', 'bp', 'bp_paused', 'wgbp', 'cgbp'],
+  'shoulder-R': ['ohp', 'pp', 'bp', 'bp_paused', 'wgbp', 'cgbp'],
+  'elbow-L': ['ohp', 'bp', 'wgbp', 'cgbp', 'jm_press', 'curls', 'ubr', 'bbr'],
+  'elbow-R': ['ohp', 'bp', 'wgbp', 'cgbp', 'jm_press', 'curls', 'ubr', 'bbr'],
+} as const;
+
+const NOTE_SITE_KEYWORDS: Array<{ re: RegExp; sites: readonly (keyof typeof SITE_TO_LIFT_IDS)[] }> = [
+  { re: /\bwrist\b/i, sites: ['wrist-L', 'wrist-R'] },
+  { re: /\blower\s+back\b/i, sites: ['lower-back'] },
+  { re: /\bback\b/i, sites: ['lower-back'] },
+  { re: /\bknee\b/i, sites: ['knee-L', 'knee-R'] },
+  { re: /\bshoulder\b/i, sites: ['shoulder-L', 'shoulder-R'] },
+  { re: /\belbow\b/i, sites: ['elbow-L', 'elbow-R'] },
+];
+
+const NOTE_SYMPTOM_RE = /\b(?:pain|tweak|strain|injury|hurt|sore)\b/i;
 
 function intentOf(s: SetLog): SetIntent {
   if (s.intent && (SET_INTENTS as readonly string[]).includes(s.intent)) return s.intent;
@@ -224,6 +237,7 @@ export function computeMesoAnalysis(args: {
   sleep_logs: SleepLog[];
   stress_logs: StressLog[];
   mindfulness_logs: Array<{ date: string; durationMin?: number }>;
+  injury_episodes: InjuryEpisode[];
   programTargets: SummaryProgramTarget[];
   mesoStartDate: string | null | undefined;
   mesoEndDate: string | null | undefined;
@@ -616,16 +630,111 @@ export function computeMesoAnalysis(args: {
   // ----- injuryFlags -----
   let injuryFlags: InjuryFlagRow[] | null = null;
   const flags: InjuryFlagRow[] = [];
-  const kwRe = new RegExp(NOTE_KEYS.join('|'), 'i');
+  const seen = new Set<string>();
+
+  function addFlag(flag: InjuryFlagRow) {
+    const key = [
+      flag.date,
+      flag.sessionId,
+      flag.flag,
+      flag.affectedSite ?? '',
+      flag.liftId ?? '',
+      flag.detail,
+    ].join('|');
+    if (seen.has(key)) return;
+    seen.add(key);
+    flags.push(flag);
+  }
+
+  function isEpisodeActiveOnDate(ep: InjuryEpisode, dateIso: string): boolean {
+    const start = ep.startedAt.slice(0, 10);
+    const end = ep.endedAt?.slice(0, 10) ?? null;
+    if (cmpIsoDate(start, dateIso) > 0) return false;
+    if (end && cmpIsoDate(end, dateIso) < 0) return false;
+    return true;
+  }
+
+  function liftMatchesSite(liftId: string, siteKey: string): boolean {
+    const allowed = SITE_TO_LIFT_IDS[siteKey as keyof typeof SITE_TO_LIFT_IDS];
+    return Array.isArray(allowed) ? allowed.includes(liftId as never) : false;
+  }
+
+  function sitesFromNote(notes: string): Array<keyof typeof SITE_TO_LIFT_IDS> {
+    const out = new Set<keyof typeof SITE_TO_LIFT_IDS>();
+    for (const k of NOTE_SITE_KEYWORDS) {
+      if (!k.re.test(notes)) continue;
+      for (const s of k.sites) out.add(s);
+    }
+    return [...out];
+  }
 
   for (const s of sessionsFiltered) {
     const stype = s.sessionType ?? 'standard';
+    const sessionSets = setsInWindow.filter((st) => st.sessionLogId === s.id);
+
+    // Rule 1: injury episodes active on this date only flag lifts that match the site's mapping.
+    const activeEpisodes = args.injury_episodes.filter((ep) => isEpisodeActiveOnDate(ep, s.date));
+    for (const ep of activeEpisodes) {
+      for (const st of sessionSets) {
+        if (!liftMatchesSite(st.liftId, ep.siteKey)) continue;
+        addFlag({
+          date: s.date,
+          sessionId: s.id,
+          sessionType: stype,
+          flag: 'injury_episode',
+          affectedSite: ep.siteKey,
+          liftId: st.liftId,
+          liftName: liftById.get(st.liftId)?.name ?? st.liftId,
+          detail: `Active injury episode at ${ep.siteKey} matched lift ${liftById.get(st.liftId)?.name ?? st.liftId}.`,
+        });
+      }
+    }
+
+    // Rule 2: note keywords only flag mapped lifts for implied body sites.
+    const notes = s.notes?.trim() ?? '';
+    if (notes) {
+      const impliedSites = sitesFromNote(notes);
+      for (const site of impliedSites) {
+        for (const st of sessionSets) {
+          if (!liftMatchesSite(st.liftId, site)) continue;
+          addFlag({
+            date: s.date,
+            sessionId: s.id,
+            sessionType: stype,
+            flag: 'note_keyword',
+            affectedSite: site,
+            liftId: st.liftId,
+            liftName: liftById.get(st.liftId)?.name ?? st.liftId,
+            detail: `Session note implied ${site}; mapped lift ${liftById.get(st.liftId)?.name ?? st.liftId} flagged.`,
+          });
+        }
+      }
+      // Generic symptoms (without site keywords) are session-level only.
+      if (NOTE_SYMPTOM_RE.test(notes) && impliedSites.length === 0) {
+        const excerpt = notes.length > 120 ? `${notes.slice(0, 117)}…` : notes;
+        addFlag({
+          date: s.date,
+          sessionId: s.id,
+          sessionType: stype,
+          flag: 'note_keyword',
+          affectedSite: null,
+          liftId: null,
+          liftName: null,
+          detail: excerpt,
+        });
+      }
+    }
+
+    // Rule 3: abbreviated sessions are session-level.
     if (stype === 'abbreviated') {
-      flags.push({
+      addFlag({
         date: s.date,
         sessionId: s.id,
         sessionType: stype,
         flag: 'abbreviated',
+        affectedSite: null,
+        liftId: null,
+        liftName: null,
         detail: 'Session labeled abbreviated.',
       });
     }
@@ -638,32 +747,24 @@ export function computeMesoAnalysis(args: {
             .map((st) => liftById.get(st.liftId)?.name ?? st.liftId),
         ),
       ];
-      flags.push({
+      addFlag({
         date: s.date,
         sessionId: s.id,
         sessionType: stype,
         flag: 'high_skip_rate',
+        affectedSite: null,
+        liftId: null,
+        liftName: null,
         detail:
           liftsSkipped.length > 0
             ? `Completion ${pct.toFixed(0)}%; skipped: ${liftsSkipped.join(', ')}`
             : `Completion ${pct.toFixed(0)}%.`,
       });
     }
-    const notes = s.notes?.trim();
-    if (notes && kwRe.test(notes)) {
-      const excerpt = notes.length > 120 ? `${notes.slice(0, 117)}…` : notes;
-      flags.push({
-        date: s.date,
-        sessionId: s.id,
-        sessionType: stype,
-        flag: 'note_keyword',
-        detail: excerpt,
-      });
-    }
   }
   injuryFlags = flags.length ? flags.sort((a, b) => cmpIsoDate(a.date, b.date)) : null;
   if (!injuryFlags) {
-    sectionNullNotes.injuryFlags = 'No abbreviated sessions, low-completion sessions, or keyword notes.';
+    sectionNullNotes.injuryFlags = 'No active injury episodes, mapped note-keyword flags, abbreviated sessions, or low-completion sessions.';
   }
 
   // ----- mindfulnessAdherence -----

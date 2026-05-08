@@ -14,7 +14,16 @@ import {
   useTemplates,
 } from '@/lib/hooks';
 import { localDelete, localUpsert, flushDirty, pullAll } from '@/lib/sync';
-import type { Lift, Prescription, SessionLog, SessionTemplate, SetLog, TemplateId } from '@/lib/types';
+import type {
+  Lift,
+  Prescription,
+  SessionLabelType,
+  SessionLog,
+  SessionTemplate,
+  SetIntent,
+  SetLog,
+  TemplateId,
+} from '@/lib/types';
 import { getDb } from '@/lib/db';
 import { defaultTemplateForLocalDate, sortTemplatesProgramOrder } from '@/lib/seed';
 import {
@@ -81,6 +90,37 @@ type MesocycleFormDraft = {
   deload: string;
 };
 
+type ExportWizardStep = 1 | 2 | 3;
+
+type SessionReviewRow = {
+  sessionId: string;
+  date: string;
+  templateId: string;
+  templateName: string;
+  durationMin: number | null;
+  completionPct: number | null;
+  currentType: SessionLabelType;
+  suggestedType: SessionLabelType | null;
+  selectedType: SessionLabelType;
+};
+
+type SetIntentReviewRow = {
+  setId: string;
+  sessionId: string;
+  date: string;
+  liftId: string;
+  liftName: string;
+  setIndex: number;
+  reps: number;
+  weight: number;
+  currentIntent: SetIntent;
+  suggestedIntent: SetIntent;
+  selectedIntent: SetIntent;
+};
+
+const SESSION_TYPE_OPTIONS: SessionLabelType[] = ['standard', 'accumulation', 'deload', 'pr_test', 'abbreviated'];
+const INTENT_OPTIONS: SetIntent[] = ['warmup', 'working', 'backoff', 'max_test'];
+
 export function ProgramEditor() {
   const templates = useTemplates();
   const lifts = useLifts();
@@ -104,6 +144,10 @@ export function ProgramEditor() {
   const [exportMesoEnd, setExportMesoEnd] = useState('');
   const [exporting, setExporting] = useState(false);
   const [exportingClaude, setExportingClaude] = useState<'idle' | 'md' | 'txt' | 'upMd' | 'upTxt'>('idle');
+  const [exportWizardOpen, setExportWizardOpen] = useState(false);
+  const [exportWizardStep, setExportWizardStep] = useState<ExportWizardStep>(1);
+  const [sessionReviewRows, setSessionReviewRows] = useState<SessionReviewRow[]>([]);
+  const [setIntentReviewRows, setSetIntentReviewRows] = useState<SetIntentReviewRow[]>([]);
 
   const templatesProgramOrder = useMemo(
     () => (templates?.length ? sortTemplatesProgramOrder(templates) : []),
@@ -272,12 +316,198 @@ export function ProgramEditor() {
     }
   }
 
+  function isoToday(): string {
+    return new Date().toISOString().slice(0, 10);
+  }
+
+  function inWindow(date: string, start: string, end: string): boolean {
+    return date >= start && date <= end;
+  }
+
+  function defaultSessionType(s: SessionLog): SessionLabelType {
+    return s.sessionType ?? 'standard';
+  }
+
+  function defaultIntent(st: SetLog): SetIntent {
+    return st.intent ?? 'working';
+  }
+
+  async function openExportWizard(nextStep: ExportWizardStep = 1) {
+    const db = getDb();
+    const [sessionsAll, setsAll, templatesAll, prescriptionsAll, liftsAll] = await Promise.all([
+      db.session_logs.toArray(),
+      db.set_logs.toArray(),
+      db.templates.toArray(),
+      db.prescriptions.toArray(),
+      db.lifts.toArray(),
+    ]);
+    const sortedDates = [...new Set(sessionsAll.map((s) => s.date))].sort();
+    const start = exportMesoStart.trim() || sortedDates[0] || isoToday();
+    const end = exportMesoEnd.trim() || isoToday();
+    setExportMesoStart(start);
+    setExportMesoEnd(end);
+
+    const templatesById = new Map(templatesAll.map((t) => [t.id, t]));
+    const liftsById = new Map(liftsAll.map((l) => [l.id, l]));
+    const setsBySession = new Map<string, SetLog[]>();
+    for (const st of setsAll) {
+      const arr = setsBySession.get(st.sessionLogId) ?? [];
+      arr.push(st);
+      setsBySession.set(st.sessionLogId, arr);
+    }
+    const maxByLift = new Map<string, number>();
+    for (const st of setsAll) {
+      const cur = maxByLift.get(st.liftId) ?? 0;
+      if (st.weight > cur) maxByLift.set(st.liftId, st.weight);
+    }
+
+    const sessionsWin = sessionsAll.filter((s) => inWindow(s.date, start, end));
+    const durationList = sessionsWin
+      .map((s) => {
+        if (!s.startedAt || !s.completedAt) return null;
+        const ms = Date.parse(s.completedAt) - Date.parse(s.startedAt);
+        return Number.isFinite(ms) && ms > 0 ? ms / 60000 : null;
+      })
+      .filter((x): x is number => x != null);
+    const avgDuration = durationList.length ? durationList.reduce((a, b) => a + b, 0) / durationList.length : 0;
+
+    const sessionRows: SessionReviewRow[] = sessionsWin.map((s) => {
+      const sets = setsBySession.get(s.id) ?? [];
+      const completed = sets.filter((st) => st.status === 'completed').length;
+      const programmed = prescriptionsAll
+        .filter((p) => p.templateId === s.templateId)
+        .reduce((sum, p) => sum + p.sets, 0);
+      const completionPct = programmed > 0 ? (completed / programmed) * 100 : null;
+      const durationMin =
+        s.startedAt && s.completedAt
+          ? Math.max(0, Math.round((Date.parse(s.completedAt) - Date.parse(s.startedAt)) / 60000))
+          : null;
+
+      let suggestedType: SessionLabelType | null = null;
+      const singlesNearMax = sets.filter((st) => st.reps === 1 && st.weight >= (maxByLift.get(st.liftId) ?? 0) * 0.9).length;
+      if (singlesNearMax >= 3) suggestedType = 'pr_test';
+      if (suggestedType == null) {
+        const shortSession = durationMin != null && avgDuration > 0 && durationMin < avgDuration * 0.6;
+        const lowCompletion = completionPct != null && completionPct < 70;
+        if (shortSession || lowCompletion) suggestedType = 'abbreviated';
+      }
+      if (suggestedType == null) {
+        const byLift = new Map<string, number[]>();
+        for (const st of sets) {
+          if (defaultIntent(st) !== 'working' || st.status !== 'completed') continue;
+          const list = byLift.get(st.liftId) ?? [];
+          list.push(st.weight);
+          byLift.set(st.liftId, list);
+        }
+        let deloadHits = 0;
+        for (const [liftId, ws] of byLift) {
+          const liftWindow = setsAll
+            .filter((x) => x.liftId === liftId)
+            .filter((x) => {
+              const sess = sessionsAll.find((ss) => ss.id === x.sessionLogId);
+              return sess ? inWindow(sess.date, start, end) : false;
+            })
+            .filter((x) => defaultIntent(x) === 'working' && x.status === 'completed')
+            .map((x) => x.weight);
+          if (!liftWindow.length || !ws.length) continue;
+          const rolling = liftWindow.reduce((a, b) => a + b, 0) / liftWindow.length;
+          const sessionAvg = ws.reduce((a, b) => a + b, 0) / ws.length;
+          if (sessionAvg <= rolling * 0.85) deloadHits += 1;
+        }
+        if (deloadHits > 0) suggestedType = 'deload';
+      }
+
+      const currentType = defaultSessionType(s);
+      return {
+        sessionId: s.id,
+        date: s.date,
+        templateId: s.templateId,
+        templateName: templatesById.get(s.templateId)?.name ?? s.templateId,
+        durationMin,
+        completionPct,
+        currentType,
+        suggestedType,
+        selectedType: suggestedType ?? currentType,
+      };
+    }).sort((a, b) => (a.date < b.date ? -1 : 1));
+
+    const maxInWindowByLift = new Map<string, number>();
+    const sessionIdsWin = new Set(sessionsWin.map((s) => s.id));
+    for (const st of setsAll.filter((x) => sessionIdsWin.has(x.sessionLogId))) {
+      const cur = maxInWindowByLift.get(st.liftId) ?? 0;
+      if (st.weight > cur) maxInWindowByLift.set(st.liftId, st.weight);
+    }
+    const intentRows: SetIntentReviewRow[] = [];
+    for (const s of sessionsWin) {
+      const sets = [...(setsBySession.get(s.id) ?? [])].sort((a, b) => a.setIndex - b.setIndex);
+      const byLift = new Map<string, SetLog[]>();
+      for (const st of sets) {
+        const arr = byLift.get(st.liftId) ?? [];
+        arr.push(st);
+        byLift.set(st.liftId, arr);
+      }
+      for (const [liftId, liftSets] of byLift) {
+        const workingAvg =
+          liftSets
+            .filter((st) => defaultIntent(st) === 'working' && st.status === 'completed')
+            .map((st) => st.weight)
+            .reduce((a, b, _, arr) => a + b / (arr.length || 1), 0) || null;
+        for (let i = 0; i < liftSets.length; i++) {
+          const st = liftSets[i]!;
+          const curIntent = defaultIntent(st);
+          if (curIntent !== 'working') continue;
+          let suggested: SetIntent | null = null;
+          if (st.reps === 1 && st.weight >= (maxInWindowByLift.get(liftId) ?? 0) * 0.9) suggested = 'max_test';
+          if (!suggested && workingAvg != null) {
+            const clearlySub = st.weight <= workingAvg * 0.5 || (i <= 1 && st.weight < workingAvg * 0.85);
+            if (clearlySub) suggested = 'warmup';
+          }
+          if (!suggested) {
+            const priorHeavier = liftSets.slice(0, i).some((prev) => prev.weight >= st.weight / 0.9);
+            if (priorHeavier) suggested = 'backoff';
+          }
+          if (!suggested) continue;
+          intentRows.push({
+            setId: st.id,
+            sessionId: s.id,
+            date: s.date,
+            liftId,
+            liftName: liftsById.get(liftId)?.name ?? liftId,
+            setIndex: st.setIndex,
+            reps: st.reps,
+            weight: st.weight,
+            currentIntent: curIntent,
+            suggestedIntent: suggested,
+            selectedIntent: suggested,
+          });
+        }
+      }
+    }
+
+    setSessionReviewRows(sessionRows);
+    setSetIntentReviewRows(intentRows.sort((a, b) => (a.date === b.date ? a.setIndex - b.setIndex : a.date < b.date ? -1 : 1)));
+    setExportWizardStep(nextStep);
+    setExportWizardOpen(true);
+  }
+
   async function exportAll() {
     setExporting(true);
     try {
+      const sessionTypeOverrides = Object.fromEntries(
+        sessionReviewRows
+          .filter((r) => r.selectedType !== r.currentType)
+          .map((r) => [r.sessionId, r.selectedType]),
+      );
+      const setIntentOverrides = Object.fromEntries(
+        setIntentReviewRows
+          .filter((r) => r.selectedIntent !== r.currentIntent)
+          .map((r) => [r.setId, r.selectedIntent]),
+      );
       const dump = await buildFullLocalExport({
         mesoStartDate: exportMesoStart.trim() || undefined,
         mesoEndDate: exportMesoEnd.trim() || undefined,
+        sessionTypeOverrides,
+        setIntentOverrides,
       });
       const blob = new Blob([JSON.stringify(dump, null, 2)], { type: 'application/json' });
       const url = URL.createObjectURL(blob);
@@ -286,6 +516,7 @@ export function ProgramEditor() {
       a.download = `workout-${new Date().toISOString().slice(0, 10)}.json`;
       a.click();
       URL.revokeObjectURL(url);
+      setExportWizardOpen(false);
     } finally {
       setExporting(false);
     }
@@ -340,30 +571,170 @@ export function ProgramEditor() {
           >
             Meso analysis
           </Link>
-          <input
-            type="date"
-            aria-label="Mesocycle start (optional, for export)"
-            value={exportMesoStart}
-            onChange={(e) => setExportMesoStart(e.target.value)}
-            className="h-10 rounded-lg bg-zinc-950 border border-zinc-800 px-2 text-sm text-zinc-300"
-          />
-          <input
-            type="date"
-            aria-label="Mesocycle end (optional, for export)"
-            value={exportMesoEnd}
-            onChange={(e) => setExportMesoEnd(e.target.value)}
-            className="h-10 rounded-lg bg-zinc-950 border border-zinc-800 px-2 text-sm text-zinc-300"
-          />
           <button
             type="button"
-            onClick={exportAll}
+            onClick={() => void openExportWizard()}
             disabled={exporting || exportingClaude !== 'idle'}
             className="h-10 px-3 rounded-lg bg-zinc-800 text-sm disabled:opacity-50"
           >
-            {exporting ? 'Exporting…' : 'Full JSON'}
+            {exporting ? 'Exporting…' : 'Full JSON (guided)'}
           </button>
         </div>
       </div>
+      {exportWizardOpen && (
+        <div className="fixed inset-0 z-[100] flex items-end justify-center sm:items-center p-0 sm:p-4">
+          <button
+            type="button"
+            aria-label="Close export wizard"
+            className="absolute inset-0 bg-black/70"
+            onClick={() => setExportWizardOpen(false)}
+          />
+          <div className="relative w-full max-w-4xl rounded-t-3xl sm:rounded-3xl border border-zinc-800 bg-zinc-950 shadow-2xl max-h-[90dvh] flex flex-col">
+            <div className="p-4 border-b border-zinc-800 flex items-center justify-between">
+              <div>
+                <div className="text-xs uppercase tracking-wider text-zinc-500">Guided export</div>
+                <h2 className="text-lg font-semibold">Step {exportWizardStep} of 3</h2>
+              </div>
+              <button type="button" className="h-9 px-3 rounded-lg bg-zinc-800 text-sm" onClick={() => setExportWizardOpen(false)}>
+                Close
+              </button>
+            </div>
+            <div className="p-4 overflow-y-auto space-y-4">
+              {exportWizardStep === 1 && (
+                <div className="space-y-3">
+                  <div className="text-sm text-zinc-300">Confirm mesocycle window for this export.</div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <label className="text-xs text-zinc-500">Meso start
+                      <input
+                        type="date"
+                        value={exportMesoStart}
+                        onChange={(e) => setExportMesoStart(e.target.value)}
+                        className="mt-1 h-10 w-full rounded-lg bg-zinc-900 border border-zinc-800 px-2 text-sm text-zinc-200"
+                      />
+                    </label>
+                    <label className="text-xs text-zinc-500">Meso end
+                      <input
+                        type="date"
+                        value={exportMesoEnd}
+                        onChange={(e) => setExportMesoEnd(e.target.value)}
+                        className="mt-1 h-10 w-full rounded-lg bg-zinc-900 border border-zinc-800 px-2 text-sm text-zinc-200"
+                      />
+                    </label>
+                  </div>
+                  <p className="text-xs text-zinc-500">These values populate `summary.mesoStartDate` / `summary.mesoEndDate`.</p>
+                </div>
+              )}
+              {exportWizardStep === 2 && (
+                <div className="space-y-3">
+                  <div className="text-sm text-zinc-300">Review session types in the selected window.</div>
+                  <div className="space-y-2">
+                    {sessionReviewRows.map((r) => (
+                      <div key={r.sessionId} className={`rounded-lg border p-2 ${r.suggestedType && r.suggestedType !== r.currentType ? 'border-amber-500/50 bg-amber-500/10' : 'border-zinc-800 bg-zinc-900'}`}>
+                        <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+                          <div className="text-zinc-300">
+                            {fmtDate(r.date)} · {r.templateId} · {r.templateName}
+                            {r.durationMin != null ? ` · ${r.durationMin}m` : ''}
+                            {r.completionPct != null ? ` · ${r.completionPct.toFixed(0)}% completion` : ''}
+                          </div>
+                          {r.suggestedType && <span className="text-amber-300">Suggested: {r.suggestedType}</span>}
+                        </div>
+                        <div className="mt-2 flex flex-wrap gap-2">
+                          {SESSION_TYPE_OPTIONS.map((opt) => (
+                            <button
+                              key={opt}
+                              type="button"
+                              onClick={() => setSessionReviewRows((prev) => prev.map((x) => x.sessionId === r.sessionId ? { ...x, selectedType: opt } : x))}
+                              className={`h-8 px-2 rounded-md text-xs ${r.selectedType === opt ? 'bg-amber-500 text-zinc-950' : 'bg-zinc-800 text-zinc-300'}`}
+                            >
+                              {opt}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {exportWizardStep === 3 && (
+                <div className="space-y-3">
+                  <div className="text-sm text-zinc-300">Review likely misclassified set intents.</div>
+                  {[...new Set(setIntentReviewRows.map((r) => r.sessionId))].map((sid) => {
+                    const rows = setIntentReviewRows.filter((r) => r.sessionId === sid);
+                    const d = rows[0]?.date ?? '';
+                    return (
+                      <div key={sid} className="rounded-lg border border-zinc-800 bg-zinc-900 p-3 space-y-2">
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="text-sm font-medium">{fmtDate(d)}</div>
+                          <button
+                            type="button"
+                            className="h-8 px-2 rounded-md bg-zinc-800 text-xs"
+                            onClick={() => setSetIntentReviewRows((prev) => prev.map((x) => x.sessionId === sid ? { ...x, selectedIntent: x.suggestedIntent } : x))}
+                          >
+                            Mark all as suggested
+                          </button>
+                        </div>
+                        {rows.map((r) => (
+                          <div key={r.setId} className="rounded-md border border-zinc-800 p-2 text-xs">
+                            <div className="text-zinc-300">{r.liftName} · set #{r.setIndex + 1} · {r.weight} x {r.reps}</div>
+                            <div className="text-zinc-500">Current: {r.currentIntent} · Suggested: {r.suggestedIntent}</div>
+                            <div className="mt-1 flex flex-wrap gap-1.5">
+                              {INTENT_OPTIONS.map((opt) => (
+                                <button
+                                  key={opt}
+                                  type="button"
+                                  onClick={() => setSetIntentReviewRows((prev) => prev.map((x) => x.setId === r.setId ? { ...x, selectedIntent: opt } : x))}
+                                  className={`h-7 px-2 rounded-md ${r.selectedIntent === opt ? 'bg-amber-500 text-zinc-950' : 'bg-zinc-800 text-zinc-300'}`}
+                                >
+                                  {opt}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    );
+                  })}
+                  {setIntentReviewRows.length === 0 && <div className="text-sm text-zinc-500">No likely misclassified working sets found in this window.</div>}
+                </div>
+              )}
+            </div>
+            <div className="p-4 border-t border-zinc-800 flex items-center justify-between gap-2">
+              <button
+                type="button"
+                disabled={exportWizardStep === 1}
+                onClick={() => setExportWizardStep((s) => (s === 1 ? 1 : s === 2 ? 1 : 2))}
+                className="h-10 px-3 rounded-lg bg-zinc-800 text-sm disabled:opacity-40"
+              >
+                Back
+              </button>
+              {exportWizardStep < 3 ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (exportWizardStep === 1) {
+                      void openExportWizard(2);
+                      return;
+                    }
+                    setExportWizardStep(3);
+                  }}
+                  className="h-10 px-3 rounded-lg bg-amber-500 text-zinc-950 text-sm font-medium"
+                >
+                  {exportWizardStep === 2 ? 'Looks good → Step 3' : 'Continue'}
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => void exportAll()}
+                  disabled={exporting}
+                  className="h-10 px-3 rounded-lg bg-emerald-600 text-zinc-950 text-sm font-medium disabled:opacity-50"
+                >
+                  {exporting ? 'Exporting…' : 'Generate export'}
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       <Schedule
         templates={templates}

@@ -7,8 +7,9 @@ import { computeExportSummary } from './exportSummary';
 import { loadFitnessGoals, type FitnessGoal } from './goals';
 import { loadMesoConfig } from './mesocycle';
 import { computeMesoAnalysis } from './mesoAnalysis';
-import { defaultNutritionDayType } from './nutritionDayType';
+import { defaultNutritionDayType, resolveNutritionTargetsForDate } from './nutritionDayType';
 import { loadExportProgramTargetsForSummary } from './programExportTargets';
+import { loadRecoveryPrefs } from './recoveryPrefs';
 import type {
   BodyMeasurementLog,
   BodyReadinessLog,
@@ -31,7 +32,6 @@ import type {
   StressLog,
 } from './types';
 import {
-  NUTRITION_DAY_TYPES,
   SESSION_LABEL_TYPES,
   SET_INTENTS,
 } from './types';
@@ -50,6 +50,8 @@ export type ExportedSetLog = SetLog & { date: string | null; intent: SetIntent }
 export type FullLocalExportOptions = {
   mesoStartDate?: string | null;
   mesoEndDate?: string | null;
+  sessionTypeOverrides?: Record<string, SessionLabelType>;
+  setIntentOverrides?: Record<string, SetIntent>;
 };
 
 function normalizedIsoDateOnly(value: string | null | undefined): string | null {
@@ -78,7 +80,9 @@ function sessionTypeOf(s: SessionLog): SessionLabelType {
   return 'standard';
 }
 
-function intentOf(s: SetLog): SetIntent {
+function intentOf(s: SetLog, overrides?: Record<string, SetIntent>): SetIntent {
+  const forced = overrides?.[s.id];
+  if (forced && (SET_INTENTS as readonly string[]).includes(forced)) return forced;
   if (s.intent && (SET_INTENTS as readonly string[]).includes(s.intent)) return s.intent;
   return 'working';
 }
@@ -87,9 +91,12 @@ function normalizedLoadScale(loadScale: Lift['loadScale']): 'normal' | 'inverse'
   return loadScale === 'inverse' ? 'inverse' : 'normal';
 }
 
-function dayTypeOf(n: NutritionLog, sessions: SessionLog[]): NutritionDayType {
-  if (n.dayType && (NUTRITION_DAY_TYPES as readonly string[]).includes(n.dayType)) return n.dayType;
-  return defaultNutritionDayType(n.date, sessions);
+function dayTypeOf(
+  n: NutritionLog,
+  sessions: SessionLog[],
+  cardio: Array<Pick<CardioLog, 'date' | 'type'>>,
+): NutritionDayType {
+  return defaultNutritionDayType(n.date, sessions, cardio);
 }
 
 function exportedFitnessGoal(g: FitnessGoal): ExportedFitnessGoal {
@@ -155,23 +162,27 @@ export async function buildMesoAnalysisLive(opts?: FullLocalExportOptions): Prom
     prescriptions,
     session_logs,
     set_logs,
+    cardio_logs,
     bodyweight_logs,
     readiness_logs,
     nutrition_logs,
     sleep_logs,
     stress_logs,
     mindfulness_logs,
+    injury_episodes,
   ] = await Promise.all([
     db.lifts.toArray(),
     db.prescriptions.toArray(),
     db.session_logs.toArray(),
     db.set_logs.toArray(),
+    db.cardio_logs.toArray(),
     db.bodyweight_logs.toArray(),
     db.readiness_logs.toArray(),
     db.nutrition_logs.toArray(),
     db.sleep_logs.toArray(),
     db.stress_logs.toArray(),
     db.mindfulness_logs.toArray(),
+    db.injury_episodes.toArray(),
   ]);
 
   const lifts = liftsRaw.map((lift) => ({
@@ -180,11 +191,33 @@ export async function buildMesoAnalysisLive(opts?: FullLocalExportOptions): Prom
   }));
 
   const exportedAtIso = new Date().toISOString();
+  const prefs = await loadRecoveryPrefs();
 
-  const nutrition_logs_with_day = nutrition_logs.map((n) => ({
-    ...n,
-    dayType: dayTypeOf(n, session_logs),
-  }));
+  const dayTypeByDate = new Map(
+    nutrition_logs.map((n) => [n.date, dayTypeOf(n, session_logs, cardio_logs)] as const),
+  );
+  const nutrition_logs_with_day = nutrition_logs.map((n) => {
+    const resolvedDayType = dayTypeOf(n, session_logs, cardio_logs);
+    const resolvedTargets = resolveNutritionTargetsForDate({
+      date: n.date,
+      resolvedDayType,
+      nutritionLogs: nutrition_logs,
+      currentTargets: {
+        proteinG: prefs.nutritionTargets.proteinG,
+        carbsG: prefs.nutritionTargets.carbsG,
+        fatG: prefs.nutritionTargets.fatG,
+      },
+      resolvedDayTypeByDate: dayTypeByDate,
+    });
+    return {
+      ...n,
+      dayType: resolvedDayType,
+      caloriesTarget: resolvedTargets.calories,
+      proteinTargetG: resolvedTargets.proteinG,
+      carbsTargetG: resolvedTargets.carbsG,
+      fatTargetG: resolvedTargets.fatG,
+    };
+  });
 
   const programTargetsForSummary = await loadExportProgramTargetsForSummary();
 
@@ -204,6 +237,7 @@ export async function buildMesoAnalysisLive(opts?: FullLocalExportOptions): Prom
     sleep_logs,
     stress_logs,
     mindfulness_logs,
+    injury_episodes,
     programTargets: programTargetsForSummary,
     mesoStartDate: opts?.mesoStartDate,
     mesoEndDate: opts?.mesoEndDate,
@@ -261,6 +295,7 @@ export async function buildFullLocalExport(opts?: FullLocalExportOptions): Promi
   const mesoStartNorm = normalizedIsoDateOnly(opts?.mesoStartDate);
   const mesoEndNorm = normalizedIsoDateOnly(opts?.mesoEndDate);
   const mesoConfig = await loadMesoConfig();
+  const prefs = await loadRecoveryPrefs();
   const rawGoals = await loadFitnessGoals();
   const fitness_goals = rawGoals.map(exportedFitnessGoal);
 
@@ -268,20 +303,41 @@ export async function buildFullLocalExport(opts?: FullLocalExportOptions): Promi
 
   const session_logs_out: FullLocalExport['session_logs'] = session_logs.map((s) => ({
     ...s,
-    sessionType: sessionTypeOf(s),
+    sessionType: opts?.sessionTypeOverrides?.[s.id] ?? sessionTypeOf(s),
     mesoBoundary: s.date === mesoStartNorm ? 'start' : s.date === mesoEndNorm ? 'end' : null,
   }));
 
   const set_logs_out: ExportedSetLog[] = set_logs.map((s) => ({
     ...s,
-    intent: intentOf(s),
+    intent: intentOf(s, opts?.setIntentOverrides),
     date: sessionById.get(s.sessionLogId)?.date ?? null,
   }));
 
-  const nutrition_logs_out = nutrition_logs.map((n) => ({
-    ...n,
-    dayType: dayTypeOf(n, session_logs_out),
-  }));
+  const dayTypeByDate = new Map(
+    nutrition_logs.map((n) => [n.date, dayTypeOf(n, session_logs_out, cardio_logs)] as const),
+  );
+  const nutrition_logs_out = nutrition_logs.map((n) => {
+    const resolvedDayType = dayTypeOf(n, session_logs_out, cardio_logs);
+    const resolvedTargets = resolveNutritionTargetsForDate({
+      date: n.date,
+      resolvedDayType,
+      nutritionLogs: nutrition_logs,
+      currentTargets: {
+        proteinG: prefs.nutritionTargets.proteinG,
+        carbsG: prefs.nutritionTargets.carbsG,
+        fatG: prefs.nutritionTargets.fatG,
+      },
+      resolvedDayTypeByDate: dayTypeByDate,
+    });
+    return {
+      ...n,
+      dayType: resolvedDayType,
+      caloriesTarget: resolvedTargets.calories,
+      proteinTargetG: resolvedTargets.proteinG,
+      carbsTargetG: resolvedTargets.carbsG,
+      fatTargetG: resolvedTargets.fatG,
+    };
+  });
 
   const extraDatesForRange = [
     ...nutrition_logs.map((n) => n.date),
@@ -323,6 +379,7 @@ export async function buildFullLocalExport(opts?: FullLocalExportOptions): Promi
     sleep_logs,
     stress_logs,
     mindfulness_logs,
+    injury_episodes,
     programTargets: programTargetsForSummary,
     mesoStartDate: opts?.mesoStartDate,
     mesoEndDate: opts?.mesoEndDate,

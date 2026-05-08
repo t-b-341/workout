@@ -1,7 +1,7 @@
 import { getDb } from './db';
 import { sortMealTimestamps } from './mealTiming';
 import { kcalFromMacros } from './macros';
-import { defaultNutritionDayType } from './nutritionDayType';
+import { defaultNutritionDayType, resolveNutritionTargetsForDate } from './nutritionDayType';
 import { localUpsert } from './sync';
 import type { RecoveryPrefs } from './recoveryPrefs';
 
@@ -19,10 +19,22 @@ export async function replaceMealTimestampsForDay(
   const row = await getDb().nutrition_logs.get(id);
   const nt = prefs.nutritionTargets;
   const sessions = await getDb().session_logs.where('date').equals(date).toArray();
-  const dayType = row?.dayType ?? defaultNutritionDayType(date, sessions);
-  const pT = row?.proteinTargetG ?? nt.proteinG;
-  const cT = row?.carbsTargetG ?? nt.carbsG;
-  const fT = row?.fatTargetG ?? nt.fatG;
+  const cardioLogs = await getDb().cardio_logs.where('date').equals(date).toArray();
+  const dayType = row?.dayType ?? defaultNutritionDayType(date, sessions, cardioLogs);
+  const allNutrition = await getDb().nutrition_logs.toArray();
+  const fallbackTargets = resolveNutritionTargetsForDate({
+    date,
+    resolvedDayType: dayType,
+    nutritionLogs: allNutrition,
+    currentTargets: {
+      proteinG: nt.proteinG,
+      carbsG: nt.carbsG,
+      fatG: nt.fatG,
+    },
+  });
+  const pT = row?.proteinTargetG ?? fallbackTargets.proteinG;
+  const cT = row?.carbsTargetG ?? fallbackTargets.carbsG;
+  const fT = row?.fatTargetG ?? fallbackTargets.fatG;
   const pA = row?.proteinActualG ?? 0;
   const cA = row?.carbsActualG ?? 0;
   const fA = row?.fatActualG ?? 0;
