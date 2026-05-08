@@ -266,7 +266,7 @@ export async function buildFullLocalExport(opts?: FullLocalExportOptions): Promi
 
   const sessionById = new Map(session_logs.map((s) => [s.id, s]));
 
-  const session_logs_out = session_logs.map((s) => ({
+  const session_logs_out: FullLocalExport['session_logs'] = session_logs.map((s) => ({
     ...s,
     sessionType: sessionTypeOf(s),
     mesoBoundary: s.date === mesoStartNorm ? 'start' : s.date === mesoEndNorm ? 'end' : null,
