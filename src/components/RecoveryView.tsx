@@ -37,7 +37,7 @@ import { flushDirty, localDelete, localUpsert } from '@/lib/sync';
 import { todayIso } from '@/lib/time';
 import type { HydrationLog, NutritionDayType, NutritionLog, StressLog } from '@/lib/types';
 import { NUTRITION_DAY_TYPES } from '@/lib/types';
-import { defaultNutritionDayType, resolveNutritionTargetsForDate } from '@/lib/nutritionDayType';
+import { defaultNutritionDayType } from '@/lib/nutritionDayType';
 import { BodyweightQuickLog } from './BodyweightQuickLog';
 import { InjuryTrackingPanel } from './InjuryTrackingPanel';
 import { MacroTrendCallout } from './MacroTrendCallout';
@@ -1141,35 +1141,22 @@ function NutritionSectionForm({
   const nt = prefs.nutritionTargets;
   const [goal, setGoal] = useState<MacroGoal>('maintenance');
   const [trendWindow, setTrendWindow] = useState<TrendWindowDays>(14);
+  const [defaultsSavedToast, setDefaultsSavedToast] = useState(false);
   const resolvedDayTypeForNutrition = useMemo(
     () => defaultNutritionDayType(date, allSessions ?? [], allCardio ?? []),
     [date, allSessions, allCardio],
   );
-  const historicalTargets = useMemo(
-    () =>
-      resolveNutritionTargetsForDate({
-        date,
-        resolvedDayType: resolvedDayTypeForNutrition,
-        nutritionLogs: allNutrition ?? [],
-        currentTargets: {
-          proteinG: nt.proteinG,
-          carbsG: nt.carbsG,
-          fatG: nt.fatG,
-        },
-      }),
-    [date, resolvedDayTypeForNutrition, allNutrition, nt.proteinG, nt.carbsG, nt.fatG],
-  );
-  const [pT, setPT] = useState(existing?.proteinTargetG ?? historicalTargets.proteinG);
-  const [cT, setCT] = useState(existing?.carbsTargetG ?? historicalTargets.carbsG);
-  const [fT, setFT] = useState(existing?.fatTargetG ?? historicalTargets.fatG);
-  const targetSyncKey = `${existing?.id ?? 'new'}|${historicalTargets.proteinG}|${historicalTargets.carbsG}|${historicalTargets.fatG}`;
+  const [pT, setPT] = useState(existing?.proteinTargetG ?? nt.proteinG);
+  const [cT, setCT] = useState(existing?.carbsTargetG ?? nt.carbsG);
+  const [fT, setFT] = useState(existing?.fatTargetG ?? nt.fatG);
+  const targetSyncKey = `${existing?.id ?? 'new'}|${nt.proteinG}|${nt.carbsG}|${nt.fatG}`;
   const [targetSyncSeen, setTargetSyncSeen] = useState(targetSyncKey);
   if (targetSyncKey !== targetSyncSeen) {
     setTargetSyncSeen(targetSyncKey);
     if (!existing) {
-      setPT(historicalTargets.proteinG);
-      setCT(historicalTargets.carbsG);
-      setFT(historicalTargets.fatG);
+      setPT(nt.proteinG);
+      setCT(nt.carbsG);
+      setFT(nt.fatG);
     }
   }
 
@@ -1262,6 +1249,8 @@ function NutritionSectionForm({
         fatG: fT,
       },
     });
+    setDefaultsSavedToast(true);
+    window.setTimeout(() => setDefaultsSavedToast(false), 1800);
   }
 
   return (
@@ -1457,6 +1446,15 @@ function NutritionSectionForm({
           Save macro targets above as my defaults
         </button>
       </div>
+      {defaultsSavedToast && (
+        <div
+          role="status"
+          aria-live="polite"
+          className="fixed bottom-24 left-1/2 z-[100] -translate-x-1/2 rounded-lg border border-emerald-700/50 bg-emerald-950/95 px-3 py-2 text-xs font-medium text-emerald-200 shadow-lg"
+        >
+          Defaults saved
+        </div>
+      )}
     </div>
   );
 }
