@@ -100,6 +100,8 @@ export function ProgramEditor() {
   const favoriteLiftIds = useFavoriteLiftIds();
   const favoriteLiftIdSet = useMemo(() => new Set(favoriteLiftIds), [favoriteLiftIds]);
   const mesoCfg = useMesoConfig();
+  const [exportMesoStart, setExportMesoStart] = useState('');
+  const [exportMesoEnd, setExportMesoEnd] = useState('');
   const [exporting, setExporting] = useState(false);
   const [exportingClaude, setExportingClaude] = useState<'idle' | 'md' | 'txt' | 'upMd' | 'upTxt'>('idle');
 
@@ -273,7 +275,10 @@ export function ProgramEditor() {
   async function exportAll() {
     setExporting(true);
     try {
-      const dump = await buildFullLocalExport();
+      const dump = await buildFullLocalExport({
+        mesoStartDate: exportMesoStart.trim() || undefined,
+        mesoEndDate: exportMesoEnd.trim() || undefined,
+      });
       const blob = new Blob([JSON.stringify(dump, null, 2)], { type: 'application/json' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
@@ -329,12 +334,34 @@ export function ProgramEditor() {
           >
             {exportingClaude === 'txt' ? 'Exporting…' : 'Claude .txt'}
           </button>
+          <Link
+            href="/program/meso-analysis"
+            className="h-10 px-3 rounded-lg bg-zinc-800 text-sm inline-flex items-center"
+          >
+            Meso analysis
+          </Link>
+          <input
+            type="date"
+            aria-label="Mesocycle start (optional, for export)"
+            value={exportMesoStart}
+            onChange={(e) => setExportMesoStart(e.target.value)}
+            className="h-10 rounded-lg bg-zinc-950 border border-zinc-800 px-2 text-sm text-zinc-300"
+          />
+          <input
+            type="date"
+            aria-label="Mesocycle end (optional, for export)"
+            value={exportMesoEnd}
+            onChange={(e) => setExportMesoEnd(e.target.value)}
+            className="h-10 rounded-lg bg-zinc-950 border border-zinc-800 px-2 text-sm text-zinc-300"
+          />
           <button
             type="button"
             onClick={exportAll}
             disabled={exporting || exportingClaude !== 'idle'}
             className="h-10 px-3 rounded-lg bg-zinc-800 text-sm disabled:opacity-50"
-          >{exporting ? 'Exporting…' : 'Full JSON'}</button>
+          >
+            {exporting ? 'Exporting…' : 'Full JSON'}
+          </button>
         </div>
       </div>
 

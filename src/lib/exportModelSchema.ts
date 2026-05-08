@@ -11,6 +11,7 @@ import {
 } from './programExportTargets';
 
 export type { SummaryProgramTarget } from './programExportTargets';
+export type { MesoAnalysisReport } from './mesoAnalysis';
 
 export type ExportedFitnessGoal = {
   id: string;
@@ -33,6 +34,9 @@ export type ExportSummary = {
   activePhaseWeek: number | null;
   /** Canonical training targets / notes bundled with computed summary stats (see `programExportTargets.ts`). */
   programTargets: SummaryProgramTarget[];
+  /** Mesocycle window chosen at export for mesoAnalysis (optional). */
+  mesoStartDate: string | null;
+  mesoEndDate: string | null;
 };
 
 const joinEnums = (arr: readonly string[]) => arr.join(' | ');
@@ -87,6 +91,29 @@ function summarySchema(): SchemaEntry {
       'programTargets[].currentValue': 'number | null',
       'programTargets[].unit': joinEnums(PROGRAM_TARGET_UNITS),
       'programTargets[].liftId': 'string | null (lifts[].id)',
+      mesoStartDate: 'YYYY-MM-DD | null',
+      mesoEndDate: 'YYYY-MM-DD | null',
+    },
+  };
+}
+
+function mesoAnalysisFields(): SchemaEntry {
+  return {
+    fields: {
+      generatedAt: 'ISO-8601',
+      windowStart: 'YYYY-MM-DD',
+      windowEnd: 'YYYY-MM-DD',
+      volumeProgression: 'array | null',
+      targetDeltas: 'array | null',
+      completionRates: 'array | null',
+      intentBreakdown: 'object | null',
+      nutritionAdherence: 'object | null',
+      bodyweightTrend: 'object | null',
+      wellnessCorrelations: 'object | null',
+      injuryFlags: 'array | null',
+      mindfulnessAdherence: 'object | null',
+      liftRecommendations: 'array | null',
+      sectionNullNotes: 'Record<section, string> | undefined',
     },
   };
 }
@@ -360,6 +387,7 @@ export function buildExportSchemaDocumentation(): Record<string, SchemaEntry> {
     body_readiness_logs: bodyReadinessFields(),
     fitness_goals: exportedGoalFields(),
     summary: summarySchema(),
+    mesoAnalysis: mesoAnalysisFields(),
     dirty: dirtyRowFields(),
   };
 }

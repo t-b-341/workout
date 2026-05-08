@@ -2,10 +2,11 @@
 
 import type { DirtyRow } from './db';
 import { getDb, SCHEMA_VERSION } from './db';
-import { buildExportSchemaDocumentation, type ExportedFitnessGoal } from './exportModelSchema';
+import { buildExportSchemaDocumentation, type ExportedFitnessGoal, type MesoAnalysisReport } from './exportModelSchema';
 import { computeExportSummary } from './exportSummary';
 import { loadFitnessGoals, type FitnessGoal } from './goals';
 import { loadMesoConfig } from './mesocycle';
+import { computeMesoAnalysis } from './mesoAnalysis';
 import { defaultNutritionDayType } from './nutritionDayType';
 import { loadExportProgramTargetsForSummary } from './programExportTargets';
 import type {
@@ -45,6 +46,11 @@ const KNOWN_LOCALSTORAGE_KEYS = [
 
 /** Set row as written to export JSON (parent session date copied; intent always present). */
 export type ExportedSetLog = SetLog & { date: string | null; intent: SetIntent };
+
+export type FullLocalExportOptions = {
+  mesoStartDate?: string | null;
+  mesoEndDate?: string | null;
+};
 
 function snapshotKnownLocalStorage(): Record<string, string | null> {
   if (typeof window === 'undefined') return {};
@@ -103,6 +109,7 @@ export type FullLocalExport = {
   schema: ReturnType<typeof buildExportSchemaDocumentation>;
   summary: ReturnType<typeof computeExportSummary>;
   exportedAt: string;
+  mesoAnalysis: MesoAnalysisReport;
   /** Overall program intent from `docs/program.md` (stable snapshot for backups / LLMs). */
   training_plan_goals: TrainingPlanGoalRow[];
   /** User-defined goals from Program tab (with optional numeric targets). */
@@ -128,8 +135,71 @@ export type FullLocalExport = {
   meta: { key: string; value: unknown }[];
 };
 
+/** Post-mesocycle analysis for the in-app report (same logic as export `mesoAnalysis`). */
+export async function buildMesoAnalysisLive(opts?: FullLocalExportOptions): Promise<MesoAnalysisReport> {
+  const db = getDb();
+  const [
+    liftsRaw,
+    prescriptions,
+    session_logs,
+    set_logs,
+    bodyweight_logs,
+    readiness_logs,
+    nutrition_logs,
+    sleep_logs,
+    stress_logs,
+    mindfulness_logs,
+  ] = await Promise.all([
+    db.lifts.toArray(),
+    db.prescriptions.toArray(),
+    db.session_logs.toArray(),
+    db.set_logs.toArray(),
+    db.bodyweight_logs.toArray(),
+    db.readiness_logs.toArray(),
+    db.nutrition_logs.toArray(),
+    db.sleep_logs.toArray(),
+    db.stress_logs.toArray(),
+    db.mindfulness_logs.toArray(),
+  ]);
+
+  const lifts = liftsRaw.map((lift) => ({
+    ...lift,
+    loadScale: normalizedLoadScale(lift.loadScale),
+  }));
+
+  const exportedAtIso = new Date().toISOString();
+
+  const nutrition_logs_with_day = nutrition_logs.map((n) => ({
+    ...n,
+    dayType: dayTypeOf(n, session_logs),
+  }));
+
+  const programTargetsForSummary = await loadExportProgramTargetsForSummary();
+
+  return computeMesoAnalysis({
+    exportedAtIso,
+    session_logs,
+    set_logs,
+    lifts,
+    prescriptions: prescriptions.map((p) => ({
+      templateId: p.templateId,
+      liftId: p.liftId,
+      sets: p.sets,
+    })),
+    readiness_logs,
+    bodyweight_logs,
+    nutrition_logs: nutrition_logs_with_day,
+    sleep_logs,
+    stress_logs,
+    mindfulness_logs,
+    programTargets: programTargetsForSummary,
+    mesoStartDate: opts?.mesoStartDate,
+    mesoEndDate: opts?.mesoEndDate,
+  });
+}
+
 /** Full IndexedDB + app `localStorage` snapshot for backup or sharing (e.g. with Claude). */
-export async function buildFullLocalExport(): Promise<FullLocalExport> {
+export async function buildFullLocalExport(opts?: FullLocalExportOptions): Promise<FullLocalExport> {
   const db = getDb();
   const [
     liftsRaw,
@@ -218,6 +288,29 @@ export async function buildFullLocalExport(): Promise<FullLocalExport> {
     extraDates: extraDatesForRange,
     mesoConfig,
     programTargets: programTargetsForSummary,
+    mesoStartDate: opts?.mesoStartDate,
+    mesoEndDate: opts?.mesoEndDate,
+  });
+
+  const mesoAnalysis = computeMesoAnalysis({
+    exportedAtIso: exportedAt,
+    session_logs,
+    set_logs,
+    lifts,
+    prescriptions: prescriptions.map((p) => ({
+      templateId: p.templateId,
+      liftId: p.liftId,
+      sets: p.sets,
+    })),
+    readiness_logs,
+    bodyweight_logs,
+    nutrition_logs: nutrition_logs_out,
+    sleep_logs,
+    stress_logs,
+    mindfulness_logs,
+    programTargets: programTargetsForSummary,
+    mesoStartDate: opts?.mesoStartDate,
+    mesoEndDate: opts?.mesoEndDate,
   });
 
   return {
@@ -226,6 +319,7 @@ export async function buildFullLocalExport(): Promise<FullLocalExport> {
     schema: buildExportSchemaDocumentation(),
     summary,
     exportedAt,
+    mesoAnalysis,
     training_plan_goals: [...TRAINING_PLAN_GOALS],
     fitness_goals,
     localStorage: snapshotKnownLocalStorage(),

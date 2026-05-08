@@ -32,6 +32,9 @@ export function computeExportSummary(args: {
   extraDates?: string[];
   mesoConfig: MesocycleConfig;
   programTargets: SummaryProgramTarget[];
+  /** Optional mesocycle window for analysis (export UI); omitted → null in summary. */
+  mesoStartDate?: string | null;
+  mesoEndDate?: string | null;
 }): ExportSummary {
   const {
     exportedAtIso,
@@ -43,6 +46,8 @@ export function computeExportSummary(args: {
     extraDates = [],
     mesoConfig,
     programTargets,
+    mesoStartDate,
+    mesoEndDate,
   } = args;
 
   const liftById = new Map(lifts.map((l) => [l.id, l]));
@@ -77,6 +82,13 @@ export function computeExportSummary(args: {
     pos == null ? null : pos.isDeload ? 'deload' : 'accumulation';
   const activePhaseWeek = pos == null ? null : pos.weekInMeso;
 
+  const ms = mesoStartDate?.trim();
+  const me = mesoEndDate?.trim();
+  const mesoStartNorm =
+    ms && /^\d{4}-\d{2}-\d{2}$/.test(ms) ? ms : null;
+  const mesoEndNorm =
+    me && /^\d{4}-\d{2}-\d{2}$/.test(me) ? me : null;
+
   return {
     exportedAt: exportedAtIso,
     dateRange: { start, end },
@@ -87,5 +99,7 @@ export function computeExportSummary(args: {
     activePhaseName,
     activePhaseWeek,
     programTargets,
+    mesoStartDate: mesoStartNorm,
+    mesoEndDate: mesoEndNorm,
   };
 }

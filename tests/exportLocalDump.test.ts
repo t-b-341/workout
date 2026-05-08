@@ -13,7 +13,7 @@ describe('buildExportSchemaDocumentation', () => {
     expect(doc.session_logs?.fields.sessionType).toContain('abbreviated');
     expect(doc.nutrition_logs?.fields.dayType).toContain('liss');
     expect(doc.fitness_goals?.fields.metric).toContain('null');
-    expect(doc.summary?.fields.sessionCount).toBe('number');
+    expect(doc.summary?.fields.mesoStartDate).toContain('null');
     expect(doc.summary?.fields['programTargets[].metric']).toContain('1rm');
   });
 });
@@ -96,5 +96,7 @@ describe('computeExportSummary', () => {
       unit: 'lb',
       liftId: 'dl',
     });
+    expect(summary.mesoStartDate).toBeNull();
+    expect(summary.mesoEndDate).toBeNull();
   });
 });
