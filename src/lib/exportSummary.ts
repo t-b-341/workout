@@ -65,9 +65,17 @@ export function computeExportSummary(args: {
   const prFlags: ExportSummary['prFlags'] = [];
   for (const st of set_logs) {
     if (intentOf(st) !== 'max_test') continue;
+    if (st.status !== 'completed') continue;
     const session = sessionById.get(st.sessionLogId);
     if (!session) continue;
-    prFlags.push({ liftId: st.liftId, weight: st.weight, date: session.date });
+    prFlags.push({
+      liftId: st.liftId,
+      liftName: liftById.get(st.liftId)?.name ?? st.liftId,
+      weight: st.weight,
+      reps: st.reps,
+      date: session.date,
+      sessionId: session.id,
+    });
   }
 
   const dates = [

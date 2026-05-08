@@ -29,7 +29,14 @@ export type ExportSummary = {
   sessionCount: number;
   totalSets: number;
   totalVolumeLbReps: number;
-  prFlags: Array<{ liftId: string; weight: number; date: string }>;
+  prFlags: Array<{
+    liftId: string;
+    liftName: string;
+    weight: number;
+    reps: number;
+    date: string;
+    sessionId: string;
+  }>;
   activePhaseName: 'accumulation' | 'deload' | null;
   activePhaseWeek: number | null;
   /** Canonical training targets / notes bundled with computed summary stats (see `programExportTargets.ts`). */
@@ -78,7 +85,12 @@ function summarySchema(): SchemaEntry {
       sessionCount: 'number',
       totalSets: 'number',
       totalVolumeLbReps: 'number',
-      'prFlags[]': '{ liftId: string; weight: number; date: YYYY-MM-DD }[]',
+      'prFlags[].liftId': 'string',
+      'prFlags[].liftName': 'string',
+      'prFlags[].weight': 'number',
+      'prFlags[].reps': 'number',
+      'prFlags[].date': 'YYYY-MM-DD',
+      'prFlags[].sessionId': 'string',
       activePhaseName: `${joinEnums(['accumulation', 'deload'])} | null`,
       activePhaseWeek: 'number | null',
       'programTargets[].id': 'string',

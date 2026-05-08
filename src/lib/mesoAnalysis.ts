@@ -54,6 +54,8 @@ export type CompletionRateRow = {
   programmedSets: number;
   completedSets: number;
   skippedSets: number;
+  /** Completed sets logged beyond programmed volume for this lift. */
+  extraSets: number;
   completionPct: number;
   skipReasons: string[];
 };
@@ -348,9 +350,11 @@ export function computeMesoAnalysis(args: {
         return { week: i + 1, totalLbReps, workingSets };
       });
 
-      const workingLoads = forLift.filter(
-        (st) => st.status === 'completed' && intentOf(st) === 'working',
-      );
+      const workingLoads = forLift.filter((st) => {
+        if (st.status !== 'completed') return false;
+        const i = intentOf(st);
+        return i === 'working' || i === 'backoff';
+      });
       const firstW = workingLoads[0]?.weight ?? null;
       const lastW = workingLoads.length ? workingLoads[workingLoads.length - 1]!.weight : null;
       const loadDelta =
@@ -415,12 +419,9 @@ export function computeMesoAnalysis(args: {
   }
 
   for (const st of setsInWindow) {
-    const cur = completionMap.get(st.liftId) ?? {
-      programmed: 0,
-      completed: 0,
-      skipped: 0,
-      reasons: new Set<string>(),
-    };
+    const cur = completionMap.get(st.liftId);
+    // Unscheduled lift (no programmed sets in the meso window): exclude from completionRates.
+    if (!cur) continue;
     if (st.status === 'completed') cur.completed += 1;
     if (st.status === 'skipped') {
       cur.skipped += 1;
@@ -432,14 +433,16 @@ export function computeMesoAnalysis(args: {
   const crRows: CompletionRateRow[] = [];
   for (const [liftId, v] of completionMap) {
     const lift = liftById.get(liftId);
-    const denom = v.programmed > 0 ? v.programmed : v.completed + v.skipped;
-    const completionPct = denom > 0 ? (v.completed / denom) * 100 : 0;
+    if (v.programmed <= 0) continue;
+    const extraSets = Math.max(0, v.completed - v.programmed);
+    const completionPct = Math.min(100, v.programmed > 0 ? (v.completed / v.programmed) * 100 : 0);
     crRows.push({
       liftId,
       liftName: lift?.name ?? liftId,
       programmedSets: v.programmed,
       completedSets: v.completed,
       skippedSets: v.skipped,
+      extraSets,
       completionPct,
       skipReasons: [...v.reasons],
     });
