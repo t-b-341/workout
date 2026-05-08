@@ -12,23 +12,43 @@ import { resolveCardioTimestamps } from '@/lib/cardioTime';
 import { todayIso, fmtDate } from '@/lib/time';
 import type { CardioLog, CardioType } from '@/lib/types';
 
+function currentLocalHm(): string {
+  const now = new Date();
+  const hh = String(now.getHours()).padStart(2, '0');
+  const mm = String(now.getMinutes()).padStart(2, '0');
+  return `${hh}:${mm}`;
+}
+
+function isoForLocalDateTime(dateIso: string, hm: string): string {
+  const m = /^(\d{2}):(\d{2})$/.exec(hm.trim());
+  if (!m) return new Date().toISOString();
+  const hh = Number(m[1]);
+  const mm = Number(m[2]);
+  if (!Number.isFinite(hh) || !Number.isFinite(mm) || hh < 0 || hh > 23 || mm < 0 || mm > 59) {
+    return new Date().toISOString();
+  }
+  return new Date(`${dateIso}T${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}:00`).toISOString();
+}
+
 export function CardioView() {
   const wk = useThisWeekCardio();
   const [type, setType] = useState<CardioType>('liss');
   const [duration, setDuration] = useState(30);
   const [speed, setSpeed] = useState(2.0);
   const [grade, setGrade] = useState(3.0);
+  const [lissTimeHm, setLissTimeHm] = useState(() => currentLocalHm());
   const [avgHr, setAvgHr] = useState<number | ''>('');
   const [peakHr, setPeakHr] = useState<number | ''>('');
   const [notes, setNotes] = useState('');
 
   async function add() {
     const id = `cardio-${Date.now()}`;
-    const endedAt = new Date().toISOString();
+    const date = todayIso();
+    const endedAt = type === 'liss' ? isoForLocalDateTime(date, lissTimeHm) : new Date().toISOString();
     const { startedAt, endedAt: endIso } = resolveCardioTimestamps(endedAt, duration, undefined);
     const row: CardioLog = {
       id,
-      date: todayIso(),
+      date,
       type,
       durationMin: duration,
       startedAt,
@@ -97,6 +117,16 @@ export function CardioView() {
                   max={30}
                   unit="%"
                   inputClassName="flex-1 min-w-0 h-11 rounded-xl bg-zinc-950 border border-zinc-800 px-3 font-mono text-sm text-center"
+                />
+              </label>
+              <label className="flex flex-col gap-1 text-xs text-zinc-500 sm:col-span-2">
+                Time occurred
+                <input
+                  type="time"
+                  step={60}
+                  value={lissTimeHm}
+                  onChange={(e) => setLissTimeHm(e.target.value)}
+                  className="h-11 px-3 rounded-xl bg-zinc-950 border border-zinc-800"
                 />
               </label>
             </div>

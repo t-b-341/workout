@@ -52,6 +52,12 @@ export type FullLocalExportOptions = {
   mesoEndDate?: string | null;
 };
 
+function normalizedIsoDateOnly(value: string | null | undefined): string | null {
+  const v = value?.trim();
+  if (!v) return null;
+  return /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : null;
+}
+
 function snapshotKnownLocalStorage(): Record<string, string | null> {
   if (typeof window === 'undefined') return {};
   const out: Record<string, string | null> = {};
@@ -118,7 +124,13 @@ export type FullLocalExport = {
   lifts: Lift[];
   templates: SessionTemplate[];
   prescriptions: Prescription[];
-  session_logs: Array<SessionLog & { sessionType: SessionLabelType }>;
+  session_logs: Array<
+    SessionLog & {
+      sessionType: SessionLabelType;
+      /** Explicit mesocycle boundary marker for export windows chosen by the user. */
+      mesoBoundary: 'start' | 'end' | null;
+    }
+  >;
   set_logs: ExportedSetLog[];
   cardio_logs: CardioLog[];
   bodyweight_logs: BodyweightLog[];
@@ -246,6 +258,8 @@ export async function buildFullLocalExport(opts?: FullLocalExportOptions): Promi
   }));
 
   const exportedAt = new Date().toISOString();
+  const mesoStartNorm = normalizedIsoDateOnly(opts?.mesoStartDate);
+  const mesoEndNorm = normalizedIsoDateOnly(opts?.mesoEndDate);
   const mesoConfig = await loadMesoConfig();
   const rawGoals = await loadFitnessGoals();
   const fitness_goals = rawGoals.map(exportedFitnessGoal);
@@ -255,6 +269,7 @@ export async function buildFullLocalExport(opts?: FullLocalExportOptions): Promi
   const session_logs_out = session_logs.map((s) => ({
     ...s,
     sessionType: sessionTypeOf(s),
+    mesoBoundary: s.date === mesoStartNorm ? 'start' : s.date === mesoEndNorm ? 'end' : null,
   }));
 
   const set_logs_out: ExportedSetLog[] = set_logs.map((s) => ({

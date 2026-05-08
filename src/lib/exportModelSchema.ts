@@ -185,6 +185,7 @@ function sessionLogFields(): SchemaEntry {
       effortScale: '-1 | 0 | 1 | undefined',
       readinessCompletedAt: 'ISO timestamp | undefined',
       tags: 'SessionStrategyTagId[] | undefined',
+      mesoBoundary: '"start" | "end" | null (export-only marker from selected mesocycle window)',
     },
   };
 }
