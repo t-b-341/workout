@@ -2,6 +2,7 @@ import { format, getISOWeek, getISOWeekYear, parseISO, subDays } from 'date-fns'
 import {
   bodyweightLbForSessionVolume,
   effectiveP1AssistedConcentricLoadLb,
+  effectiveP1BodyweightLoadLb,
   readinessBySessionId,
   strengthVolumeLbForSet,
 } from './p1AssistedVolume';
@@ -96,13 +97,14 @@ export function buildLiftHistory(
   }
   const rxBySession = readinessBySessionId(readinessLogs);
   const isAssisted = liftId === 'p1_assisted';
+  const isBodyweightPullup = liftId === 'p1_bw';
   const out: LiftSessionPoint[] = [];
   for (const [sid, ss] of bySession) {
     const session = sessionMap.get(sid);
     if (!session) continue;
     const completed = ss.filter((x) => x.status === 'completed');
     if (completed.length === 0) continue;
-    const bw = isAssisted
+    const bw = (isAssisted || isBodyweightPullup)
       ? bodyweightLbForSessionVolume(session, rxBySession.get(sid), bodyweightLogs)
       : undefined;
     if (isAssisted && bw == null) continue;
@@ -114,7 +116,9 @@ export function buildLiftHistory(
     for (const x of completed) {
       const loadForStats = isAssisted && bw != null
         ? effectiveP1AssistedConcentricLoadLb(x.weight, bw)
-        : x.weight;
+        : isBodyweightPullup && bw != null
+          ? effectiveP1BodyweightLoadLb(x.weight, bw)
+          : x.weight;
       const e = est1RM(loadForStats, x.reps);
       if (loadForStats > topWeight || (loadForStats === topWeight && x.reps > topReps)) {
         topWeight = loadForStats;
@@ -123,6 +127,8 @@ export function buildLiftHistory(
       if (e > best1RM) best1RM = e;
       if (isAssisted && bw != null) {
         volume += effectiveP1AssistedConcentricLoadLb(x.weight, bw) * x.reps;
+      } else if (isBodyweightPullup && bw != null) {
+        volume += effectiveP1BodyweightLoadLb(x.weight, bw) * x.reps;
       } else if (x.weight > 0) {
         volume += x.weight * x.reps;
       }
@@ -214,10 +220,14 @@ export function buildWeeklySummaries(
       const topLoad =
         lift?.id === 'p1_assisted' && bw != null
           ? effectiveP1AssistedConcentricLoadLb(x.weight, bw)
+          : lift?.id === 'p1_bw' && bw != null
+            ? effectiveP1BodyweightLoadLb(x.weight, bw)
           : x.weight;
       const curLoad = cur
         ? (liftMap.get(cur.liftId)?.id === 'p1_assisted' && bw != null
             ? effectiveP1AssistedConcentricLoadLb(cur.weight, bw)
+            : liftMap.get(cur.liftId)?.id === 'p1_bw' && bw != null
+              ? effectiveP1BodyweightLoadLb(cur.weight, bw)
             : cur.weight)
         : -1;
       if (
@@ -234,6 +244,8 @@ export function buildWeeklySummaries(
       const displayWeight =
         lift.id === 'p1_assisted' && bw != null
           ? effectiveP1AssistedConcentricLoadLb(top.weight, bw)
+          : lift.id === 'p1_bw' && bw != null
+            ? effectiveP1BodyweightLoadLb(top.weight, bw)
           : top.weight;
       // keep the heaviest of the week per lift
       const existing = w.topSets.find((t) => t.liftId === liftId);
@@ -615,6 +627,8 @@ export function sessionFinishHighlights(
     const loadForE1rm =
       lift.id === 'p1_assisted' && bw != null
         ? effectiveP1AssistedConcentricLoadLb(s.weight, bw)
+        : lift.id === 'p1_bw' && bw != null
+          ? effectiveP1BodyweightLoadLb(s.weight, bw)
         : lift.id === 'p1_assisted'
           ? 0
           : s.weight;
@@ -625,6 +639,8 @@ export function sessionFinishHighlights(
     const topLoad =
       lift.id === 'p1_assisted' && bw != null
         ? effectiveP1AssistedConcentricLoadLb(s.weight, bw)
+        : lift.id === 'p1_bw' && bw != null
+          ? effectiveP1BodyweightLoadLb(s.weight, bw)
         : lift.id === 'p1_assisted'
           ? 0
           : s.weight;

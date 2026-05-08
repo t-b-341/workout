@@ -5,6 +5,11 @@ export function effectiveP1AssistedConcentricLoadLb(assistLb: number, bodyweight
   return Math.max(0, bodyweightLb - assistLb);
 }
 
+/** Logged `weight` is added load for `p1_bw`; 0 = bodyweight, positive = added load. */
+export function effectiveP1BodyweightLoadLb(addedLoadLb: number, bodyweightLb: number): number {
+  return Math.max(0, bodyweightLb + addedLoadLb);
+}
+
 export function latestBodyweightLbOnOrBefore(dateIso: string, logs: BodyweightLog[]): number | undefined {
   const sorted = [...logs].sort((a, b) => {
     if (a.date !== b.date) return a.date < b.date ? 1 : -1;
@@ -45,6 +50,11 @@ export function strengthVolumeLbForSet(
   if (lift.id === 'p1_assisted') {
     if (bodyweightLb == null || bodyweightLb <= 0) return 0;
     const moved = effectiveP1AssistedConcentricLoadLb(set.weight, bodyweightLb);
+    return moved * set.reps;
+  }
+  if (lift.id === 'p1_bw') {
+    if (bodyweightLb == null || bodyweightLb <= 0) return 0;
+    const moved = effectiveP1BodyweightLoadLb(set.weight, bodyweightLb);
     return moved * set.reps;
   }
   if (set.weight > 0) return set.weight * set.reps;

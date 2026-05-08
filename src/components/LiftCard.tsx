@@ -71,6 +71,42 @@ const INTENT_LABEL: Record<SetIntent, string> = {
   max_test: 'PR / max test',
 };
 
+const BAR_LB = 45;
+const QUARTER_TOTAL_LB = 50; // 25 lb per side.
+const PLATE_TOTAL_LB = 90; // 45 lb per side.
+
+function buildWarmupLoadsLb(targetLb: number): number[] {
+  const target = Math.max(0, Math.round(targetLb));
+  const base = [BAR_LB];
+  if (target <= BAR_LB) return base;
+  if (target < BAR_LB + PLATE_TOTAL_LB) return [BAR_LB, target];
+  let cur = BAR_LB;
+  while (cur + PLATE_TOTAL_LB < target) {
+    cur += PLATE_TOTAL_LB;
+    base.push(cur);
+  }
+  // Add quarter-plate bridge steps when a jump is large.
+  const withBridges: number[] = [base[0]!];
+  for (let i = 1; i < base.length; i++) {
+    const prev = withBridges[withBridges.length - 1]!;
+    const next = base[i]!;
+    if (next - prev > 70) {
+      const bridge = prev + QUARTER_TOTAL_LB;
+      if (bridge < next) withBridges.push(bridge);
+    }
+    withBridges.push(next);
+  }
+  if (withBridges[withBridges.length - 1] !== target) {
+    const prev = withBridges[withBridges.length - 1]!;
+    if (target - prev > 70) {
+      const bridge = prev + QUARTER_TOTAL_LB;
+      if (bridge < target) withBridges.push(bridge);
+    }
+    withBridges.push(target);
+  }
+  return withBridges;
+}
+
 export function LiftCard({ prescription, lift, session, pinned }: Props) {
   const sets = useSetsForSession(session.id);
   const history = useLastSessionsForLift(prescription.liftId, 3);
@@ -318,6 +354,8 @@ export function LiftCard({ prescription, lift, session, pinned }: Props) {
         </div>
       )}
 
+      <WarmupSection lift={lift} prescription={prescription} />
+
       <div className="space-y-2">
         {indexes.map((idx) =>
           sides.map((side) => {
@@ -483,6 +521,117 @@ export function LiftCard({ prescription, lift, session, pinned }: Props) {
 
 function liftToCardioType(liftId: string): CardioType {
   return liftId.includes('interval') ? 'intervals' : 'liss';
+}
+
+function WarmupSection({ lift, prescription }: { lift: Lift; prescription: Prescription }) {
+  const isStrength = lift.equipment !== 'cardio' && lift.equipment !== 'time';
+  const targetLb = Math.max(0, Math.round(prescription.weight));
+  const suggested = useMemo(
+    () => (isStrength && targetLb > 0 ? buildWarmupLoadsLb(targetLb) : []),
+    [isStrength, targetLb],
+  );
+  const [warmupLoad, setWarmupLoad] = useState(BAR_LB);
+  const [startedAtIso, setStartedAtIso] = useState<string | null>(null);
+  const [nowMs, setNowMs] = useState(() => Date.now());
+
+  useEffect(() => {
+    if (!startedAtIso) return;
+    const id = setInterval(() => setNowMs(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, [startedAtIso]);
+
+  const elapsedSec = startedAtIso
+    ? Math.max(0, Math.floor((nowMs - Date.parse(startedAtIso)) / 1000))
+    : 0;
+  const min = Math.floor(elapsedSec / 60);
+  const sec = elapsedSec % 60;
+
+  return (
+    <div className="rounded-xl border border-zinc-800 bg-zinc-950/50 p-3 space-y-2">
+      <div className="flex items-center justify-between gap-2">
+        <div className="text-sm font-medium text-zinc-200">Warmup</div>
+        <span className="font-mono text-xs text-zinc-500">
+          {min}:{sec.toString().padStart(2, '0')}
+        </span>
+      </div>
+      <div className="flex flex-wrap gap-2">
+        {!startedAtIso ? (
+          <button
+            type="button"
+            className="h-9 px-3 rounded-lg bg-emerald-600 text-zinc-950 text-xs font-semibold"
+            onClick={() => setStartedAtIso(new Date().toISOString())}
+          >
+            Start warmup
+          </button>
+        ) : (
+          <button
+            type="button"
+            className="h-9 px-3 rounded-lg bg-zinc-700 text-xs"
+            onClick={() => setStartedAtIso(null)}
+          >
+            Stop timer
+          </button>
+        )}
+        <button
+          type="button"
+          className="h-9 px-3 rounded-lg bg-zinc-800 text-xs"
+          onClick={() => {
+            setStartedAtIso(null);
+            setNowMs(Date.now());
+          }}
+        >
+          Reset timer
+        </button>
+      </div>
+
+      {isStrength ? (
+        <>
+          <div className="text-xs text-zinc-500">
+            Quick load: <span className="text-zinc-300 font-mono">{warmupLoad} lb</span>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              className="h-8 px-2.5 rounded-lg bg-zinc-800 text-xs"
+              onClick={() => setWarmupLoad(BAR_LB)}
+            >
+              Bar (45)
+            </button>
+            <button
+              type="button"
+              className="h-8 px-2.5 rounded-lg bg-zinc-800 text-xs"
+              onClick={() => setWarmupLoad((x) => x + QUARTER_TOTAL_LB)}
+            >
+              + Quarter (+50)
+            </button>
+            <button
+              type="button"
+              className="h-8 px-2.5 rounded-lg bg-zinc-800 text-xs"
+              onClick={() => setWarmupLoad((x) => x + PLATE_TOTAL_LB)}
+            >
+              + Plate (+90)
+            </button>
+          </div>
+          {suggested.length > 0 && (
+            <div className="text-xs text-zinc-500">
+              Suggested warmup for <span className="font-mono text-zinc-300">{targetLb} lb</span>:{' '}
+              <span className="font-mono text-zinc-300">{suggested.join(' → ')}</span>
+              {targetLb >= BAR_LB + PLATE_TOTAL_LB && (
+                <span className="text-zinc-600"> (then work sets at {targetLb})</span>
+              )}
+            </div>
+          )}
+          <div className="text-[11px] text-zinc-600">
+            Bar = 45 lb, Quarter = 25/side (50 total), Plate = 45/side (90 total).
+          </div>
+        </>
+      ) : (
+        <div className="text-xs text-zinc-500">
+          Use this timer for ramp-up/cardio prep before logging working sets.
+        </div>
+      )}
+    </div>
+  );
 }
 
 function CardioDurationTimer({
@@ -701,7 +850,7 @@ function SetRow({
           />
         )}
         <RepStepper value={r} onChange={setR} unit={repUnitLabel} />
-        {trackRpe ? (
+        {trackRpe && !(isCardio && ct === 'liss') ? (
           <label className="text-xs text-zinc-500">
             RIR
             <div className="mt-1">
@@ -709,9 +858,9 @@ function SetRow({
             </div>
             <div className="mt-1 text-[10px] text-zinc-500">RPE {derivedRpe?.toFixed(1)}</div>
           </label>
-        ) : (
+        ) : !isCardio ? (
           <div className="text-[11px] text-zinc-500">RPE hidden for sets over 12 reps</div>
-        )}
+        ) : null}
       </div>
       {lift.id === 'p1_assisted' && showWeight && (
         <p className="text-[10px] text-zinc-500 leading-snug">

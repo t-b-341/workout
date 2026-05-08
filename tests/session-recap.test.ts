@@ -229,6 +229,36 @@ describe('sessionFinishHighlights', () => {
     expect(h.strengthVolumeLb).toBe((200 - 50) * 4);
     expect(h.topSet?.weight).toBe(150);
   });
+
+  it('treats p1_bw set weight 0 as session bodyweight for highlights', () => {
+    const liftPullBw: Lift = {
+      id: 'p1_bw',
+      name: 'P1 (Bodyweight)',
+      equipment: 'bodyweight',
+      loadUnit: 'bodyweight',
+      repUnit: 'reps',
+      increment: 2.5,
+      muscleGroups: ['lats'],
+      pattern: 'vert-pull',
+    };
+    const lifts = [liftPullBw];
+    const sets: SetLog[] = [
+      {
+        id: 'bw-set',
+        sessionLogId: 's1',
+        liftId: 'p1_bw',
+        prescriptionId: 'p',
+        setIndex: 0,
+        weight: 0,
+        reps: 5,
+        status: 'completed',
+      },
+    ];
+    const bodyweight = [{ id: 'bw1', date: '2026-01-01', isoWeek: '2026-W01', bodyweight: 200 }];
+    const h = sessionFinishHighlights(sess('s1', '2026-01-01'), sets, lifts, bodyweight, []);
+    expect(h.strengthVolumeLb).toBe(200 * 5);
+    expect(h.topSet?.weight).toBe(200);
+  });
 });
 
 describe('sessionTotalRestBetweenSetsMs', () => {

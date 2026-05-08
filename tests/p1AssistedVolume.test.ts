@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   bodyweightLbForSessionVolume,
   effectiveP1AssistedConcentricLoadLb,
+  effectiveP1BodyweightLoadLb,
   latestBodyweightLbOnOrBefore,
   strengthVolumeLbForSet,
 } from '@/lib/p1AssistedVolume';
@@ -27,11 +28,28 @@ const liftAssisted: Lift = {
   pattern: 'vert-pull',
 };
 
+const liftBodyweightPullup: Lift = {
+  id: 'p1_bw',
+  name: 'P1 (Bodyweight)',
+  equipment: 'bodyweight',
+  loadUnit: 'bodyweight',
+  repUnit: 'reps',
+  increment: 2.5,
+  muscleGroups: ['lats'],
+  pattern: 'vert-pull',
+};
+
 describe('p1AssistedVolume', () => {
   it('effective load is BW minus assist; negatives add load', () => {
     expect(effectiveP1AssistedConcentricLoadLb(50, 200)).toBe(150);
     expect(effectiveP1AssistedConcentricLoadLb(0, 200)).toBe(200);
     expect(effectiveP1AssistedConcentricLoadLb(-25, 200)).toBe(225);
+  });
+
+  it('effective bodyweight pull-up load is BW plus added load', () => {
+    expect(effectiveP1BodyweightLoadLb(0, 200)).toBe(200);
+    expect(effectiveP1BodyweightLoadLb(25, 200)).toBe(225);
+    expect(effectiveP1BodyweightLoadLb(-25, 200)).toBe(175);
   });
 
   it('latestBodyweightLbOnOrBefore picks most recent log on or before date', () => {
@@ -72,5 +90,20 @@ describe('p1AssistedVolume', () => {
     };
     expect(strengthVolumeLbForSet(st, liftAssisted, 200)).toBe((200 - 40) * 3);
     expect(strengthVolumeLbForSet(st, liftAssisted, undefined)).toBe(0);
+  });
+
+  it('strengthVolumeLbForSet uses session bodyweight for p1_bw at added load 0', () => {
+    const st: SetLog = {
+      id: '2',
+      sessionLogId: 's1',
+      liftId: 'p1_bw',
+      prescriptionId: 'p',
+      setIndex: 0,
+      weight: 0,
+      reps: 5,
+      status: 'completed',
+    };
+    expect(strengthVolumeLbForSet(st, liftBodyweightPullup, 200)).toBe(1000);
+    expect(strengthVolumeLbForSet(st, liftBodyweightPullup, undefined)).toBe(0);
   });
 });

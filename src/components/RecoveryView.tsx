@@ -449,19 +449,7 @@ export function RecoveryView() {
         </div>
 
         <MindfulnessEntriesSection date={date} />
-
-      <div className="rounded-2xl bg-zinc-900 border border-zinc-800 p-4 space-y-2">
-        <div className="text-sm font-medium">Today&apos;s recommendations</div>
-        <div className="space-y-1.5 text-sm text-zinc-300">
-          {performanceRecommendations.map((line) => (
-            <div key={line}>• {line}</div>
-          ))}
-        </div>
-        <div className="border-t border-zinc-800 pt-2" />
-        <div className="text-sm text-zinc-300">{plan.intensityNote}</div>
-        <div className="text-sm text-zinc-300">{plan.cardioNote}</div>
-        <div className="text-sm text-zinc-300">{plan.nutritionNote}</div>
-      </div>
+      <SleepSection date={date} existing={sleep} />
 
       <div className="rounded-2xl bg-zinc-900 border border-zinc-800 p-4">
         <div className="flex items-start justify-between gap-2">
@@ -498,12 +486,24 @@ export function RecoveryView() {
 
       <WellnessTargetsCard />
 
-      <SleepSection date={date} existing={sleep} />
       <BodyweightQuickLog date={date} />
       <HydrationSection date={date} existing={hydration} prefs={prefs} />
       <NutritionSection date={date} existing={nutrition} prefs={prefs} />
 
       <InjuryTrackingPanel />
+
+      <div className="rounded-2xl bg-zinc-900 border border-zinc-800 p-4 space-y-2">
+        <div className="text-sm font-medium">Today&apos;s recommendations</div>
+        <div className="space-y-1.5 text-sm text-zinc-300">
+          {performanceRecommendations.map((line) => (
+            <div key={line}>• {line}</div>
+          ))}
+        </div>
+        <div className="border-t border-zinc-800 pt-2" />
+        <div className="text-sm text-zinc-300">{plan.intensityNote}</div>
+        <div className="text-sm text-zinc-300">{plan.cardioNote}</div>
+        <div className="text-sm text-zinc-300">{plan.nutritionNote}</div>
+      </div>
     </PageShell>
   );
 }
