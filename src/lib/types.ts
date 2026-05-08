@@ -339,6 +339,10 @@ export type StressLog = {
   loggedAt: string;
   /** 1 = calm … 5 = very stressed */
   rating: 1 | 2 | 3 | 4 | 5;
+  /** Optional note with this check-in. */
+  comment?: string;
+  /** Heavy parenting / kids-load day. */
+  kidsDay?: boolean;
 };
 
 export type RecoveryBand = 'push' | 'normal' | 'conservative' | 'recovery';

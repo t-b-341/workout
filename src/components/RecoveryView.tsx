@@ -590,6 +590,8 @@ function StressSection({
   entries: StressLog[];
 }) {
   const [rating, setRating] = useState<1 | 2 | 3 | 4 | 5>(3);
+  const [commentDraft, setCommentDraft] = useState('');
+  const [kidsDay, setKidsDay] = useState(false);
   const dayAvg = averageStressRating(entries);
   const highStress =
     entries.some((e) => e.rating >= 4) || (dayAvg != null && dayAvg >= 4);
@@ -599,13 +601,18 @@ function StressSection({
       typeof crypto !== 'undefined' && 'randomUUID' in crypto
         ? `stress-${date}-${crypto.randomUUID()}`
         : `stress-${date}-${Date.now()}`;
+    const trimmed = commentDraft.trim();
     await localUpsert('stress_logs', {
       id,
       date,
       loggedAt: new Date().toISOString(),
       rating,
+      ...(trimmed ? { comment: trimmed } : {}),
+      ...(kidsDay ? { kidsDay: true } : {}),
     });
     await flushDirty().catch(() => {});
+    setCommentDraft('');
+    setKidsDay(false);
   }
 
   async function removeEntry(id: string) {
@@ -642,10 +649,20 @@ function StressSection({
                 <div className="font-mono text-zinc-300">
                   {fmtCheckInTimestamp(e.loggedAt)} ·{' '}
                   <span className="text-amber-200/90">{e.rating}</span>/5
+                  {e.kidsDay && (
+                    <span className="ml-2 text-[10px] uppercase tracking-wide text-sky-400/90">
+                      Kids day
+                    </span>
+                  )}
                 </div>
                 <div className="text-[11px] text-zinc-500 leading-snug">
                   {STRESS_RATING_SCALE[e.rating]}
                 </div>
+                {e.comment != null && e.comment.trim() !== '' && (
+                  <div className="text-xs text-zinc-400 mt-1 whitespace-pre-wrap break-words">
+                    {e.comment}
+                  </div>
+                )}
               </div>
               <button
                 type="button"
@@ -673,6 +690,25 @@ function StressSection({
           ))}
         </ul>
       </div>
+      <label className="flex items-center gap-2 text-xs text-zinc-400 cursor-pointer w-fit">
+        <input
+          type="checkbox"
+          checked={kidsDay}
+          onChange={(ev) => setKidsDay(ev.target.checked)}
+          className="rounded border-zinc-600 bg-zinc-950 accent-amber-500"
+        />
+        Kids day?
+      </label>
+      <label className="block text-xs text-zinc-500">
+        Comment (optional)
+        <textarea
+          value={commentDraft}
+          onChange={(e) => setCommentDraft(e.target.value)}
+          rows={2}
+          placeholder="Note context for this check-in…"
+          className="mt-1 block w-full rounded-lg bg-zinc-950 border border-zinc-800 px-3 py-2 text-sm text-zinc-200 placeholder:text-zinc-600 resize-y min-h-[2.5rem]"
+        />
+      </label>
       <div className="flex flex-wrap items-end gap-3">
         <StressField label="Rating (1–5)" value={rating} onChange={setRating} />
         <button

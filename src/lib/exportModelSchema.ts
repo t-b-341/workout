@@ -349,6 +349,8 @@ function stressFields(): SchemaEntry {
       date: 'YYYY-MM-DD',
       loggedAt: 'ISO timestamp',
       rating: '1–5',
+      comment: 'string | undefined',
+      kidsDay: 'boolean | undefined',
     },
   };
 }
