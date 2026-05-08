@@ -82,7 +82,16 @@ describe('computeExportSummary', () => {
     expect(summary.sessionCount).toBe(1);
     expect(summary.totalSets).toBe(2);
     expect(summary.totalVolumeLbReps).toBe(100 * 5 + 120 * 3);
-    expect(summary.prFlags).toEqual([{ liftId: 'squat', weight: 120, date: '2026-05-01' }]);
+    expect(summary.prFlags).toEqual([
+      {
+        liftId: 'squat',
+        liftName: 'Squat',
+        weight: 120,
+        reps: 3,
+        date: '2026-05-01',
+        sessionId: 's1',
+      },
+    ]);
     expect(summary.programTargets.length).toBe(21);
     expect(summary.programTargets.find((x) => x.id === 'dl')).toEqual({
       id: 'dl',
