@@ -283,6 +283,7 @@ function readinessFields(): SchemaEntry {
       sessionLogId: 'string',
       date: 'YYYY-MM-DD',
       sleepHours: 'number',
+      sleepInterruptions: 'number | undefined',
       soreness: 'number',
       motivation: 'number',
       hrvRmssd: 'number | undefined',

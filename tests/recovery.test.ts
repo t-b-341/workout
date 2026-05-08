@@ -4,6 +4,7 @@ import {
   hydrationScore,
   mindfulnessScore,
   nutritionScore,
+  readinessScore,
   recoveryBand,
   sleepScore,
   stressScoreFromAverageRating,
@@ -233,5 +234,21 @@ describe('recovery scoring', () => {
       mealsLoggedCount: 1,
     });
     expect(good).toBeGreaterThan(bad);
+  });
+
+  it('penalizes readiness for higher sleep interruptions', () => {
+    const base = {
+      id: 'r1',
+      sessionLogId: 's1',
+      date: '2026-04-27',
+      sleepHours: 8,
+      soreness: 2,
+      motivation: 4,
+      hrvSkipped: true,
+      createdAt: '2026-04-27T10:00:00.000Z',
+    };
+    const smooth = readinessScore({ ...base, sleepInterruptions: 0 });
+    const broken = readinessScore({ ...base, sleepInterruptions: 5 });
+    expect(smooth).toBeGreaterThan(broken);
   });
 });

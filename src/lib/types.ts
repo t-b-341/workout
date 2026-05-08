@@ -222,6 +222,8 @@ export type ReadinessLog = {
   date: string;
   /** Hours of sleep last night. */
   sleepHours: number;
+  /** Night interruptions/awakenings counted during sleep. */
+  sleepInterruptions?: number;
   /** 1 = none, 5 = severe. */
   soreness: number;
   /** 1 = dead, 5 = fired up. */

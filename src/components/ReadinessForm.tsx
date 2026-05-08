@@ -20,6 +20,7 @@ export function ReadinessForm({
   promptBodyweight: boolean;
 }) {
   const [sleep, setSleep] = useState<number>(8);
+  const [sleepInterruptions, setSleepInterruptions] = useState<number>(0);
   const [soreness, setSoreness] = useState<number>(2);
   const [motivation, setMotivation] = useState<number>(3);
   const existingBw = useThisWeekBodyweight();
@@ -43,6 +44,7 @@ export function ReadinessForm({
         sessionLogId: session.id,
         date: session.date,
         sleepHours: sleep,
+        sleepInterruptions,
         soreness,
         motivation,
         hrvSkipped,
@@ -94,6 +96,12 @@ export function ReadinessForm({
         max={10}
         step={0.5}
         onChange={setSleep}
+      />
+      <ReadinessCounter
+        label="Sleep interruptions"
+        value={sleepInterruptions}
+        onChange={setSleepInterruptions}
+        helper="Count awakenings/interruptions overnight."
       />
       <ReadinessScale label="Soreness" value={soreness} onChange={setSoreness} lowLabel="None" highLabel="Severe" />
       <ReadinessScale label="Motivation" value={motivation} onChange={setMotivation} lowLabel="Dead" highLabel="Fired up" />
@@ -247,6 +255,7 @@ export function ReadinessEditForm({
   onDone: () => void;
 }) {
   const [sleep, setSleep] = useState(readiness.sleepHours);
+  const [sleepInterruptions, setSleepInterruptions] = useState(readiness.sleepInterruptions ?? 0);
   const [soreness, setSoreness] = useState(readiness.soreness);
   const [motivation, setMotivation] = useState(readiness.motivation);
   const hadBw = readiness.bodyweight != null;
@@ -262,7 +271,15 @@ export function ReadinessEditForm({
         hrvRmssd: hrvSkipped ? undefined : hrvRmssd,
         hrvSkipped,
       });
-      const row: ReadinessLog = { ...readiness, sleepHours: sleep, soreness, motivation, hrvSkipped, bodyweight: hadBw ? bw : undefined };
+      const row: ReadinessLog = {
+        ...readiness,
+        sleepHours: sleep,
+        sleepInterruptions,
+        soreness,
+        motivation,
+        hrvSkipped,
+        bodyweight: hadBw ? bw : undefined,
+      };
       if (hrvSkipped) {
         delete row.hrvRmssd;
         delete row.hrvMeasuredMin;
@@ -318,6 +335,12 @@ export function ReadinessEditForm({
         max={10}
         step={0.5}
         onChange={setSleep}
+      />
+      <ReadinessCounter
+        label="Sleep interruptions"
+        value={sleepInterruptions}
+        onChange={setSleepInterruptions}
+        helper="Count awakenings/interruptions overnight."
       />
       <ReadinessScale label="Soreness" value={soreness} onChange={setSoreness} lowLabel="None" highLabel="Severe" />
       <ReadinessScale label="Motivation" value={motivation} onChange={setMotivation} lowLabel="Dead" highLabel="Fired up" />
@@ -437,6 +460,52 @@ export function ReadinessScale({
           >{n}</button>
         ))}
       </div>
+    </div>
+  );
+}
+
+function ReadinessCounter({
+  label,
+  value,
+  onChange,
+  helper,
+}: {
+  label: string;
+  value: number;
+  onChange: (n: number) => void;
+  helper?: string;
+}) {
+  const v = Number.isFinite(value) ? value : 0;
+  return (
+    <div className="rounded-xl border border-zinc-800 bg-zinc-950 p-3 space-y-2">
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-sm text-zinc-300">{label}</span>
+        <span className="font-mono text-zinc-200">{v}</span>
+      </div>
+      <div className="flex gap-2">
+        <button
+          type="button"
+          className="h-10 px-3 rounded-lg bg-zinc-800 text-sm"
+          onClick={() => onChange(Math.max(0, v - 1))}
+        >
+          -1
+        </button>
+        <button
+          type="button"
+          className="h-10 px-3 rounded-lg bg-zinc-800 text-sm"
+          onClick={() => onChange(v + 1)}
+        >
+          +1
+        </button>
+        <button
+          type="button"
+          className="h-10 px-3 rounded-lg bg-zinc-800 text-sm"
+          onClick={() => onChange(0)}
+        >
+          Reset
+        </button>
+      </div>
+      {helper && <p className="text-xs text-zinc-500">{helper}</p>}
     </div>
   );
 }

@@ -99,9 +99,11 @@ export function nutritionScore(log?: NutritionLog): number {
 export function readinessScore(log?: ReadinessLog): number {
   if (!log) return 60;
   const sleep = clamp((log.sleepHours / 8) * 100, 0, 100);
+  const interruptions = Math.max(0, log.sleepInterruptions ?? 0);
+  const interruptionScore = clamp(100 - interruptions * 10, 40, 100);
   const soreness = clamp(((6 - log.soreness) / 5) * 100, 0, 100);
   const motivation = clamp((log.motivation / 5) * 100, 0, 100);
-  const base = sleep * 0.35 + soreness * 0.35 + motivation * 0.3;
+  const base = sleep * 0.28 + interruptionScore * 0.07 + soreness * 0.35 + motivation * 0.3;
   if (log.hrvSkipped || log.hrvRmssd == null) return Math.round(base);
   // Lightweight HRV signal (RMSSD): low suppresses readiness, high supports it.
   const hrvScore = clamp(((log.hrvRmssd - 20) / 50) * 100, 0, 100);

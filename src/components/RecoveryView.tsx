@@ -364,7 +364,7 @@ function DailyRecoveryExplainSheet({
           <section className="space-y-2">
             <h3 className="text-xs uppercase tracking-wider text-zinc-500">Readiness pillar</h3>
             <ul className="text-zinc-400 space-y-1 list-disc list-inside">
-              <li>Combines Today’s readiness fields: subjective sleep-hours estimate, soreness (lower soreness raises the score), and motivation.</li>
+              <li>Combines Today’s readiness fields: subjective sleep-hours estimate, sleep interruptions, soreness (lower soreness raises the score), and motivation.</li>
               <li>When RMSSD/HRV isn’t skipped and a value exists, we blend that signal in (~20%); otherwise that mixture is readiness answers only.</li>
             </ul>
           </section>
