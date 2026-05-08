@@ -1,23 +1,30 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import Link from 'next/link';
 import { saveWellnessTargets, useWellnessTargets, defaultWellnessTargets } from '@/lib/wellnessTargets';
 
 export function WellnessTargetsCard() {
   const loaded = useWellnessTargets();
   const base = loaded ?? defaultWellnessTargets();
+  const loadedKey =
+    loaded === undefined
+      ? '__pending__'
+      : `${loaded.mindfulnessDailyMin}|${loaded.mindfulnessWeeklyMin}|${loaded.cardioWeeklyMin}`;
+  const [loadedKeySeen, setLoadedKeySeen] = useState(loadedKey);
   const [mindDaily, setMindDaily] = useState(String(base.mindfulnessDailyMin));
   const [mindWeekly, setMindWeekly] = useState(String(base.mindfulnessWeeklyMin));
   const [cardioWeekly, setCardioWeekly] = useState(String(base.cardioWeeklyMin));
   const [savedTick, setSavedTick] = useState(false);
 
-  useEffect(() => {
-    if (loaded === undefined) return;
-    setMindDaily(String(loaded.mindfulnessDailyMin));
-    setMindWeekly(String(loaded.mindfulnessWeeklyMin));
-    setCardioWeekly(String(loaded.cardioWeeklyMin));
-  }, [loaded]);
+  if (loadedKey !== loadedKeySeen) {
+    setLoadedKeySeen(loadedKey);
+    if (loaded !== undefined) {
+      setMindDaily(String(loaded.mindfulnessDailyMin));
+      setMindWeekly(String(loaded.mindfulnessWeeklyMin));
+      setCardioWeekly(String(loaded.cardioWeeklyMin));
+    }
+  }
 
   async function save() {
     const md = parseInt(mindDaily.trim(), 10);

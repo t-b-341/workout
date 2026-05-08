@@ -161,10 +161,15 @@ export function TodayView() {
     writeTodayPlanPreference({ date: session.date, templateId: session.templateId });
   }, [session]);
 
-  const [sundayMondayUnlocked, setSundayMondayUnlocked] = useState(false);
-  useEffect(() => {
+  const sessionUnlockKey = `${session?.id ?? ''}|${session?.date ?? ''}`;
+  const [sessionUnlockKeySeen, setSessionUnlockKeySeen] = useState(sessionUnlockKey);
+  const [sundayMondayUnlocked, setSundayMondayUnlocked] = useState(() =>
+    readSundayMondayEarlyUnlocked(todayIso()),
+  );
+  if (sessionUnlockKey !== sessionUnlockKeySeen) {
+    setSessionUnlockKeySeen(sessionUnlockKey);
     setSundayMondayUnlocked(readSundayMondayEarlyUnlocked(todayIso()));
-  }, [session?.id, session?.date]);
+  }
 
   if (!templates || !lifts || !activeTemplate) {
     return <div className="p-6 text-zinc-500">Loading…</div>;

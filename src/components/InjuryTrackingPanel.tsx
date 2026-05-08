@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { format } from 'date-fns';
 import { useAllInjuryEpisodes } from '@/lib/hooks';
 import {
@@ -200,11 +200,13 @@ function SiteDetailRow({
   onKind: (k: InjuryKind) => void;
   onNotesBlur: (notes: string) => void;
 }) {
+  const notesSyncKey = `${episode.id}|${episode.notes ?? ''}`;
+  const [notesSyncSeen, setNotesSyncSeen] = useState(notesSyncKey);
   const [notesDraft, setNotesDraft] = useState(episode.notes ?? '');
-
-  useEffect(() => {
+  if (notesSyncKey !== notesSyncSeen) {
+    setNotesSyncSeen(notesSyncKey);
     setNotesDraft(episode.notes ?? '');
-  }, [episode.id, episode.notes]);
+  }
 
   return (
     <div className="rounded-lg border border-zinc-800 bg-zinc-900/80 p-2 space-y-2 ml-0 sm:ml-1">

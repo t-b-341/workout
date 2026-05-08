@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useState } from 'react';
 import {
   fireDueTrackerReminders,
   isTrackerRemindersEnabled,
@@ -15,14 +15,13 @@ function formatSlotTime(hour: number, minute: number): string {
 }
 
 export function TrackerReminderCard() {
-  const [enabled, setEnabled] = useState(false);
+  const [enabled, setEnabled] = useState(() =>
+    typeof window === 'undefined' ? false : isTrackerRemindersEnabled(),
+  );
   const [denied, setDenied] = useState(false);
-  const [unsupported, setUnsupported] = useState(false);
-
-  useEffect(() => {
-    setEnabled(isTrackerRemindersEnabled());
-    setUnsupported(typeof window === 'undefined' || typeof Notification === 'undefined');
-  }, []);
+  const [unsupported] = useState(
+    () => typeof window === 'undefined' || typeof Notification === 'undefined',
+  );
 
   const toggle = useCallback(async () => {
     if (unsupported) return;

@@ -1,9 +1,29 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import type { Lift } from '@/lib/types';
 import { clampHalfStepRir } from '@/lib/rpe';
 import { snapWorkingWeight, type SnapLiftRef } from '@/lib/progression';
+
+/** Keep a text buffer in sync with external numeric `value` whenever the field is not focused. */
+function useBlurSyncedNumericText(
+  value: number,
+  toText: (n: number) => string,
+): {
+  setFocused: (v: boolean) => void;
+  text: string;
+  setText: (v: string) => void;
+} {
+  const [focused, setFocused] = useState(false);
+  const [text, setText] = useState(() => toText(value));
+  const syncKey = `${value}|${focused}`;
+  const [syncKeySeen, setSyncKeySeen] = useState(syncKey);
+  if (syncKey !== syncKeySeen) {
+    setSyncKeySeen(syncKey);
+    if (!focused) setText(toText(value));
+  }
+  return { setFocused, text, setText };
+}
 
 type Props = {
   lift: SnapLiftRef & Pick<Lift, 'increment'>;
@@ -37,12 +57,7 @@ export function WeightStepper({
   const dec = () => onChange(snap(value - inc));
   const up = () => onChange(snap(value + inc));
 
-  const [focused, setFocused] = useState(false);
-  const [text, setText] = useState(String(value));
-
-  useEffect(() => {
-    if (!focused) setText(String(value));
-  }, [value, focused]);
+  const { setFocused, text, setText } = useBlurSyncedNumericText(value, String);
 
   function commit() {
     const t = text.trim();
@@ -112,12 +127,7 @@ type RepProps = {
 };
 
 export function RepStepper({ value, onChange, unit = 'reps' }: RepProps) {
-  const [focused, setFocused] = useState(false);
-  const [text, setText] = useState(String(value));
-
-  useEffect(() => {
-    if (!focused) setText(String(value));
-  }, [value, focused]);
+  const { setFocused, text, setText } = useBlurSyncedNumericText(value, String);
 
   function commit() {
     const t = text.trim();
@@ -172,12 +182,9 @@ type RirProps = {
 
 export function RirStepper({ value, onChange, compact }: RirProps) {
   const snapped = clampHalfStepRir(value);
-  const [focused, setFocused] = useState(false);
-  const [text, setText] = useState(String(snapped));
-
-  useEffect(() => {
-    if (!focused) setText(String(clampHalfStepRir(value)));
-  }, [value, focused]);
+  const { setFocused, text, setText } = useBlurSyncedNumericText(value, (n) =>
+    String(clampHalfStepRir(n)),
+  );
 
   function commit() {
     const t = text.trim();
@@ -246,12 +253,7 @@ export function LooseIntField({
   max?: number;
   className?: string;
 }) {
-  const [focused, setFocused] = useState(false);
-  const [text, setText] = useState(String(value));
-
-  useEffect(() => {
-    if (!focused) setText(String(value));
-  }, [value, focused]);
+  const { setFocused, text, setText } = useBlurSyncedNumericText(value, String);
 
   function commit() {
     const t = text.trim();
@@ -309,12 +311,7 @@ export function DecimalStepper({
   const dec = () => onChange(clamp(value - step));
   const inc = () => onChange(clamp(value + step));
 
-  const [focused, setFocused] = useState(false);
-  const [text, setText] = useState(String(value));
-
-  useEffect(() => {
-    if (!focused) setText(String(value));
-  }, [value, focused]);
+  const { setFocused, text, setText } = useBlurSyncedNumericText(value, String);
 
   function commit() {
     const t = text.trim();
@@ -384,12 +381,7 @@ export function LooseDecimalField({
   className?: string;
   allowNegative?: boolean;
 }) {
-  const [focused, setFocused] = useState(false);
-  const [text, setText] = useState(String(value));
-
-  useEffect(() => {
-    if (!focused) setText(String(value));
-  }, [value, focused]);
+  const { setFocused, text, setText } = useBlurSyncedNumericText(value, String);
 
   function commit() {
     const t = text.trim();

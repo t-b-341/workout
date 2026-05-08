@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import {
   useAllBodyweight,
@@ -546,12 +546,20 @@ export function ProgramEditor() {
 
 function ProgramTargetsEditor({ lifts }: { lifts: Pick<Lift, 'id' | 'name'>[] }) {
   const stored = useLiveQuery(() => loadProgramTargetsStored());
+  const storedToken = useMemo(
+    () => (stored === undefined ? '__loading__' : JSON.stringify(stored)),
+    [stored],
+  );
+  const [storedTokenSeen, setStoredTokenSeen] = useState(storedToken);
   const [draft, setDraft] = useState<ProgramTargetStored[] | null>(null);
   const [dirty, setDirty] = useState(false);
 
-  useEffect(() => {
-    if (stored !== undefined && !dirty) setDraft(stored.map((x) => ({ ...x })));
-  }, [stored, dirty]);
+  if (storedToken !== storedTokenSeen) {
+    setStoredTokenSeen(storedToken);
+    if (!dirty && stored !== undefined) {
+      setDraft(stored.map((x) => ({ ...x })));
+    }
+  }
 
   function emptyPt(id: string): ProgramTargetStored {
     return {
@@ -782,11 +790,21 @@ function inferFitnessGoalStructuredFromText(text: string): {
 }
 
 function GoalNumericTargetEditor({ goal }: { goal: FitnessGoal }) {
+  const goalSyncKey = `${goal.id}|${goal.metric ?? ''}|${goal.target ?? ''}|${goal.unit ?? ''}|${goal.direction ?? ''}`;
+  const [goalSyncSeen, setGoalSyncSeen] = useState(goalSyncKey);
   const [metric, setMetric] = useState(goal.metric ?? '');
   const [targetStr, setTargetStr] = useState(goal.target != null ? String(goal.target) : '');
   const [unit, setUnit] = useState(goal.unit ?? '');
   const [dir, setDir] = useState<'above' | 'below' | 'exact'>(goal.direction ?? 'above');
   const [busy, setBusy] = useState(false);
+
+  if (goalSyncKey !== goalSyncSeen) {
+    setGoalSyncSeen(goalSyncKey);
+    setMetric(goal.metric ?? '');
+    setTargetStr(goal.target != null ? String(goal.target) : '');
+    setUnit(goal.unit ?? '');
+    setDir(goal.direction ?? 'above');
+  }
 
   const inferred =
     useMemo(() => {
@@ -800,13 +818,6 @@ function GoalNumericTargetEditor({ goal }: { goal: FitnessGoal }) {
       if (hasAnyStored) return null;
       return inferFitnessGoalStructuredFromText(goal.text);
     }, [goal.metric, goal.unit, goal.target, goal.direction, goal.text]);
-
-  useEffect(() => {
-    setMetric(goal.metric ?? '');
-    setTargetStr(goal.target != null ? String(goal.target) : '');
-    setUnit(goal.unit ?? '');
-    setDir(goal.direction ?? 'above');
-  }, [goal.id, goal.metric, goal.target, goal.unit, goal.direction]);
 
   async function saveExtras() {
     setBusy(true);

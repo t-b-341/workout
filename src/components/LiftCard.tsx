@@ -494,15 +494,15 @@ function CardioDurationTimer({
   onStartedAtChange: (iso: string | null) => void;
   onApplyMinutes: (minutes: number) => void;
 }) {
-  const [, setTick] = useState(0);
+  const [nowMs, setNowMs] = useState(() => Date.now());
   useEffect(() => {
     if (!startedAtIso) return;
-    const id = setInterval(() => setTick((t) => t + 1), 1000);
+    const id = setInterval(() => setNowMs(Date.now()), 1000);
     return () => clearInterval(id);
   }, [startedAtIso]);
 
   const elapsedSec = startedAtIso
-    ? Math.max(0, Math.floor((Date.now() - Date.parse(startedAtIso)) / 1000))
+    ? Math.max(0, Math.floor((nowMs - Date.parse(startedAtIso)) / 1000))
     : 0;
   const m = Math.floor(elapsedSec / 60);
   const s = elapsedSec % 60;
@@ -591,18 +591,20 @@ function SetRow({
   const ct = liftToCardioType(lift.id);
   const [speedMph, setSpeedMph] = useState(initialSpeedMph);
   const [gradePct, setGradePct] = useState(initialGradePct);
+  const speedGradeKey = `${initialSpeedMph}|${initialGradePct}`;
+  const [speedGradeSeen, setSpeedGradeSeen] = useState(speedGradeKey);
+  if (speedGradeKey !== speedGradeSeen) {
+    setSpeedGradeSeen(speedGradeKey);
+    setSpeedMph(initialSpeedMph);
+    setGradePct(initialGradePct);
+  }
   const [avgHr, setAvgHr] = useState<number | ''>('');
   const [peakHr, setPeakHr] = useState<number | ''>('');
   const [cardioWallClockStart, setCardioWallClockStart] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (done) setCardioWallClockStart(null);
-  }, [done]);
-
-  useEffect(() => {
-    setSpeedMph(initialSpeedMph);
-    setGradePct(initialGradePct);
-  }, [initialSpeedMph, initialGradePct]);
+  if (done && cardioWallClockStart != null) {
+    setCardioWallClockStart(null);
+  }
 
   const allowNegative = lift.id === 'p1_assisted'; // assistance load
   const showWeight = lift.loadUnit !== 'none';

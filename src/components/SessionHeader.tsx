@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { localUpsert } from '@/lib/sync';
 import { fmtDate } from '@/lib/time';
 import { effortLabel } from '@/lib/effort';
@@ -42,11 +42,13 @@ export function SessionHeader({
   hideTemplatePicker?: boolean;
 }) {
   const [showModes, setShowModes] = useState(false);
+  const reasonSyncKey = `${session.id}|${session.reason ?? ''}`;
+  const [reasonSyncSeen, setReasonSyncSeen] = useState(reasonSyncKey);
   const [reasonDraft, setReasonDraft] = useState(session.reason ?? '');
-
-  useEffect(() => {
+  if (reasonSyncKey !== reasonSyncSeen) {
+    setReasonSyncSeen(reasonSyncKey);
     setReasonDraft(session.reason ?? '');
-  }, [session.id, session.reason]);
+  }
 
   async function saveReasonNote() {
     const trimmed = reasonDraft.trim();

@@ -393,4 +393,6 @@ export function buildExportSchemaDocumentation(): Record<string, SchemaEntry> {
 }
 
 /** Compile-time tether: referenced so refactors rename `DirtyRow` together with exporters. */
-export function _dirtyRowTyping(_?: DirtyRow): void {}
+export function _dirtyRowTyping(row?: DirtyRow): void {
+  void row;
+}

@@ -1,7 +1,7 @@
 'use client';
 
 import { useLiveQuery } from 'dexie-react-hooks';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   dayNotesMetaKey,
   normalizeDayNotesValue,
@@ -10,6 +10,41 @@ import {
 import { getDb } from '@/lib/db';
 
 type Props = { date: string };
+
+function DayNotesEditor({ date, stored }: { date: string; stored: string }) {
+  const [draft, setDraft] = useState(stored);
+  const [focused, setFocused] = useState(false);
+  const displayValue = focused ? draft : stored;
+
+  useEffect(() => {
+    if (!focused) return;
+    const t = window.setTimeout(() => {
+      void saveDayNotes(date, draft);
+    }, 450);
+    return () => window.clearTimeout(t);
+  }, [date, draft, focused]);
+
+  const onBlur = () => {
+    setFocused(false);
+    void saveDayNotes(date, draft);
+  };
+
+  return (
+    <textarea
+      value={displayValue}
+      onChange={(e) => setDraft(e.target.value)}
+      onFocus={() => {
+        setDraft(stored);
+        setFocused(true);
+      }}
+      onBlur={onBlur}
+      placeholder="Optional · a sentence or two…"
+      rows={3}
+      className="w-full min-h-[5.5rem] rounded-xl bg-zinc-950 border border-zinc-800 px-3 py-2 text-sm text-zinc-200 placeholder:text-zinc-600 resize-y"
+      aria-label="Day notes"
+    />
+  );
+}
 
 /**
  * Free-text “how today feels” for **this calendar day** (not per session template).
@@ -23,34 +58,6 @@ export function DayNotesCard({ date }: Props) {
   );
   const stored = normalizeDayNotesValue(metaRow?.value).text;
 
-  const [draft, setDraft] = useState('');
-  const [focused, setFocused] = useState(false);
-  const skipSync = useRef(false);
-
-  useEffect(() => {
-    skipSync.current = false;
-    setDraft('');
-  }, [date]);
-
-  useEffect(() => {
-    if (focused || skipSync.current) return;
-    setDraft(stored);
-  }, [stored, focused]);
-
-  useEffect(() => {
-    if (!focused) return;
-    const t = window.setTimeout(() => {
-      void saveDayNotes(date, draft);
-    }, 450);
-    return () => window.clearTimeout(t);
-  }, [date, draft, focused]);
-
-  const onBlur = () => {
-    setFocused(false);
-    void saveDayNotes(date, draft);
-    skipSync.current = true;
-  };
-
   return (
     <div className="rounded-2xl bg-zinc-900 border border-zinc-800 p-4 space-y-2">
       <div>
@@ -60,19 +67,7 @@ export function DayNotesCard({ date }: Props) {
           for you now; future versions can use this alongside check-in signals (not analyzed in-app yet).
         </p>
       </div>
-      <textarea
-        value={draft}
-        onChange={(e) => setDraft(e.target.value)}
-        onFocus={() => {
-          skipSync.current = false;
-          setFocused(true);
-        }}
-        onBlur={onBlur}
-        placeholder="Optional · a sentence or two…"
-        rows={3}
-        className="w-full min-h-[5.5rem] rounded-xl bg-zinc-950 border border-zinc-800 px-3 py-2 text-sm text-zinc-200 placeholder:text-zinc-600 resize-y"
-        aria-label="Day notes"
-      />
+      <DayNotesEditor key={date} date={date} stored={stored} />
     </div>
   );
 }

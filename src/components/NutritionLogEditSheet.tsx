@@ -224,13 +224,15 @@ export function NutritionLogEditSheet({
     sortMealTimestamps(log.mealTimestamps ?? []),
   );
   const [busy, setBusy] = useState(false);
+  const dayTypeSyncKey = `${log.id}|${log.date}|${log.dayType ?? ''}`;
+  const [dayTypeSyncSeen, setDayTypeSyncSeen] = useState(dayTypeSyncKey);
   const [dayType, setDayType] = useState<NutritionDayType>(() =>
     log.dayType ?? defaultNutritionDayType(log.date, []),
   );
-
-  useEffect(() => {
+  if (dayTypeSyncKey !== dayTypeSyncSeen) {
+    setDayTypeSyncSeen(dayTypeSyncKey);
     setDayType(log.dayType ?? defaultNutritionDayType(log.date, []));
-  }, [log.id, log.date, log.dayType]);
+  }
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {

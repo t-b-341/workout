@@ -84,7 +84,13 @@ export function SessionEditSheet({ session, initialSets, onClose }: Props) {
   const prescriptions = usePrescriptions(session.templateId);
   const lifts = useLifts();
   const [notes, setNotes] = useState(session.notes ?? '');
+  const sessionFocusKey = `${session.id}|${session.sessionType ?? 'standard'}`;
+  const [sessionFocusKeySeen, setSessionFocusKeySeen] = useState(sessionFocusKey);
   const [sessionFocus, setSessionFocus] = useState<SessionLabelType>(session.sessionType ?? 'standard');
+  if (sessionFocusKey !== sessionFocusKeySeen) {
+    setSessionFocusKeySeen(sessionFocusKey);
+    setSessionFocus(session.sessionType ?? 'standard');
+  }
   const [rows, setRows] = useState<SetLog[]>(initialSets);
 
   useEffect(() => {
@@ -94,10 +100,6 @@ export function SessionEditSheet({ session, initialSets, onClose }: Props) {
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose]);
-
-  useEffect(() => {
-    setSessionFocus(session.sessionType ?? 'standard');
-  }, [session.id, session.sessionType]);
 
   const liftMap = useMemo(() => new Map((lifts ?? []).map((l) => [l.id, l])), [lifts]);
   const rxList = useMemo(() => prescriptions ?? [], [prescriptions]);

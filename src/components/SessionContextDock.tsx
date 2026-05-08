@@ -20,7 +20,7 @@ type Props = {
 
 export function SessionContextDock({ session, prescriptions, allSets }: Props) {
   const { mode } = useLayoutMode();
-  const [tick, setTick] = useState(0);
+  const [nowMs, setNowMs] = useState(() => Date.now());
   const maxInner = pageMaxClass(mode);
 
   const sessionSets = useMemo(
@@ -36,14 +36,12 @@ export function SessionContextDock({ session, prescriptions, allSets }: Props) {
 
   useEffect(() => {
     if (!inProgress) return;
-    const id = setInterval(() => setTick((t) => t + 1), 1000);
+    const id = setInterval(() => setNowMs(Date.now()), 1000);
     return () => clearInterval(id);
   }, [inProgress]);
 
-  void tick;
-
   const durationMs = inProgress
-    ? workoutWallClockElapsedMs(session, Date.now())
+    ? workoutWallClockElapsedMs(session, nowMs)
     : sessionDurationMs(session, sessionSets);
 
   function jumpToCurrent() {

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import {
   useAllBodyweight,
   useAllNutrition,
@@ -704,10 +704,12 @@ function StressField({
 }) {
   const [focused, setFocused] = useState(false);
   const [text, setText] = useState(String(value));
-
-  useEffect(() => {
+  const stressFieldSyncKey = `${value}|${focused}`;
+  const [stressFieldKeySeen, setStressFieldKeySeen] = useState(stressFieldSyncKey);
+  if (stressFieldSyncKey !== stressFieldKeySeen) {
+    setStressFieldKeySeen(stressFieldSyncKey);
     if (!focused) setText(String(value));
-  }, [value, focused]);
+  }
 
   function commit() {
     const digits = text.replace(/\D/g, '');
@@ -1143,13 +1145,15 @@ function NutritionSectionForm({
   const [cA, setCA] = useState(existing?.carbsActualG ?? 0);
   const [fA, setFA] = useState(existing?.fatActualG ?? 0);
 
-  const [dayType, setDayType] = useState<NutritionDayType>(() =>
-    existing?.dayType ?? defaultNutritionDayType(date, []),
-  );
-
-  useEffect(() => {
-    setDayType(existing?.dayType ?? defaultNutritionDayType(date, []));
-  }, [existing?.id, date]);
+  const defaultDayTypeForNutrition = useMemo(() => defaultNutritionDayType(date, []), [date]);
+  const dayTypeFromLog = existing?.dayType ?? defaultDayTypeForNutrition;
+  const nutritionDayTypeSyncKey = `${existing?.id ?? 'none'}|${String(existing?.dayType ?? '')}|${date}`;
+  const [dayType, setDayType] = useState<NutritionDayType>(dayTypeFromLog);
+  const [nutritionDayTypeKeySeen, setNutritionDayTypeKeySeen] = useState(nutritionDayTypeSyncKey);
+  if (nutritionDayTypeSyncKey !== nutritionDayTypeKeySeen) {
+    setNutritionDayTypeKeySeen(nutritionDayTypeSyncKey);
+    setDayType(dayTypeFromLog);
+  }
 
   const targetKcal = useMemo(() => kcalFromMacros(pT, cT, fT), [pT, cT, fT]);
   const actualKcal = useMemo(() => kcalFromMacros(pA, cA, fA), [pA, cA, fA]);
