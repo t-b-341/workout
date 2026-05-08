@@ -48,6 +48,17 @@ function clamp(n: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, n));
 }
 
+/** 1–5 stress check-in scale (Recovery tab). Kept in sync with UI copy only — not persisted. */
+const STRESS_RATING_SCALE: Record<1 | 2 | 3 | 4 | 5, string> = {
+  1: 'No stress. Normal baseline, nothing notable.',
+  2: 'Mild. Minor background load, not affecting function.',
+  3: 'Moderate. Noticeable stress, some impact on focus or energy.',
+  4: 'High. Significant stressor, affecting sleep, mood, or motivation.',
+  5: 'Severe. Acute or crisis-level stress — training load should be considered for reduction.',
+};
+
+const STRESS_RATING_ORDER = [1, 2, 3, 4, 5] as const;
+
 function fmtCheckInTimestamp(iso: string): string {
   try {
     return new Date(iso).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
@@ -608,8 +619,7 @@ function StressSection({
         <div>
           <div className="text-sm font-medium">Stress check</div>
           <div className="text-xs text-zinc-500">
-            Each entry is a timestamp and a 1–5 rating (higher = more stressed). Add as many or as few per day as you
-            want.
+            Each entry is a timestamp and a 1–5 rating. Add as many or as few per day as you want.
           </div>
         </div>
         {entries.length > 0 && dayAvg != null && (
@@ -624,14 +634,20 @@ function StressSection({
           {sorted.map((e) => (
             <li
               key={e.id}
-              className="flex items-center justify-between gap-2 rounded-lg bg-zinc-950 border border-zinc-800 px-3 py-2 text-sm"
+              className="flex items-start justify-between gap-2 rounded-lg bg-zinc-950 border border-zinc-800 px-3 py-2 text-sm"
             >
-              <span className="font-mono text-zinc-300">
-                {fmtCheckInTimestamp(e.loggedAt)} · {e.rating}/5
-              </span>
+              <div className="min-w-0 space-y-0.5">
+                <div className="font-mono text-zinc-300">
+                  {fmtCheckInTimestamp(e.loggedAt)} ·{' '}
+                  <span className="text-amber-200/90">{e.rating}</span>/5
+                </div>
+                <div className="text-[11px] text-zinc-500 leading-snug">
+                  {STRESS_RATING_SCALE[e.rating]}
+                </div>
+              </div>
               <button
                 type="button"
-                className="text-xs text-rose-300 hover:text-rose-200"
+                className="text-xs text-rose-300 hover:text-rose-200 shrink-0"
                 onClick={() => void removeEntry(e.id)}
               >
                 Remove
@@ -640,6 +656,21 @@ function StressSection({
           ))}
         </ul>
       )}
+      <div
+        className="rounded-lg border border-zinc-800 bg-zinc-950/60 p-3 space-y-1.5"
+        aria-label="Stress rating scale reference"
+      >
+        <div className="text-xs font-medium text-zinc-400">Rating scale</div>
+        <ul className="text-[11px] text-zinc-500 space-y-1 leading-snug">
+          {STRESS_RATING_ORDER.map((n) => (
+            <li key={n} className="flex gap-1.5">
+              <span className="font-mono text-zinc-300 shrink-0 w-4 text-right">{n}</span>
+              <span className="text-zinc-500">—</span>
+              <span>{STRESS_RATING_SCALE[n]}</span>
+            </li>
+          ))}
+        </ul>
+      </div>
       <div className="flex flex-wrap items-end gap-3">
         <StressField label="Rating (1–5)" value={rating} onChange={setRating} />
         <button
@@ -689,31 +720,41 @@ function StressField({
     setText(String(n));
   }
 
+  const previewLevel =
+    /^[1-5]$/.test(text) ? (parseInt(text, 10) as 1 | 2 | 3 | 4 | 5) : value;
+
   return (
-    <label className="text-xs text-zinc-500">
-      {label}
-      <input
-        className="mt-1 h-11 w-full rounded-lg bg-zinc-950 border border-zinc-800 px-3 text-center font-mono"
-        type="text"
-        inputMode="numeric"
-        autoComplete="off"
-        value={text}
-        onFocus={() => setFocused(true)}
-        onBlur={() => {
-          commit();
-          setFocused(false);
-        }}
-        onChange={(e) => {
-          let v = e.target.value.replace(/\D/g, '');
-          if (v.length > 1) v = v.slice(-1);
-          setText(v);
-          if (v !== '') {
-            const n = parseInt(v, 10);
-            if (n >= 1 && n <= 5) onChange(n as 1 | 2 | 3 | 4 | 5);
-          }
-        }}
-      />
-    </label>
+    <div className="min-w-[12rem] flex-1 max-w-xs">
+      <label className="text-xs text-zinc-500">
+        {label}
+        <input
+          className="mt-1 h-11 w-full rounded-lg bg-zinc-950 border border-zinc-800 px-3 text-center font-mono"
+          type="text"
+          inputMode="numeric"
+          autoComplete="off"
+          value={text}
+          onFocus={() => setFocused(true)}
+          onBlur={() => {
+            commit();
+            setFocused(false);
+          }}
+          onChange={(e) => {
+            let v = e.target.value.replace(/\D/g, '');
+            if (v.length > 1) v = v.slice(-1);
+            setText(v);
+            if (v !== '') {
+              const n = parseInt(v, 10);
+              if (n >= 1 && n <= 5) onChange(n as 1 | 2 | 3 | 4 | 5);
+            }
+          }}
+        />
+      </label>
+      <p className="mt-1.5 text-xs text-zinc-300 leading-snug min-h-[2.75rem]">
+        <span className="font-mono text-amber-200/90">{previewLevel}</span>
+        <span className="text-zinc-600"> — </span>
+        {STRESS_RATING_SCALE[previewLevel]}
+      </p>
+    </div>
   );
 }
 
