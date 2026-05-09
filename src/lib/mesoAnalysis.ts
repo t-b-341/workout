@@ -20,6 +20,7 @@ import type {
   SetLog,
   SleepLog,
   StressLog,
+  TemplateId,
 } from './types';
 import { deriveSessionStatus } from './sessionStatus';
 import { SET_INTENTS } from './types';
@@ -135,11 +136,12 @@ export type LiftRecommendation = {
 };
 
 export type RepRangeComplianceRow = {
+  templateId: TemplateId;
   liftId: string;
   liftName: string;
-  /** Mean prescription rep floor across counted working sets. */
+  /** Prescription rep floor for this template + lift (from the prescription rows used by logged sets). */
   prescribedMin: number;
-  /** Mean prescription rep ceiling across counted working sets. */
+  /** Prescription rep ceiling for this template + lift. */
   prescribedMax: number;
   avgActualReps: number;
   /** Share of completed working sets with reps in [prescribedMin, prescribedMax] per set's prescription. */
@@ -564,15 +566,18 @@ export function computeMesoAnalysis(args: {
   {
     const rxById = new Map(args.prescriptions.map((p) => [p.id, p]));
     type RepAgg = {
+      templateId: TemplateId;
+      liftId: string;
+      repMin: number;
+      repMax: number;
       sumReps: number;
-      sumRepMin: number;
-      sumRepMax: number;
       n: number;
       within: number;
       below: number;
       above: number;
     };
-    const aggByLift = new Map<string, RepAgg>();
+    /** One row per prescription (template + lift + rep band), keyed by prescription id. */
+    const aggByPrescription = new Map<string, RepAgg>();
 
     for (const st of setsInWindow) {
       if (st.status !== 'completed') continue;
@@ -580,30 +585,41 @@ export function computeMesoAnalysis(args: {
       const lift = liftById.get(st.liftId);
       if (!lift || lift.equipment === 'cardio' || lift.equipment === 'time') continue;
       if (lift.loadScale === 'inverse') continue;
+      const sess = sessionById.get(st.sessionLogId);
+      if (!sess) continue;
       const rx = rxById.get(st.prescriptionId);
-      if (!rx) continue;
+      if (!rx || rx.templateId !== sess.templateId || rx.liftId !== st.liftId) continue;
       const repMin = rx.repMin;
       const repMax = rx.repMax;
-      let a = aggByLift.get(st.liftId);
+      const key = st.prescriptionId;
+      let a = aggByPrescription.get(key);
       if (!a) {
-        a = { sumReps: 0, sumRepMin: 0, sumRepMax: 0, n: 0, within: 0, below: 0, above: 0 };
-        aggByLift.set(st.liftId, a);
+        a = {
+          templateId: rx.templateId,
+          liftId: rx.liftId,
+          repMin,
+          repMax,
+          sumReps: 0,
+          n: 0,
+          within: 0,
+          below: 0,
+          above: 0,
+        };
+        aggByPrescription.set(key, a);
       }
       a.n += 1;
       a.sumReps += st.reps;
-      a.sumRepMin += repMin;
-      a.sumRepMax += repMax;
       if (st.reps < repMin) a.below += 1;
       else if (st.reps > repMax) a.above += 1;
       else a.within += 1;
     }
 
     const repRows: RepRangeComplianceRow[] = [];
-    for (const [liftId, a] of aggByLift) {
+    for (const a of aggByPrescription.values()) {
       if (a.n < 3) continue;
-      const liftName = liftById.get(liftId)?.name ?? liftId;
-      const prescribedMin = Math.round((a.sumRepMin / a.n) * 10) / 10;
-      const prescribedMax = Math.round((a.sumRepMax / a.n) * 10) / 10;
+      const liftName = liftById.get(a.liftId)?.name ?? a.liftId;
+      const prescribedMin = a.repMin;
+      const prescribedMax = a.repMax;
       const avgActualReps = Math.round((a.sumReps / a.n) * 10) / 10;
       const compliancePct = (a.within / a.n) * 100;
       let note: string | null = null;
@@ -619,7 +635,8 @@ export function computeMesoAnalysis(args: {
         }
       }
       repRows.push({
-        liftId,
+        templateId: a.templateId,
+        liftId: a.liftId,
         liftName,
         prescribedMin,
         prescribedMax,
@@ -630,7 +647,11 @@ export function computeMesoAnalysis(args: {
         note,
       });
     }
-    repRows.sort((a, b) => a.liftName.localeCompare(b.liftName));
+    repRows.sort((a, b) =>
+      a.templateId === b.templateId
+        ? a.liftName.localeCompare(b.liftName)
+        : a.templateId.localeCompare(b.templateId),
+    );
     repRangeCompliance = repRows.length ? repRows : null;
     if (!repRangeCompliance) {
       sectionNullNotes.repRangeCompliance =
@@ -642,6 +663,8 @@ export function computeMesoAnalysis(args: {
   // ----- prescriptionDivergence -----
   {
     const rxByIdDiv = new Map(args.prescriptions.map((p) => [p.id, p]));
+    /** All sessions in export (not meso-window filtered) for resolving set → template. */
+    const sessionByIdAll = new Map(args.session_logs.map((s) => [s.id, s]));
     type DivAgg = {
       sumActual: number;
       sumPrescribed: number;
@@ -650,14 +673,16 @@ export function computeMesoAnalysis(args: {
     };
     const aggByLift = new Map<string, DivAgg>();
 
-    for (const st of setsInWindow) {
+    for (const st of args.set_logs) {
       if (st.status !== 'completed') continue;
       if (intentOf(st) !== 'working') continue;
       const lift = liftById.get(st.liftId);
       if (!lift || lift.equipment === 'cardio' || lift.equipment === 'time') continue;
       if (lift.loadScale === 'inverse') continue;
+      const sess = sessionByIdAll.get(st.sessionLogId);
+      if (!sess) continue;
       const rx = rxByIdDiv.get(st.prescriptionId);
-      if (!rx) continue;
+      if (!rx || rx.templateId !== sess.templateId || rx.liftId !== st.liftId) continue;
       const prescribed = rx.weight;
       if (!Number.isFinite(prescribed) || prescribed <= 0) continue;
       if (!Number.isFinite(st.weight)) continue;
@@ -686,6 +711,7 @@ export function computeMesoAnalysis(args: {
 
       const sessionsLogged = a.sessions.size;
       const liftName = liftById.get(liftId)?.name ?? liftId;
+      const suggestPrescriptionUpdate = sessionsLogged >= 2 && Math.abs(divergencePct) > 10;
       divRows.push({
         liftId,
         liftName,
@@ -695,14 +721,14 @@ export function computeMesoAnalysis(args: {
         divergencePct,
         direction: divergenceLb >= 0 ? 'over' : 'under',
         sessionsLogged,
-        suggestPrescriptionUpdate: Math.abs(divergencePct) > 10 && sessionsLogged >= 2,
+        suggestPrescriptionUpdate,
       });
     }
     divRows.sort((x, y) => x.liftName.localeCompare(y.liftName));
     prescriptionDivergence = divRows.length ? divRows : null;
     if (!prescriptionDivergence) {
       sectionNullNotes.prescriptionDivergence =
-        'No lifts where mean actual working weight differs from prescribed by more than 10% in the window.';
+        'No lifts where mean actual working weight differs from prescribed by more than 10% across exported sets.';
     }
   }
 
@@ -1105,8 +1131,6 @@ export function computeMesoAnalysis(args: {
   // ----- liftRecommendations -----
   let liftRecommendations: LiftRecommendation[] | null = null;
   {
-    const repRangeByLift = new Map((repRangeCompliance ?? []).map((r) => [r.liftId, r]));
-
     const liftsWithFourWorking = new Set<string>();
     for (const liftId of liftIdsWithSets) {
       const n = setsInWindow.filter(
@@ -1124,11 +1148,9 @@ export function computeMesoAnalysis(args: {
       return ws?.targetValue ?? null;
     }
 
-    function liftAppearsInInjuryFlags(liftId: string): boolean {
-      const sessionsWithLift = new Set(
-        setsInWindow.filter((st) => st.liftId === liftId).map((st) => st.sessionLogId),
-      );
-      return flags.some((f) => sessionsWithLift.has(f.sessionId));
+    /** Injury / note rows that reference this lift directly (not generic session overlap). */
+    function liftIdTaggedInInjuryFlags(liftId: string): boolean {
+      return flags.some((f) => f.liftId === liftId);
     }
 
     const recs: LiftRecommendation[] = [];
@@ -1137,9 +1159,19 @@ export function computeMesoAnalysis(args: {
     for (const liftId of liftsWithFourWorking) {
       const lift = liftById.get(liftId);
       const loadScale = lift?.loadScale === 'inverse' ? 'inverse' : 'normal';
-      if (loadScale === 'inverse') continue;
-
       const liftName = lift?.name ?? liftId;
+
+      if (loadScale === 'inverse') {
+        recs.push({
+          liftId,
+          liftName,
+          recommendation: 'monitor',
+          rationale:
+            'Inverse load scale — monitor load closely relative to prescription.',
+        });
+        continue;
+      }
+
       const cr = crByLift.get(liftId);
       const completionPct = cr?.completionPct ?? 0;
       const vol = volumeProgression?.find((v) => v.liftId === liftId);
@@ -1147,7 +1179,8 @@ export function computeMesoAnalysis(args: {
       const lastLoad = vol?.lastWorkingSetLoad ?? null;
       const targetVal = targetForLift(liftId);
 
-      const monitorReason = completionPct < 70 || liftAppearsInInjuryFlags(liftId);
+      const injuryTagged = liftIdTaggedInInjuryFlags(liftId);
+      const monitorReason = completionPct < 70 || injuryTagged;
 
       let recommendation: LiftRecommendation['recommendation'] = 'hold';
       let rationale = '';
@@ -1157,7 +1190,7 @@ export function computeMesoAnalysis(args: {
         if (completionPct < 70) {
           rationale = `Skipped or incomplete sets (${completionPct.toFixed(0)}% completion) — monitor before loading.`;
         } else {
-          rationale = `Flagged session overlap (${completionPct.toFixed(0)}% completion) — monitor before loading.`;
+          rationale = `Injury pipeline flagged this lift directly — monitor before loading.`;
         }
       } else if (loadDelta != null && loadDelta < 0) {
         recommendation = 'deload';
@@ -1187,9 +1220,15 @@ export function computeMesoAnalysis(args: {
         rationale = `Completion ${completionPct.toFixed(0)}%, load delta ${loadDelta ?? 'n/a'} lb — hold pattern next meso.`;
       }
 
-      const rr = repRangeByLift.get(liftId);
-      if (rr && rr.compliancePct < 70) {
-        const extra = rr.note ?? 'Rep range compliance below 70% on working sets.';
+      const rrPoor = (repRangeCompliance ?? []).filter(
+        (r) => r.liftId === liftId && r.compliancePct < 70,
+      );
+      if (rrPoor.length > 0) {
+        const extra =
+          rrPoor
+            .map((r) => r.note)
+            .filter((n): n is string => Boolean(n && n.length > 0))
+            .join(' ') || 'Rep range compliance below 70% on working sets.';
         rationale = `${rationale.trim()} ${extra}`;
       }
 

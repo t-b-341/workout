@@ -22,7 +22,7 @@ import {
   strengthVolumeLbForSet,
 } from './p1AssistedVolume';
 import { mesocyclePosition, type MesocycleConfig } from './mesocycle';
-import { prFeed } from './stats';
+import { est1RM, prFeed } from './stats';
 import { todayIso } from './time';
 
 function intentOf(s: SetLog): SetIntent {
@@ -78,6 +78,7 @@ export function computeProgramTargetCurrentFromLogs(
     case '1rm': {
       let maxTest = -Infinity;
       let maxSingle = -Infinity;
+      let bestEst = -Infinity;
       for (const s of sets) {
         if (intentOf(s) === 'max_test' && Number.isFinite(s.weight) && s.weight > maxTest) {
           maxTest = s.weight;
@@ -85,22 +86,43 @@ export function computeProgramTargetCurrentFromLogs(
         if (s.reps === 1 && Number.isFinite(s.weight) && s.weight > maxSingle) {
           maxSingle = s.weight;
         }
+        const intent = intentOf(s);
+        if (
+          intent === 'working' ||
+          intent === 'backoff'
+        ) {
+          if (
+            Number.isFinite(s.weight)
+            && s.weight > 0
+            && s.reps >= 2
+            && s.reps <= 20
+          ) {
+            const e = est1RM(s.weight, s.reps);
+            if (Number.isFinite(e) && e > bestEst) bestEst = e;
+          }
+        }
       }
-      if (maxTest > -Infinity) return maxTest;
-      if (maxSingle > -Infinity) return maxSingle;
-      return null;
+      let best = -Infinity;
+      if (maxTest > -Infinity) best = Math.max(best, maxTest);
+      if (maxSingle > -Infinity) best = Math.max(best, maxSingle);
+      if (bestEst > -Infinity) best = Math.max(best, bestEst);
+      return best > -Infinity ? Math.round(best * 10) / 10 : null;
     }
     case 'working_set': {
-      let best = -Infinity;
+      const passing: number[] = [];
+      const fallback: number[] = [];
       for (const s of sets) {
         const intent = intentOf(s);
         if (intent !== 'working' && intent !== 'backoff') continue;
         const rx = rxById.get(s.prescriptionId);
         const repMin = rx?.repMin ?? 1;
-        if (s.reps < repMin) continue;
-        if (Number.isFinite(s.weight) && s.weight > best) best = s.weight;
+        if (!Number.isFinite(s.weight)) continue;
+        if (s.reps >= repMin) passing.push(s.weight);
+        else fallback.push(s.weight);
       }
-      return best > -Infinity ? best : null;
+      const pool = passing.length > 0 ? passing : fallback;
+      if (pool.length === 0) return null;
+      return Math.max(...pool);
     }
     case 'reps': {
       let bestReps = -Infinity;
@@ -125,6 +147,20 @@ export function enrichProgramTargetsAtExport(
   prescriptions: Prescription[],
   mindfulness_logs: MindfulnessLog[],
 ): SummaryProgramTarget[] {
+  const liftIdsForCompute = [
+    ...new Set(
+      rows
+        .filter((row) => {
+          const hasManual = row.currentValue != null && Number.isFinite(row.currentValue);
+          if (hasManual) return false;
+          return row.metric === 'duration_min' || (row.liftId != null && row.liftId !== '');
+        })
+        .map((row) => row.liftId)
+        .filter((id): id is string => typeof id === 'string' && id.length > 0),
+    ),
+  ].sort();
+  console.log('[export programTargets] currentValue computation liftIds:', liftIdsForCompute);
+
   return rows.map((row) => {
     const hasManual =
       row.currentValue != null && Number.isFinite(row.currentValue);
