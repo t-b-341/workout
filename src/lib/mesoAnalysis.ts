@@ -1283,22 +1283,7 @@ export function computeMesoAnalysis(args: {
       } else if (loadDelta != null && loadDelta < 0) {
         recommendation = 'deload';
         rationale = `Working load slipped ${Math.abs(loadDelta)} lb over the meso — prioritize recovery or technique before pushing weight.`;
-      } else if (
-        completionPct >= 70 &&
-        loadDelta === 0 &&
-        targetVal != null &&
-        lastLoad != null &&
-        lastLoad >= targetVal * 0.9
-      ) {
-        recommendation = 'hold';
-        rationale = `Load held flat but near target (${lastLoad} lb vs ${targetVal} lb goal) at ${completionPct.toFixed(0)}% completion — hold and accumulate reps.`;
-      } else if (
-        completionPct >= 85 &&
-        loadDelta === 0 &&
-        targetVal != null &&
-        lastLoad != null &&
-        lastLoad < targetVal * 0.9
-      ) {
+      } else if (loadDelta === 0 && lastLoad != null) {
         recommendation = 'hold';
         rationale = `Load held flat at ${lastLoad} lb with ${completionPct.toFixed(0)}% completion — maintain load and push rep ceiling before adding weight.`;
       } else if (
@@ -1313,7 +1298,11 @@ export function computeMesoAnalysis(args: {
         rationale = `Completed ${completionPct.toFixed(0)}% of sets, load up ${loadDelta} lb — progress load next meso.`;
       } else {
         recommendation = 'hold';
-        rationale = `Completion ${completionPct.toFixed(0)}%, load delta ${loadDelta ?? 'n/a'} lb — hold pattern next meso.`;
+        if (loadDelta === 0) {
+          rationale = `Completion ${completionPct.toFixed(0)}% — maintain load and push rep ceiling before adding weight.`;
+        } else {
+          rationale = `Completion ${completionPct.toFixed(0)}%, load delta ${loadDelta ?? 'n/a'} lb — hold pattern next meso.`;
+        }
       }
 
       const rrPoor = (repRangeCompliance ?? []).filter(
