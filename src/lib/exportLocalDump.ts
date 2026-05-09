@@ -5,6 +5,7 @@ import { getDb, SCHEMA_VERSION } from './db';
 import { buildExportSchemaDocumentation, type ExportedFitnessGoal, type MesoAnalysisReport } from './exportModelSchema';
 import { computeExportSummary, enrichProgramTargetsAtExport } from './exportSummary';
 import { loadFitnessGoals, type FitnessGoal } from './goals';
+import { buildExportMesocycleBlock } from './exportMesocycleBlock';
 import { loadMesoConfig } from './mesocycle';
 import { computeMesoAnalysis } from './mesoAnalysis';
 import { defaultNutritionDayType, resolveNutritionTargetsForDate } from './nutritionDayType';
@@ -38,6 +39,7 @@ import {
 } from './types';
 import { TRAINING_PLAN_GOALS, type TrainingPlanGoalRow } from './trainingPlanGoals';
 import { deriveSessionStatus } from './sessionStatus';
+import { todayIso } from './time';
 
 /** Keys this app uses in `localStorage` (UI prefs only; not secrets). */
 const KNOWN_LOCALSTORAGE_KEYS = [
@@ -46,8 +48,39 @@ const KNOWN_LOCALSTORAGE_KEYS = [
   'workout:sundayMondayEarlyUnlock:v1',
 ] as const;
 
-/** Set row as written to export JSON (parent session date copied; intent always present). */
-export type ExportedSetLog = SetLog & { date: string | null; intent: SetIntent };
+/** Set row as written to export JSON (parent session date copied; intent always present; RPE clamped 1–10 or null). */
+export type ExportedSetLog = Omit<SetLog, 'rpe' | 'intent'> & {
+  date: string | null;
+  intent: SetIntent;
+  rpe: number | null;
+};
+
+export type ExportedHrvLog = {
+  date: string;
+  hrvMs: number;
+  source: 'manual' | 'device';
+  notes: string | null;
+};
+
+function normalizedRpeForExport(rpe: number | undefined): number | null {
+  if (rpe == null || Number.isNaN(rpe)) return null;
+  const n = Number(rpe);
+  if (!Number.isFinite(n)) return null;
+  const clamped = Math.min(10, Math.max(1, n));
+  return Math.round(clamped * 10) / 10;
+}
+
+function buildHrvLogsExport(readiness: ReadinessLog[]): ExportedHrvLog[] {
+  return readiness
+    .filter((r) => r.hrvRmssd != null && !r.hrvSkipped && Number.isFinite(r.hrvRmssd!))
+    .map((r) => ({
+      date: r.date,
+      hrvMs: r.hrvRmssd!,
+      source: 'manual' as const,
+      notes: null,
+    }))
+    .sort((a, b) => a.date.localeCompare(b.date));
+}
 
 export type FullLocalExportOptions = {
   mesoStartDate?: string | null;
@@ -154,6 +187,10 @@ export type FullLocalExport = {
   mindfulness_logs: MindfulnessLog[];
   injury_episodes: InjuryEpisode[];
   body_readiness_logs: BodyReadinessLog[];
+  /** Morning RMSSD readings derived from `readiness_logs` (same data as in-app HRV history). */
+  hrv_logs: ExportedHrvLog[];
+  /** Current mesocycle block mirror (aligned with Program tab / meso week stats). */
+  mesocycle: ReturnType<typeof buildExportMesocycleBlock>;
   dirty: DirtyRow[];
   meta: { key: string; value: unknown }[];
 };
@@ -332,11 +369,26 @@ export async function buildFullLocalExport(opts?: FullLocalExportOptions): Promi
     sessionStatus: deriveSessionStatus(s, prescriptions, setsBySessionForStatus.get(s.id) ?? []),
   }));
 
-  const set_logs_out: ExportedSetLog[] = set_logs.map((s) => ({
-    ...s,
-    intent: intentOf(s, opts?.setIntentOverrides),
-    date: sessionById.get(s.sessionLogId)?.date ?? null,
-  }));
+  const set_logs_out: ExportedSetLog[] = set_logs.map((s) => {
+    const { rpe: _r, intent: _i, ...rest } = s;
+    return {
+      ...rest,
+      intent: intentOf(s, opts?.setIntentOverrides),
+      date: sessionById.get(s.sessionLogId)?.date ?? null,
+      rpe: normalizedRpeForExport(s.rpe),
+    };
+  });
+
+  const hrv_logs = buildHrvLogsExport(readiness_logs);
+  const mesocycle = buildExportMesocycleBlock({
+    cfg: mesoConfig,
+    today: todayIso(),
+    sessions: session_logs,
+    sets: set_logs,
+    readiness: readiness_logs,
+    lifts,
+    bodyweightLogs: bodyweight_logs,
+  });
 
   const dayTypeByDate = new Map(
     nutrition_logs.map((n) => [n.date, dayTypeOf(n, session_logs_out, cardio_logs)] as const),
@@ -443,6 +495,8 @@ export async function buildFullLocalExport(opts?: FullLocalExportOptions): Promi
     mindfulness_logs,
     injury_episodes,
     body_readiness_logs,
+    hrv_logs,
+    mesocycle,
     dirty,
     meta,
   };

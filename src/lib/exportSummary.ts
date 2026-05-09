@@ -22,6 +22,7 @@ import {
   strengthVolumeLbForSet,
 } from './p1AssistedVolume';
 import { mesocyclePosition, type MesocycleConfig } from './mesocycle';
+import { prFeed } from './stats';
 import { todayIso } from './time';
 
 function intentOf(s: SetLog): SetIntent {
@@ -252,21 +253,15 @@ export function computeExportSummary(args: {
     totalVolumeLbReps += strengthVolumeLbForSet(st, liftById.get(st.liftId), bw);
   }
 
-  const prFlags: ExportSummary['prFlags'] = [];
-  for (const st of set_logs) {
-    if (intentOf(st) !== 'max_test') continue;
-    if (st.status !== 'completed') continue;
-    const session = sessionById.get(st.sessionLogId);
-    if (!session) continue;
-    prFlags.push({
-      liftId: st.liftId,
-      liftName: liftById.get(st.liftId)?.name ?? st.liftId,
-      weight: st.weight,
-      reps: st.reps,
-      date: session.date,
-      sessionId: session.id,
-    });
-  }
+  const prFlags: ExportSummary['prFlags'] = prFeed(set_logs, session_logs, lifts).map((p) => ({
+    liftId: p.liftId,
+    liftName: p.liftName,
+    weight: p.weight,
+    reps: p.reps,
+    date: p.date,
+    sessionId: p.sessionLogId,
+    prType: p.prType,
+  }));
 
   const dates = [
     ...session_logs.map((s) => s.date),

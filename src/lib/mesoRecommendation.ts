@@ -62,6 +62,42 @@ const COMPLETED_BLOCK_COPY: RecommendationCopy = {
     'Last mesocycle’s block looks balanced from available signals; keeping the same length is reasonable.',
 };
 
+/** Rolling-window readiness + modification signals (same slice as length recommendation). */
+export function cycleExecutionSignals(
+  cycleSets: SetLog[],
+  cycleReadiness: ReadinessLog[],
+): { soreness: number; motivation: number; modifiedSetsPct: number } {
+  const modifiedSets = cycleSets.filter((s) => s.status !== 'completed').length;
+  const modifiedSetsPct =
+    cycleSets.length > 0 ? (modifiedSets / cycleSets.length) * 100 : 0;
+  const soreness =
+    cycleReadiness.length > 0
+      ? cycleReadiness.reduce((sum, r) => sum + r.soreness, 0) / cycleReadiness.length
+      : 0;
+  const motivation =
+    cycleReadiness.length > 0
+      ? cycleReadiness.reduce((sum, r) => sum + r.motivation, 0) / cycleReadiness.length
+      : 0;
+  return { soreness, motivation, modifiedSetsPct };
+}
+
+/** Same date window as `analyzeMesoLengthRecommendation` (rolling `(accum+deload)×7` days ending `today`). */
+export function rollingMesoCycleExecutionSignals(
+  cfg: MesocycleConfig,
+  sessions: SessionLog[],
+  sets: SetLog[],
+  readiness: ReadinessLog[],
+  today: string,
+): { soreness: number; motivation: number; modifiedSetsPct: number } {
+  const cycleDays = (cfg.accumulation + cfg.deload) * 7;
+  const fromIso = addDaysIso(today, -cycleDays + 1);
+  const cycleSessions = sessions.filter((s) => s.date >= fromIso && s.date <= today);
+  const cycleSessionIds = new Set(cycleSessions.map((s) => s.id));
+  const cycleSets = sets.filter((s) => cycleSessionIds.has(s.sessionLogId));
+  const cycleReadiness = readiness.filter((r) => r.date >= fromIso && r.date <= today);
+  return cycleExecutionSignals(cycleSets, cycleReadiness);
+}
+
 function mesoLengthRecommendationFromCycleSlice(
   cfg: MesocycleConfig,
   cycleSessions: SessionLog[],
@@ -74,14 +110,11 @@ function mesoLengthRecommendationFromCycleSlice(
   const completedSessions = cycleSessions.filter((s) => Boolean(s.completedAt)).length;
   const completionRate = cycleSessions.length > 0 ? completedSessions / cycleSessions.length : 0;
 
-  const modifiedSets = cycleSets.filter((s) => s.status !== 'completed').length;
-  const modifiedRate = cycleSets.length > 0 ? modifiedSets / cycleSets.length : 0;
-  const avgSoreness = cycleReadiness.length > 0
-    ? cycleReadiness.reduce((sum, r) => sum + r.soreness, 0) / cycleReadiness.length
-    : 0;
-  const avgMotivation = cycleReadiness.length > 0
-    ? cycleReadiness.reduce((sum, r) => sum + r.motivation, 0) / cycleReadiness.length
-    : 0;
+  const { soreness: avgSoreness, motivation: avgMotivation, modifiedSetsPct } = cycleExecutionSignals(
+    cycleSets,
+    cycleReadiness,
+  );
+  const modifiedRate = modifiedSetsPct / 100;
 
   const h = MESO_HEURISTICS;
   const highFatigue =

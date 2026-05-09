@@ -17,11 +17,16 @@ describe('buildExportSchemaDocumentation', () => {
     expect(doc.summary?.fields.mesoStartDate).toContain('null');
     expect(doc.summary?.fields['programTargets[].metric']).toContain('1rm');
     expect(doc.summary?.fields['programTargets[].currentValueSource']).toContain('manual');
+    expect(doc.set_logs?.fields.rpe).toContain('1–10');
+    expect(doc.summary?.fields['prFlags[].prType']).toContain('volume_pr');
+    expect(doc.hrv_logs?.fields.hrvMs).toContain('RMSSD');
+    expect(doc.mesocycle?.fields.anchorDate).toContain('YYYY-MM-DD');
+    expect(doc.mesocycle?.fields['lengthRecommendation.action']).toContain('maintain');
   });
 });
 
 describe('computeExportSummary', () => {
-  it('counts volume and max_test prFlags', () => {
+  it('exports prFlags from the same prFeed used for in-app PR counts (not max_test only)', () => {
     const lifts: Lift[] = [
       {
         id: 'squat',
@@ -97,6 +102,16 @@ describe('computeExportSummary', () => {
         reps: 3,
         date: '2026-05-01',
         sessionId: 's1',
+        prType: 'rep_pr',
+      },
+      {
+        liftId: 'squat',
+        liftName: 'Squat',
+        weight: 100,
+        reps: 5,
+        date: '2026-05-01',
+        sessionId: 's1',
+        prType: 'volume_pr',
       },
     ]);
     expect(summary.programTargets.length).toBe(21);

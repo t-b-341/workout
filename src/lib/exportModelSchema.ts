@@ -38,6 +38,7 @@ export type ExportSummary = {
     reps: number;
     date: string;
     sessionId: string;
+    prType: '1rm' | 'rep_pr' | 'volume_pr';
   }>;
   activePhaseName: 'accumulation' | 'deload' | null;
   activePhaseWeek: number | null;
@@ -96,6 +97,7 @@ function summarySchema(): SchemaEntry {
       'prFlags[].reps': 'number',
       'prFlags[].date': 'YYYY-MM-DD',
       'prFlags[].sessionId': 'string',
+      'prFlags[].prType': joinEnums(['1rm', 'rep_pr', 'volume_pr']),
       activePhaseName: `${joinEnums(['accumulation', 'deload'])} | null`,
       activePhaseWeek: 'number | null',
       'programTargets[].id': 'string',
@@ -267,7 +269,7 @@ function setLogFields(): SchemaEntry {
       weight: 'number (lb)',
       reps: 'number',
       rir: 'number | undefined',
-      rpe: 'number | undefined',
+      rpe: 'number 1–10 | null (export-normalized; omitted or null when unknown)',
       status: '"completed" | "reduced" | "skipped" | "substituted"',
       substituteLiftId: 'string | undefined',
       reason: 'string | undefined',
@@ -436,6 +438,49 @@ function bodyReadinessFields(): SchemaEntry {
   };
 }
 
+function hrvLogsExportFields(): SchemaEntry {
+  return {
+    fields: {
+      date: 'YYYY-MM-DD',
+      hrvMs: 'number (RMSSD)',
+      source: '"manual" | "device"',
+      notes: 'string | null',
+    },
+  };
+}
+
+function mesocycleExportFields(): SchemaEntry {
+  return {
+    fields: {
+      name: 'string (e.g. Meso 1)',
+      anchorDate: 'YYYY-MM-DD (Monday of Meso 1 · Week 1)',
+      accumulationWeeks: 'number',
+      deloadWeeks: 'number',
+      currentWeek: 'number (1-based within block)',
+      'weekByWeek[].week': 'number',
+      'weekByWeek[].type': '"accumulation" | "deload"',
+      'weekByWeek[].dateStart': 'YYYY-MM-DD',
+      'weekByWeek[].dateEnd': 'YYYY-MM-DD',
+      'weekByWeek[].status': '"completed" | "current" | "upcoming"',
+      'weekByWeek[].volumeLbReps': 'number | null',
+      'weekByWeek[].avgRpe': 'number | null',
+      'weekByWeek[].avgHrvMs': 'number | null',
+      'weekByWeek[].sessionsDone': 'number | null',
+      'weekByWeek[].sessionsTotal': 'number | null',
+      'weekByWeek[].prCount': 'number | null',
+      'weekByWeek[].avgSoreness': 'number | null',
+      'weekByWeek[].shortPct': 'number | null (0–100)',
+      'lengthRecommendation.suggestedAccumWeeks': 'number',
+      'lengthRecommendation.suggestedDeloadWeeks': 'number',
+      'lengthRecommendation.action': '"shorten" | "extend" | "maintain"',
+      'lengthRecommendation.rationale': 'string',
+      'lengthRecommendation.signals.soreness': 'number (1–5 mean)',
+      'lengthRecommendation.signals.motivation': 'number (1–5 mean)',
+      'lengthRecommendation.signals.modifiedSetsPct': 'number (0–100)',
+    },
+  };
+}
+
 /** Top-level `schema` object in workout JSON exports (`fields` maps match `types.ts` + exporters). */
 export function buildExportSchemaDocumentation(): Record<string, SchemaEntry> {
   return {
@@ -458,6 +503,8 @@ export function buildExportSchemaDocumentation(): Record<string, SchemaEntry> {
     fitness_goals: exportedGoalFields(),
     summary: summarySchema(),
     mesoAnalysis: mesoAnalysisFields(),
+    mesocycle: mesocycleExportFields(),
+    hrv_logs: hrvLogsExportFields(),
     dirty: dirtyRowFields(),
   };
 }

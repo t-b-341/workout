@@ -748,6 +748,8 @@ export function sessionRecapSummaryLines(opts: {
   return lines.slice(0, 6);
 }
 
+export type PRFeedPrType = '1rm' | 'rep_pr' | 'volume_pr';
+
 /** Chronological list of PRs across all lifts (one entry per (liftId, reps)
  *  PR event in time order). */
 export type PRFeedItem = {
@@ -758,6 +760,9 @@ export type PRFeedItem = {
   weight: number;
   /** Weight that was beaten (if any). */
   previousWeight?: number;
+  sessionLogId: string;
+  setId: string;
+  prType: PRFeedPrType;
 };
 
 export function prFeed(sets: SetLog[], sessions: SessionLog[], lifts: Lift[]): PRFeedItem[] {
@@ -766,6 +771,8 @@ export function prFeed(sets: SetLog[], sessions: SessionLog[], lifts: Lift[]): P
   const ordered = sortSetsChronologically(sets, sessions);
 
   const bestPerLiftReps = new Map<string, number>(); // key = liftId|reps → best weight
+  /** Best single-set tonnage (lb×reps) seen so far per lift (standard strength sets only). */
+  const maxVolByLift = new Map<string, number>();
   /** `p1_bw` at added load 0: track best unassisted rep count (PR = new max reps). */
   let bestP1BwUnassistedReps = 0;
   const out: PRFeedItem[] = [];
@@ -775,6 +782,9 @@ export function prFeed(sets: SetLog[], sessions: SessionLog[], lifts: Lift[]): P
     if (!lift || lift.equipment === 'cardio' || lift.equipment === 'time') continue;
     const date = sessionDate.get(s.sessionLogId);
     if (!date) continue;
+
+    const vol = Math.max(0, s.weight) * Math.max(0, s.reps);
+    const prevMaxVol = maxVolByLift.get(s.liftId) ?? 0;
 
     // Unassisted pull-ups: added load 0; PR feed tracks lifetime max reps.
     if (s.liftId === 'p1_bw' && s.weight === 0) {
@@ -787,6 +797,9 @@ export function prFeed(sets: SetLog[], sessions: SessionLog[], lifts: Lift[]): P
           reps: s.reps,
           weight: 0,
           previousWeight: prevReps,
+          sessionLogId: s.sessionLogId,
+          setId: s.id,
+          prType: 'rep_pr',
         });
         bestP1BwUnassistedReps = s.reps;
       }
@@ -805,6 +818,9 @@ export function prFeed(sets: SetLog[], sessions: SessionLog[], lifts: Lift[]): P
           reps: s.reps,
           weight: s.weight,
           previousWeight: prev,
+          sessionLogId: s.sessionLogId,
+          setId: s.id,
+          prType: 'rep_pr',
         });
         bestPerLiftReps.set(key, s.weight);
       }
@@ -816,6 +832,14 @@ export function prFeed(sets: SetLog[], sessions: SessionLog[], lifts: Lift[]): P
     const key = `${s.liftId}|${s.reps}`;
     const prev = bestPerLiftReps.get(key);
     if (prev == null || s.weight > prev) {
+      let prType: PRFeedPrType;
+      if (s.reps === 1) {
+        prType = '1rm';
+      } else if (vol > prevMaxVol) {
+        prType = 'volume_pr';
+      } else {
+        prType = 'rep_pr';
+      }
       out.push({
         date,
         liftId: s.liftId,
@@ -823,9 +847,13 @@ export function prFeed(sets: SetLog[], sessions: SessionLog[], lifts: Lift[]): P
         reps: s.reps,
         weight: s.weight,
         previousWeight: prev,
+        sessionLogId: s.sessionLogId,
+        setId: s.id,
+        prType,
       });
       bestPerLiftReps.set(key, s.weight);
     }
+    maxVolByLift.set(s.liftId, Math.max(prevMaxVol, vol));
   }
   return out.reverse(); // most recent first
 }
