@@ -95,7 +95,7 @@ export type Prescription = {
 
 export type SetStatus = 'completed' | 'reduced' | 'skipped' | 'substituted';
 
-export const SET_INTENTS = ['warmup', 'working', 'backoff', 'max_test'] as const;
+export const SET_INTENTS = ['warmup', 'working', 'backoff', 'max_test', 'skipped'] as const;
 export type SetIntent = (typeof SET_INTENTS)[number];
 
 export type SetLog = {
@@ -130,6 +130,10 @@ export type SetLog = {
 
 export type SessionMode = 'standard' | 'light' | 'skip';
 export type WatchFlag = 'erectors' | 'elbow' | 'shoulder';
+
+/** Derived at export and optionally persisted when the user marks a planned day as skipped. */
+export const SESSION_STATUSES = ['completed', 'skipped', 'partial', 'ghost'] as const;
+export type SessionStatus = (typeof SESSION_STATUSES)[number];
 
 /** Program/session classification (orthogonal to prescribed `mode` / deload toggle). */
 export const SESSION_LABEL_TYPES = [
@@ -169,6 +173,11 @@ export type SessionLog = {
   readinessCompletedAt?: string;
   /** Optional strategy tags for this session (how you ran it). See `sessionStrategyTags.ts`. */
   tags?: SessionStrategyTagId[];
+  /**
+   * Lifecycle / analytics classification. Usually derived from set_logs + prescriptions;
+   * persisted when explicitly skipped (`skipped`).
+   */
+  sessionStatus?: SessionStatus;
 };
 
 export type CardioType = 'liss' | 'intervals';
@@ -203,6 +212,10 @@ export type BodyweightLog = {
   bodyweight: number;
 };
 
+/** Optional tagging for comparable measurement trends (see mesoAnalysis `bodyMeasurementDelta`). */
+export const MEASUREMENT_TIME_OF_DAY = ['morning', 'afternoon', 'evening'] as const;
+export type MeasurementTimeOfDay = (typeof MEASUREMENT_TIME_OF_DAY)[number];
+
 export type BodyMeasurementLog = {
   id: string;
   /** ISO date YYYY-MM-DD. */
@@ -213,6 +226,12 @@ export type BodyMeasurementLog = {
   abdomen: number;
   /** Widest point. */
   hips: number;
+  /**
+   * Free-text conditions for apples-to-apples deltas (e.g. fasted, after bathroom, posture).
+   * Omit when unknown; meso analysis requires a consistent non-null protocol across the window for reliable deltas.
+   */
+  protocol?: string | null;
+  timeOfDay?: MeasurementTimeOfDay | null;
 };
 
 export type ReadinessLog = {

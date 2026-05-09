@@ -3,6 +3,8 @@
 import { useMemo, useState } from 'react';
 import { useAllBodyMeasurements, useBodyMeasurementsForDate } from '@/lib/hooks';
 import { flushDirty, localUpsert } from '@/lib/sync';
+import { MEASUREMENT_TIME_OF_DAY } from '@/lib/types';
+import type { BodyMeasurementLog, MeasurementTimeOfDay } from '@/lib/types';
 
 type Props = {
   date: string;
@@ -17,11 +19,14 @@ export function BodyMeasurementsQuickLog({ date }: Props) {
       waist: todayRow?.waist ?? latest?.waist ?? 38,
       abdomen: todayRow?.abdomen ?? latest?.abdomen ?? 40,
       hips: todayRow?.hips ?? latest?.hips ?? 41,
+      protocol: todayRow?.protocol ?? latest?.protocol ?? '',
+      timeOfDay: todayRow?.timeOfDay ?? latest?.timeOfDay ?? null,
     };
   }, [todayRow, all]);
 
   const formKey = useMemo(
-    () => `measure:${date}:${todayRow?.waist ?? seed.waist}:${todayRow?.abdomen ?? seed.abdomen}:${todayRow?.hips ?? seed.hips}`,
+    () =>
+      `measure:${date}:${todayRow?.waist ?? seed.waist}:${todayRow?.abdomen ?? seed.abdomen}:${todayRow?.hips ?? seed.hips}:${todayRow?.protocol ?? seed.protocol}:${todayRow?.timeOfDay ?? seed.timeOfDay ?? ''}`,
     [date, todayRow, seed],
   );
 
@@ -34,21 +39,33 @@ function BodyMeasurementsQuickLogForm({
   hasToday,
 }: {
   date: string;
-  initial: { waist: number; abdomen: number; hips: number };
+  initial: {
+    waist: number;
+    abdomen: number;
+    hips: number;
+    protocol: string;
+    timeOfDay: MeasurementTimeOfDay | null;
+  };
   hasToday: boolean;
 }) {
   const [waist, setWaist] = useState(initial.waist);
   const [abdomen, setAbdomen] = useState(initial.abdomen);
   const [hips, setHips] = useState(initial.hips);
+  const [protocol, setProtocol] = useState(initial.protocol);
+  const [timeOfDay, setTimeOfDay] = useState<MeasurementTimeOfDay | null>(initial.timeOfDay ?? null);
 
   async function save() {
-    await localUpsert('body_measurement_logs', {
+    const row: BodyMeasurementLog = {
       id: `measure-${date}`,
       date,
       waist,
       abdomen,
       hips,
-    });
+    };
+    const p = protocol.trim();
+    if (p) row.protocol = p;
+    if (timeOfDay) row.timeOfDay = timeOfDay;
+    await localUpsert('body_measurement_logs', row);
     await flushDirty().catch(() => {});
   }
 
@@ -63,6 +80,35 @@ function BodyMeasurementsQuickLogForm({
         <MeasureInput label="Abdomen (navel)" value={abdomen} onChange={setAbdomen} />
         <MeasureInput label="Hips (widest)" value={hips} onChange={setHips} />
       </div>
+      <label className="block text-xs text-zinc-500">
+        Protocol (optional)
+        <input
+          type="text"
+          value={protocol}
+          onChange={(e) => setProtocol(e.target.value)}
+          placeholder="e.g. morning, fasted, after bathroom"
+          className="mt-1 h-10 w-full rounded-lg bg-zinc-950 border border-zinc-800 px-3 text-sm text-zinc-200"
+        />
+      </label>
+      <label className="block text-xs text-zinc-500">
+        Time of day
+        <select
+          value={timeOfDay ?? ''}
+          onChange={(e) =>
+            setTimeOfDay(
+              e.target.value === '' ? null : (e.target.value as MeasurementTimeOfDay),
+            )
+          }
+          className="mt-1 h-10 w-full rounded-lg bg-zinc-950 border border-zinc-800 px-3 text-sm text-zinc-200"
+        >
+          <option value="">—</option>
+          {MEASUREMENT_TIME_OF_DAY.map((t) => (
+            <option key={t} value={t}>
+              {t}
+            </option>
+          ))}
+        </select>
+      </label>
       <div className="flex items-center gap-2">
         <button
           type="button"

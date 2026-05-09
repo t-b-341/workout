@@ -1,6 +1,7 @@
 'use client';
 
-import { useCallback, useEffect, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
+import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import type { MesoAnalysisReport } from '@/lib/exportModelSchema';
 import { buildMesoAnalysisLive } from '@/lib/exportLocalDump';
@@ -89,6 +90,8 @@ export function MesoAnalysisScreen() {
         <div className="text-rose-400 text-sm">{error}</div>
       ) : report ? (
         <>
+          <PrescriptionUpdatePrompt report={report} />
+
           <section className="space-y-2">
             <h2 className="text-lg font-medium text-zinc-100">Lift recommendations</h2>
             {report.liftRecommendations && report.liftRecommendations.length > 0 ? (
@@ -125,6 +128,20 @@ export function MesoAnalysisScreen() {
             </pre>
           </Collapsible>
 
+          <Collapsible title="Rep range compliance" note={report.sectionNullNotes?.repRangeCompliance}>
+            <pre className="text-xs overflow-x-auto text-zinc-400 bg-zinc-950 rounded-lg p-3 border border-zinc-800">
+              {report.repRangeCompliance ? JSON.stringify(report.repRangeCompliance, null, 2) : 'null'}
+            </pre>
+          </Collapsible>
+
+          <Collapsible title="Prescription divergence" note={report.sectionNullNotes?.prescriptionDivergence}>
+            <pre className="text-xs overflow-x-auto text-zinc-400 bg-zinc-950 rounded-lg p-3 border border-zinc-800">
+              {report.prescriptionDivergence
+                ? JSON.stringify(report.prescriptionDivergence, null, 2)
+                : 'null'}
+            </pre>
+          </Collapsible>
+
           <Collapsible title="Intent breakdown" note={report.sectionNullNotes?.intentBreakdown}>
             <pre className="text-xs overflow-x-auto text-zinc-400 bg-zinc-950 rounded-lg p-3 border border-zinc-800">
               {report.intentBreakdown ? JSON.stringify(report.intentBreakdown, null, 2) : 'null'}
@@ -140,6 +157,14 @@ export function MesoAnalysisScreen() {
           <Collapsible title="Bodyweight trend" note={report.sectionNullNotes?.bodyweightTrend}>
             <pre className="text-xs overflow-x-auto text-zinc-400 bg-zinc-950 rounded-lg p-3 border border-zinc-800">
               {report.bodyweightTrend ? JSON.stringify(report.bodyweightTrend, null, 2) : 'null'}
+            </pre>
+          </Collapsible>
+
+          <Collapsible title="Body measurement delta" note={report.sectionNullNotes?.bodyMeasurementDelta}>
+            <pre className="text-xs overflow-x-auto text-zinc-400 bg-zinc-950 rounded-lg p-3 border border-zinc-800">
+              {report.bodyMeasurementDelta
+                ? JSON.stringify(report.bodyMeasurementDelta, null, 2)
+                : 'null'}
             </pre>
           </Collapsible>
 
@@ -167,6 +192,43 @@ export function MesoAnalysisScreen() {
         </>
       ) : null}
     </PageShell>
+  );
+}
+
+function PrescriptionUpdatePrompt({ report }: { report: MesoAnalysisReport }) {
+  const rows = useMemo(
+    () => report.prescriptionDivergence?.filter((r) => r.suggestPrescriptionUpdate) ?? [],
+    [report.prescriptionDivergence],
+  );
+  if (rows.length === 0) return null;
+  return (
+    <div
+      role="status"
+      className="rounded-2xl border border-amber-500/45 bg-amber-950/35 px-4 py-3 text-sm text-amber-100"
+    >
+      <div className="font-medium text-amber-50">Prescription sheet may need updating</div>
+      <p className="mt-1 text-xs text-amber-200/85">
+        Mean working loads diverge from programmed weights by more than 10% across multiple sessions for:
+      </p>
+      <ul className="mt-2 list-disc list-inside space-y-1 text-amber-100/95">
+        {rows.map((r) => (
+          <li key={r.liftId}>
+            <span className="font-medium">{r.liftName}</span>
+            {' — '}
+            logged avg {r.avgActualWeight} lb vs prescribed {r.prescribedWeight} lb (
+            {r.divergencePct > 0 ? '+' : ''}
+            {r.divergencePct}%).
+          </li>
+        ))}
+      </ul>
+      <p className="mt-3 text-xs text-amber-200/75">
+        Update working weights on{' '}
+        <Link href="/program" className="underline underline-offset-2 text-amber-100 hover:text-white">
+          Program
+        </Link>
+        .
+      </p>
+    </div>
   );
 }
 

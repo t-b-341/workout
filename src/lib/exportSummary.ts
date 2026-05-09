@@ -1,6 +1,21 @@
 import type { ExportSummary } from './exportModelSchema';
-import type { SummaryProgramTarget } from './programExportTargets';
-import type { BodyweightLog, Lift, ReadinessLog, SessionLog, SetLog } from './types';
+import {
+  deriveProgramTargetText,
+  type ProgramTargetStored,
+  type SummaryProgramTarget,
+} from './programExportTargets';
+import {
+  SET_INTENTS,
+  type BodyweightLog,
+  type Lift,
+  type MindfulnessLog,
+  type Prescription,
+  type ReadinessLog,
+  type SessionLog,
+  type SetIntent,
+  type SetLog,
+} from './types';
+import { deriveSessionStatus } from './sessionStatus';
 import {
   bodyweightLbForSessionVolume,
   readinessBySessionId,
@@ -8,11 +23,157 @@ import {
 } from './p1AssistedVolume';
 import { mesocyclePosition, type MesocycleConfig } from './mesocycle';
 import { todayIso } from './time';
-import { SET_INTENTS, type SetIntent } from './types';
 
 function intentOf(s: SetLog): SetIntent {
   if (s.intent && (SET_INTENTS as readonly string[]).includes(s.intent)) return s.intent;
   return 'working';
+}
+
+function toProgramTargetStored(row: SummaryProgramTarget, currentValue: number | null): ProgramTargetStored {
+  return {
+    id: row.id,
+    label: row.label,
+    metric: row.metric,
+    targetValue: row.targetValue,
+    targetReps: row.targetReps,
+    targetSets: row.targetSets,
+    currentValue,
+    unit: row.unit,
+    liftId: row.liftId,
+  };
+}
+
+/** Mean duration across mindfulness rows that logged minutes (> 0). */
+function averageMindfulnessDurationMin(logs: MindfulnessLog[]): number | null {
+  const vals = logs
+    .map((m) => m.durationMin)
+    .filter((m): m is number => m != null && Number.isFinite(m) && m > 0);
+  if (vals.length === 0) return null;
+  const avg = vals.reduce((a, b) => a + b, 0) / vals.length;
+  return Math.round(avg * 10) / 10;
+}
+
+/**
+ * Derive currentValue from logs when the export row has no manual current.
+ * Used only inside `enrichProgramTargetsAtExport`.
+ */
+export function computeProgramTargetCurrentFromLogs(
+  pt: SummaryProgramTarget,
+  set_logs: SetLog[],
+  prescriptions: Prescription[],
+  mindfulness_logs: MindfulnessLog[],
+): number | null {
+  if (pt.metric === 'duration_min') {
+    return averageMindfulnessDurationMin(mindfulness_logs);
+  }
+
+  const liftId = pt.liftId;
+  if (!liftId) return null;
+
+  const rxById = new Map(prescriptions.map((p) => [p.id, p]));
+  const sets = set_logs.filter((s) => s.liftId === liftId && s.status === 'completed');
+
+  switch (pt.metric) {
+    case '1rm': {
+      let maxTest = -Infinity;
+      let maxSingle = -Infinity;
+      for (const s of sets) {
+        if (intentOf(s) === 'max_test' && Number.isFinite(s.weight) && s.weight > maxTest) {
+          maxTest = s.weight;
+        }
+        if (s.reps === 1 && Number.isFinite(s.weight) && s.weight > maxSingle) {
+          maxSingle = s.weight;
+        }
+      }
+      if (maxTest > -Infinity) return maxTest;
+      if (maxSingle > -Infinity) return maxSingle;
+      return null;
+    }
+    case 'working_set': {
+      let best = -Infinity;
+      for (const s of sets) {
+        const intent = intentOf(s);
+        if (intent !== 'working' && intent !== 'backoff') continue;
+        const rx = rxById.get(s.prescriptionId);
+        const repMin = rx?.repMin ?? 1;
+        if (s.reps < repMin) continue;
+        if (Number.isFinite(s.weight) && s.weight > best) best = s.weight;
+      }
+      return best > -Infinity ? best : null;
+    }
+    case 'reps': {
+      let bestReps = -Infinity;
+      for (const s of sets) {
+        if (s.weight !== 0) continue;
+        if (Number.isFinite(s.reps) && s.reps > bestReps) bestReps = s.reps;
+      }
+      return bestReps > -Infinity ? bestReps : null;
+    }
+    default:
+      return null;
+  }
+}
+
+/**
+ * Fill `currentValue`, `currentValueSource`, and human `text` for export summary rows.
+ * Does not overwrite a non-null finite currentValue (treated as manual).
+ */
+export function enrichProgramTargetsAtExport(
+  rows: SummaryProgramTarget[],
+  set_logs: SetLog[],
+  prescriptions: Prescription[],
+  mindfulness_logs: MindfulnessLog[],
+): SummaryProgramTarget[] {
+  return rows.map((row) => {
+    const hasManual =
+      row.currentValue != null && Number.isFinite(row.currentValue);
+
+    if (hasManual) {
+      const cv = row.currentValue!;
+      return {
+        ...row,
+        currentValue: cv,
+        currentValueSource: 'manual',
+        text: deriveProgramTargetText(toProgramTargetStored(row, cv)),
+      };
+    }
+
+    const eligible =
+      row.metric === 'duration_min' ||
+      (row.liftId != null && row.liftId !== '');
+
+    if (!eligible) {
+      return {
+        ...row,
+        currentValue: null,
+        currentValueSource: null,
+        text: deriveProgramTargetText(toProgramTargetStored(row, null)),
+      };
+    }
+
+    const computed = computeProgramTargetCurrentFromLogs(
+      row,
+      set_logs,
+      prescriptions,
+      mindfulness_logs,
+    );
+
+    if (computed != null && Number.isFinite(computed)) {
+      return {
+        ...row,
+        currentValue: computed,
+        currentValueSource: 'computed',
+        text: deriveProgramTargetText(toProgramTargetStored(row, computed)),
+      };
+    }
+
+    return {
+      ...row,
+      currentValue: null,
+      currentValueSource: null,
+      text: deriveProgramTargetText(toProgramTargetStored(row, null)),
+    };
+  });
 }
 
 function dateRangeFromIsoDates(dates: string[]): { start: string | null; end: string | null } {
@@ -32,6 +193,8 @@ export function computeExportSummary(args: {
   extraDates?: string[];
   mesoConfig: MesocycleConfig;
   programTargets: SummaryProgramTarget[];
+  prescriptions: Prescription[];
+  mindfulness_logs: MindfulnessLog[];
   /** Optional mesocycle window for analysis (export UI); omitted → null in summary. */
   mesoStartDate?: string | null;
   mesoEndDate?: string | null;
@@ -46,13 +209,40 @@ export function computeExportSummary(args: {
     extraDates = [],
     mesoConfig,
     programTargets,
+    prescriptions,
+    mindfulness_logs,
     mesoStartDate,
     mesoEndDate,
   } = args;
 
+  const enrichedProgramTargets = enrichProgramTargetsAtExport(
+    programTargets,
+    set_logs,
+    prescriptions,
+    mindfulness_logs,
+  );
+
   const liftById = new Map(lifts.map((l) => [l.id, l]));
   const rxBySession = readinessBySessionId(readiness_logs);
   const sessionById = new Map(session_logs.map((s) => [s.id, s]));
+
+  const setsBySessionId = new Map<string, SetLog[]>();
+  for (const st of set_logs) {
+    const arr = setsBySessionId.get(st.sessionLogId) ?? [];
+    arr.push(st);
+    setsBySessionId.set(st.sessionLogId, arr);
+  }
+
+  const ghostSessions: ExportSummary['ghostSessions'] = [];
+  let sessionCount = 0;
+  for (const s of session_logs) {
+    const status = deriveSessionStatus(s, prescriptions, setsBySessionId.get(s.id) ?? []);
+    if (status === 'ghost') {
+      ghostSessions.push({ sessionId: s.id, date: s.date, templateId: s.templateId });
+    } else {
+      sessionCount += 1;
+    }
+  }
 
   let totalVolumeLbReps = 0;
   for (const st of set_logs) {
@@ -100,13 +290,14 @@ export function computeExportSummary(args: {
   return {
     exportedAt: exportedAtIso,
     dateRange: { start, end },
-    sessionCount: session_logs.length,
+    sessionCount,
+    ghostSessions,
     totalSets: set_logs.length,
     totalVolumeLbReps,
     prFlags,
     activePhaseName,
     activePhaseWeek,
-    programTargets,
+    programTargets: enrichedProgramTargets,
     mesoStartDate: mesoStartNorm,
     mesoEndDate: mesoEndNorm,
   };

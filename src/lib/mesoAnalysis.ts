@@ -7,11 +7,13 @@ import {
 } from './p1AssistedVolume';
 import { isoWeekOf, sortSetsChronologically } from './stats';
 import type {
+  BodyMeasurementLog,
   BodyweightLog,
   InjuryEpisode,
   Lift,
   NutritionDayType,
   NutritionLog,
+  Prescription,
   ReadinessLog,
   SessionLog,
   SetIntent,
@@ -19,6 +21,7 @@ import type {
   SleepLog,
   StressLog,
 } from './types';
+import { deriveSessionStatus } from './sessionStatus';
 import { SET_INTENTS } from './types';
 
 export type MesoVolumeWeekRow = {
@@ -65,6 +68,7 @@ export type IntentBreakdown = {
   working: number;
   backoff: number;
   max_test: number;
+  skipped: number;
   workingPct: number;
 };
 
@@ -98,6 +102,9 @@ export type WellnessCorrelations = {
   lowSleepQualitySessionCompletion: WellnessCompletionBucket;
   highSleepQualitySessionCompletion: WellnessCompletionBucket;
   highStressSessionCompletion: WellnessCompletionBucket;
+  /** Same-day readiness check-in for that session: motivation ≥ 4. */
+  highMotivationSessionCompletion: WellnessCompletionBucket;
+  /** Same-day readiness check-in for that session: motivation ≤ 2. */
   lowMotivationSessionCompletion: WellnessCompletionBucket;
 };
 
@@ -127,6 +134,52 @@ export type LiftRecommendation = {
   rationale: string;
 };
 
+export type RepRangeComplianceRow = {
+  liftId: string;
+  liftName: string;
+  /** Mean prescription rep floor across counted working sets. */
+  prescribedMin: number;
+  /** Mean prescription rep ceiling across counted working sets. */
+  prescribedMax: number;
+  avgActualReps: number;
+  /** Share of completed working sets with reps in [prescribedMin, prescribedMax] per set's prescription. */
+  compliancePct: number;
+  belowRangeSets: number;
+  aboveRangeSets: number;
+  note: string | null;
+};
+
+/** Waist/abdomen/hips net change across the meso window; deltas only when protocol is comparable. */
+export type PrescriptionDivergenceRow = {
+  liftId: string;
+  liftName: string;
+  /** Mean prescribed working weight (lb) across counted sets for this lift. */
+  prescribedWeight: number;
+  avgActualWeight: number;
+  divergenceLb: number;
+  divergencePct: number;
+  direction: 'over' | 'under';
+  sessionsLogged: number;
+  /** True when load drift exceeds 10% and seen across ≥2 sessions (update the program sheet). */
+  suggestPrescriptionUpdate: boolean;
+};
+
+export type BodyMeasurementDeltaSection = {
+  /** True only when every row in the window has the same non-null `protocol` string (trimmed). */
+  protocolConsistent: boolean;
+  /** That shared protocol when consistent; otherwise null. */
+  protocol: string | null;
+  measurementCount: number;
+  firstDate: string | null;
+  lastDate: string | null;
+  /** First-to-last delta in inches; null when not reliable for trend interpretation. */
+  waistDeltaIn: number | null;
+  abdomenDeltaIn: number | null;
+  hipsDeltaIn: number | null;
+  /** Why deltas may be omitted or interpreted cautiously. */
+  reliabilityNote: string | null;
+};
+
 export type MesoAnalysisSectionKey =
   | 'volumeProgression'
   | 'targetDeltas'
@@ -134,9 +187,12 @@ export type MesoAnalysisSectionKey =
   | 'intentBreakdown'
   | 'nutritionAdherence'
   | 'bodyweightTrend'
+  | 'bodyMeasurementDelta'
   | 'wellnessCorrelations'
   | 'injuryFlags'
   | 'mindfulnessAdherence'
+  | 'repRangeCompliance'
+  | 'prescriptionDivergence'
   | 'liftRecommendations';
 
 export type MesoAnalysisReport = {
@@ -149,9 +205,12 @@ export type MesoAnalysisReport = {
   intentBreakdown: IntentBreakdown | null;
   nutritionAdherence: NutritionAdherence | null;
   bodyweightTrend: BodyweightTrend | null;
+  bodyMeasurementDelta: BodyMeasurementDeltaSection | null;
   wellnessCorrelations: WellnessCorrelations | null;
   injuryFlags: InjuryFlagRow[] | null;
   mindfulnessAdherence: MindfulnessAdherence | null;
+  repRangeCompliance: RepRangeComplianceRow[] | null;
+  prescriptionDivergence: PrescriptionDivergenceRow[] | null;
   liftRecommendations: LiftRecommendation[] | null;
   /** When a section is null, explains what data was missing (optional keys only). */
   sectionNullNotes?: Partial<Record<MesoAnalysisSectionKey, string>>;
@@ -230,7 +289,9 @@ export function computeMesoAnalysis(args: {
   session_logs: SessionLog[];
   set_logs: SetLog[];
   lifts: Lift[];
-  prescriptions: Array<{ templateId: string; liftId: string; sets: number }>;
+  prescriptions: Array<
+    Pick<Prescription, 'id' | 'templateId' | 'liftId' | 'sets' | 'repMin' | 'repMax' | 'weight'>
+  >;
   readiness_logs: ReadinessLog[];
   bodyweight_logs: BodyweightLog[];
   nutrition_logs: Array<
@@ -241,6 +302,7 @@ export function computeMesoAnalysis(args: {
   mindfulness_logs: Array<{ date: string; durationMin?: number }>;
   injury_episodes: InjuryEpisode[];
   programTargets: SummaryProgramTarget[];
+  body_measurement_logs: BodyMeasurementLog[];
   mesoStartDate: string | null | undefined;
   mesoEndDate: string | null | undefined;
 }): MesoAnalysisReport {
@@ -264,9 +326,12 @@ export function computeMesoAnalysis(args: {
       intentBreakdown: null,
       nutritionAdherence: null,
       bodyweightTrend: null,
+      bodyMeasurementDelta: null,
       wellnessCorrelations: null,
       injuryFlags: null,
       mindfulnessAdherence: null,
+      repRangeCompliance: null,
+      prescriptionDivergence: null,
       liftRecommendations: null,
       sectionNullNotes: {
         volumeProgression: 'No session_logs — cannot determine analysis window.',
@@ -275,9 +340,12 @@ export function computeMesoAnalysis(args: {
         intentBreakdown: 'No session_logs — cannot determine analysis window.',
         nutritionAdherence: 'No session_logs — cannot determine analysis window.',
         bodyweightTrend: 'No session_logs — cannot determine analysis window.',
+        bodyMeasurementDelta: 'No session_logs — cannot determine analysis window.',
         wellnessCorrelations: 'No session_logs — cannot determine analysis window.',
         injuryFlags: 'No session_logs — cannot determine analysis window.',
         mindfulnessAdherence: 'No session_logs — cannot determine analysis window.',
+        repRangeCompliance: 'No session_logs — cannot determine analysis window.',
+        prescriptionDivergence: 'No session_logs — cannot determine analysis window.',
         liftRecommendations: 'No session_logs — cannot determine analysis window.',
       },
     };
@@ -289,9 +357,23 @@ export function computeMesoAnalysis(args: {
     cmpIsoDate(s.date, windowStart) >= 0 && cmpIsoDate(s.date, windowEnd) <= 0;
 
   const sessionsFiltered = args.session_logs.filter(sessionInWindow);
-  const sessionIds = new Set(sessionsFiltered.map((s) => s.id));
   const sessionById = new Map(args.session_logs.map((s) => [s.id, s]));
 
+  const setsBySessionId = new Map<string, SetLog[]>();
+  for (const st of args.set_logs) {
+    const sess = sessionById.get(st.sessionLogId);
+    if (!sess || !sessionInWindow(sess)) continue;
+    const arr = setsBySessionId.get(st.sessionLogId) ?? [];
+    arr.push(st);
+    setsBySessionId.set(st.sessionLogId, arr);
+  }
+
+  const sessionsAnalytical = sessionsFiltered.filter((sess) => {
+    const sets = setsBySessionId.get(sess.id) ?? [];
+    return deriveSessionStatus(sess, args.prescriptions as Prescription[], sets) !== 'ghost';
+  });
+
+  const sessionIds = new Set(sessionsAnalytical.map((s) => s.id));
   const setsInWindow = args.set_logs.filter((st) => sessionIds.has(st.sessionLogId));
 
   const liftById = new Map(args.lifts.map((l) => [l.id, l]));
@@ -317,7 +399,7 @@ export function computeMesoAnalysis(args: {
   if (liftIdsWithSets.length === 0) {
     sectionNullNotes.volumeProgression = 'No set_logs in the analysis window.';
   } else {
-    const sortedSets = sortSetsChronologically(setsInWindow, sessionsFiltered);
+    const sortedSets = sortSetsChronologically(setsInWindow, sessionsAnalytical);
 
     const rows: VolumeProgressionRow[] = [];
     for (const liftId of liftIdsWithSets) {
@@ -404,7 +486,7 @@ export function computeMesoAnalysis(args: {
     { programmed: number; completed: number; skipped: number; reasons: Set<string> }
   >();
 
-  for (const s of sessionsFiltered) {
+  for (const s of sessionsAnalytical) {
     for (const p of args.prescriptions) {
       if (p.templateId !== s.templateId) continue;
       const cur = completionMap.get(p.liftId) ?? {
@@ -458,20 +540,169 @@ export function computeMesoAnalysis(args: {
     let w = 0,
       wo = 0,
       b = 0,
-      m = 0;
+      m = 0,
+      sk = 0;
     for (const st of setsInWindow) {
       const i = intentOf(st);
       if (i === 'warmup') w += 1;
       else if (i === 'working') wo += 1;
       else if (i === 'backoff') b += 1;
       else if (i === 'max_test') m += 1;
+      else if (i === 'skipped') sk += 1;
     }
     const denom = wo + b + m;
     const workingPct = denom > 0 ? (wo / denom) * 100 : 0;
     if (setsInWindow.length === 0) {
       sectionNullNotes.intentBreakdown = 'No set_logs in the analysis window.';
     } else {
-      intentBreakdown = { warmup: w, working: wo, backoff: b, max_test: m, workingPct };
+      intentBreakdown = { warmup: w, working: wo, backoff: b, max_test: m, skipped: sk, workingPct };
+    }
+  }
+
+  let repRangeCompliance: RepRangeComplianceRow[] | null = null;
+  // ----- repRangeCompliance -----
+  {
+    const rxById = new Map(args.prescriptions.map((p) => [p.id, p]));
+    type RepAgg = {
+      sumReps: number;
+      sumRepMin: number;
+      sumRepMax: number;
+      n: number;
+      within: number;
+      below: number;
+      above: number;
+    };
+    const aggByLift = new Map<string, RepAgg>();
+
+    for (const st of setsInWindow) {
+      if (st.status !== 'completed') continue;
+      if (intentOf(st) !== 'working') continue;
+      const lift = liftById.get(st.liftId);
+      if (!lift || lift.equipment === 'cardio' || lift.equipment === 'time') continue;
+      if (lift.loadScale === 'inverse') continue;
+      const rx = rxById.get(st.prescriptionId);
+      if (!rx) continue;
+      const repMin = rx.repMin;
+      const repMax = rx.repMax;
+      let a = aggByLift.get(st.liftId);
+      if (!a) {
+        a = { sumReps: 0, sumRepMin: 0, sumRepMax: 0, n: 0, within: 0, below: 0, above: 0 };
+        aggByLift.set(st.liftId, a);
+      }
+      a.n += 1;
+      a.sumReps += st.reps;
+      a.sumRepMin += repMin;
+      a.sumRepMax += repMax;
+      if (st.reps < repMin) a.below += 1;
+      else if (st.reps > repMax) a.above += 1;
+      else a.within += 1;
+    }
+
+    const repRows: RepRangeComplianceRow[] = [];
+    for (const [liftId, a] of aggByLift) {
+      if (a.n < 3) continue;
+      const liftName = liftById.get(liftId)?.name ?? liftId;
+      const prescribedMin = Math.round((a.sumRepMin / a.n) * 10) / 10;
+      const prescribedMax = Math.round((a.sumRepMax / a.n) * 10) / 10;
+      const avgActualReps = Math.round((a.sumReps / a.n) * 10) / 10;
+      const compliancePct = (a.within / a.n) * 100;
+      let note: string | null = null;
+      if (compliancePct < 70) {
+        if (a.below > a.above) {
+          note =
+            'Consistently below range — consider reducing load or adjusting rep target.';
+        } else if (a.above > a.below) {
+          note =
+            'Often above prescribed reps — consider increasing load or tightening execution.';
+        } else {
+          note = 'Rep range compliance below 70% — review load and targets.';
+        }
+      }
+      repRows.push({
+        liftId,
+        liftName,
+        prescribedMin,
+        prescribedMax,
+        avgActualReps,
+        compliancePct: Math.round(compliancePct * 10) / 10,
+        belowRangeSets: a.below,
+        aboveRangeSets: a.above,
+        note,
+      });
+    }
+    repRows.sort((a, b) => a.liftName.localeCompare(b.liftName));
+    repRangeCompliance = repRows.length ? repRows : null;
+    if (!repRangeCompliance) {
+      sectionNullNotes.repRangeCompliance =
+        'No lifts with ≥3 completed working sets (non-inverse, strength reps) and matching prescriptions in the window.';
+    }
+  }
+
+  let prescriptionDivergence: PrescriptionDivergenceRow[] | null = null;
+  // ----- prescriptionDivergence -----
+  {
+    const rxByIdDiv = new Map(args.prescriptions.map((p) => [p.id, p]));
+    type DivAgg = {
+      sumActual: number;
+      sumPrescribed: number;
+      n: number;
+      sessions: Set<string>;
+    };
+    const aggByLift = new Map<string, DivAgg>();
+
+    for (const st of setsInWindow) {
+      if (st.status !== 'completed') continue;
+      if (intentOf(st) !== 'working') continue;
+      const lift = liftById.get(st.liftId);
+      if (!lift || lift.equipment === 'cardio' || lift.equipment === 'time') continue;
+      if (lift.loadScale === 'inverse') continue;
+      const rx = rxByIdDiv.get(st.prescriptionId);
+      if (!rx) continue;
+      const prescribed = rx.weight;
+      if (!Number.isFinite(prescribed) || prescribed <= 0) continue;
+      if (!Number.isFinite(st.weight)) continue;
+
+      let a = aggByLift.get(st.liftId);
+      if (!a) {
+        a = { sumActual: 0, sumPrescribed: 0, n: 0, sessions: new Set() };
+        aggByLift.set(st.liftId, a);
+      }
+      a.sumActual += st.weight;
+      a.sumPrescribed += prescribed;
+      a.n += 1;
+      a.sessions.add(st.sessionLogId);
+    }
+
+    const divRows: PrescriptionDivergenceRow[] = [];
+    for (const [liftId, a] of aggByLift) {
+      if (a.n < 1) continue;
+      const avgActual = a.sumActual / a.n;
+      const avgPrescribed = a.sumPrescribed / a.n;
+      const divergenceLb = Math.round((avgActual - avgPrescribed) * 10) / 10;
+      const divergencePctRaw =
+        avgPrescribed !== 0 ? (divergenceLb / avgPrescribed) * 100 : 0;
+      const divergencePct = Math.round(divergencePctRaw * 10) / 10;
+      if (Math.abs(divergencePct) <= 10) continue;
+
+      const sessionsLogged = a.sessions.size;
+      const liftName = liftById.get(liftId)?.name ?? liftId;
+      divRows.push({
+        liftId,
+        liftName,
+        prescribedWeight: Math.round(avgPrescribed * 10) / 10,
+        avgActualWeight: Math.round(avgActual * 10) / 10,
+        divergenceLb,
+        divergencePct,
+        direction: divergenceLb >= 0 ? 'over' : 'under',
+        sessionsLogged,
+        suggestPrescriptionUpdate: Math.abs(divergencePct) > 10 && sessionsLogged >= 2,
+      });
+    }
+    divRows.sort((x, y) => x.liftName.localeCompare(y.liftName));
+    prescriptionDivergence = divRows.length ? divRows : null;
+    if (!prescriptionDivergence) {
+      sectionNullNotes.prescriptionDivergence =
+        'No lifts where mean actual working weight differs from prescribed by more than 10% in the window.';
     }
   }
 
@@ -558,6 +789,60 @@ export function computeMesoAnalysis(args: {
     }
   }
 
+  // ----- bodyMeasurementDelta -----
+  let bodyMeasurementDelta: BodyMeasurementDeltaSection | null = null;
+  {
+    const measures = args.body_measurement_logs
+      .filter(
+        (m) =>
+          cmpIsoDate(m.date, windowStart) >= 0 && cmpIsoDate(m.date, windowEnd) <= 0,
+      )
+      .sort((a, b) => cmpIsoDate(a.date, b.date));
+
+    if (measures.length === 0) {
+      sectionNullNotes.bodyMeasurementDelta =
+        'No body_measurement_logs in the analysis window.';
+    } else {
+      const normalizedProtocols = measures.map((m) => {
+        const t = m.protocol?.trim();
+        return t ? t : null;
+      });
+      const allNonNullProtocol = normalizedProtocols.every((p) => p != null);
+      const distinct = new Set(normalizedProtocols.filter((p): p is string => p != null));
+      const protocolConsistent =
+        measures.length > 0 && allNonNullProtocol && distinct.size === 1;
+      const protocol = protocolConsistent ? [...distinct][0]! : null;
+
+      const first = measures[0]!;
+      const last = measures[measures.length - 1]!;
+      const canDelta = protocolConsistent && measures.length >= 2;
+      const waistDeltaIn = canDelta ? Math.round((last.waist - first.waist) * 10) / 10 : null;
+      const abdomenDeltaIn = canDelta ? Math.round((last.abdomen - first.abdomen) * 10) / 10 : null;
+      const hipsDeltaIn = canDelta ? Math.round((last.hips - first.hips) * 10) / 10 : null;
+
+      let reliabilityNote: string | null = null;
+      if (!protocolConsistent) {
+        reliabilityNote =
+          'Circumference deltas are not reported as reliable trends: entries must share the same non-null protocol across this window.';
+      } else if (measures.length < 2) {
+        reliabilityNote =
+          'Only one measurement in this window — trend deltas need at least two logged points.';
+      }
+
+      bodyMeasurementDelta = {
+        protocolConsistent,
+        protocol,
+        measurementCount: measures.length,
+        firstDate: first.date,
+        lastDate: last.date,
+        waistDeltaIn,
+        abdomenDeltaIn,
+        hipsDeltaIn,
+        reliabilityNote,
+      };
+    }
+  }
+
   // ----- wellnessCorrelations -----
   let wellnessCorrelations: WellnessCorrelations | null = null;
   {
@@ -591,9 +876,10 @@ export function computeMesoAnalysis(args: {
     const lowSleep: number[] = [];
     const highSleep: number[] = [];
     const highStress: number[] = [];
+    const highMot: number[] = [];
     const lowMot: number[] = [];
 
-    for (const s of sessionsFiltered) {
+    for (const s of sessionsAnalytical) {
       const pct = sessionCompletionPct(s.id);
       if (pct == null) continue;
 
@@ -607,7 +893,10 @@ export function computeMesoAnalysis(args: {
       if (stresses.some((x) => x.rating === 3)) highStress.push(pct);
 
       const rx = rxBySession.get(s.id);
-      if (rx && rx.motivation <= 2) lowMot.push(pct);
+      if (rx) {
+        if (rx.motivation >= 4) highMot.push(pct);
+        if (rx.motivation <= 2) lowMot.push(pct);
+      }
     }
 
     const avg = (xs: number[]) => (xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : 0);
@@ -616,17 +905,19 @@ export function computeMesoAnalysis(args: {
       lowSleepQualitySessionCompletion: { sessions: lowSleep.length, avgCompletionPct: avg(lowSleep) },
       highSleepQualitySessionCompletion: { sessions: highSleep.length, avgCompletionPct: avg(highSleep) },
       highStressSessionCompletion: { sessions: highStress.length, avgCompletionPct: avg(highStress) },
+      highMotivationSessionCompletion: { sessions: highMot.length, avgCompletionPct: avg(highMot) },
       lowMotivationSessionCompletion: { sessions: lowMot.length, avgCompletionPct: avg(lowMot) },
     };
     if (
-      sessionsFiltered.length > 0
+      sessionsAnalytical.length > 0
       && lowSleep.length === 0
       && highSleep.length === 0
       && highStress.length === 0
+      && highMot.length === 0
       && lowMot.length === 0
     ) {
       sectionNullNotes.wellnessCorrelations =
-        'No sessions matched sleep (±1 day), stress (same day), or readiness rules for correlation buckets.';
+        'No sessions matched sleep (±1 day), stress (same day), or readiness motivation rules for correlation buckets.';
     }
   }
 
@@ -671,7 +962,7 @@ export function computeMesoAnalysis(args: {
     return [...out];
   }
 
-  for (const s of sessionsFiltered) {
+  for (const s of sessionsAnalytical) {
     const stype = s.sessionType ?? 'standard';
     const sessionSets = setsInWindow.filter((st) => st.sessionLogId === s.id);
 
@@ -814,6 +1105,8 @@ export function computeMesoAnalysis(args: {
   // ----- liftRecommendations -----
   let liftRecommendations: LiftRecommendation[] | null = null;
   {
+    const repRangeByLift = new Map((repRangeCompliance ?? []).map((r) => [r.liftId, r]));
+
     const liftsWithFourWorking = new Set<string>();
     for (const liftId of liftIdsWithSets) {
       const n = setsInWindow.filter(
@@ -894,6 +1187,12 @@ export function computeMesoAnalysis(args: {
         rationale = `Completion ${completionPct.toFixed(0)}%, load delta ${loadDelta ?? 'n/a'} lb — hold pattern next meso.`;
       }
 
+      const rr = repRangeByLift.get(liftId);
+      if (rr && rr.compliancePct < 70) {
+        const extra = rr.note ?? 'Rep range compliance below 70% on working sets.';
+        rationale = `${rationale.trim()} ${extra}`;
+      }
+
       recs.push({ liftId, liftName, recommendation, rationale });
     }
     liftRecommendations = recs.length ? recs.sort((a, b) => a.liftName.localeCompare(b.liftName)) : null;
@@ -915,9 +1214,12 @@ export function computeMesoAnalysis(args: {
     intentBreakdown,
     nutritionAdherence,
     bodyweightTrend,
+    bodyMeasurementDelta,
     wellnessCorrelations,
     injuryFlags,
     mindfulnessAdherence,
+    repRangeCompliance,
+    prescriptionDivergence,
     liftRecommendations,
     ...(hasNotes ? { sectionNullNotes } : {}),
   };

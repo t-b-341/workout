@@ -301,7 +301,7 @@ export class WorkoutDB extends Dexie {
       dirty: 'id, table, rowId, enqueuedAt',
       meta: 'key',
     }).upgrade(async (tx) => {
-      const intentOk = new Set(['warmup', 'working', 'backoff', 'max_test']);
+      const intentOk = new Set(['warmup', 'working', 'backoff', 'max_test', 'skipped']);
       const stOk = new Set(['accumulation', 'deload', 'pr_test', 'abbreviated', 'standard']);
 
       const setT = tx.table('set_logs');

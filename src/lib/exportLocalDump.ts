@@ -3,7 +3,7 @@
 import type { DirtyRow } from './db';
 import { getDb, SCHEMA_VERSION } from './db';
 import { buildExportSchemaDocumentation, type ExportedFitnessGoal, type MesoAnalysisReport } from './exportModelSchema';
-import { computeExportSummary } from './exportSummary';
+import { computeExportSummary, enrichProgramTargetsAtExport } from './exportSummary';
 import { loadFitnessGoals, type FitnessGoal } from './goals';
 import { loadMesoConfig } from './mesocycle';
 import { computeMesoAnalysis } from './mesoAnalysis';
@@ -25,6 +25,7 @@ import type {
   ReadinessLog,
   SessionLabelType,
   SessionLog,
+  SessionStatus,
   SessionTemplate,
   SetIntent,
   SetLog,
@@ -36,6 +37,7 @@ import {
   SET_INTENTS,
 } from './types';
 import { TRAINING_PLAN_GOALS, type TrainingPlanGoalRow } from './trainingPlanGoals';
+import { deriveSessionStatus } from './sessionStatus';
 
 /** Keys this app uses in `localStorage` (UI prefs only; not secrets). */
 const KNOWN_LOCALSTORAGE_KEYS = [
@@ -136,6 +138,8 @@ export type FullLocalExport = {
       sessionType: SessionLabelType;
       /** Explicit mesocycle boundary marker for export windows chosen by the user. */
       mesoBoundary: 'start' | 'end' | null;
+      /** Derived from set_logs + prescriptions at export time. */
+      sessionStatus: SessionStatus;
     }
   >;
   set_logs: ExportedSetLog[];
@@ -164,6 +168,7 @@ export async function buildMesoAnalysisLive(opts?: FullLocalExportOptions): Prom
     set_logs,
     cardio_logs,
     bodyweight_logs,
+    body_measurement_logs,
     readiness_logs,
     nutrition_logs,
     sleep_logs,
@@ -177,6 +182,7 @@ export async function buildMesoAnalysisLive(opts?: FullLocalExportOptions): Prom
     db.set_logs.toArray(),
     db.cardio_logs.toArray(),
     db.bodyweight_logs.toArray(),
+    db.body_measurement_logs.toArray(),
     db.readiness_logs.toArray(),
     db.nutrition_logs.toArray(),
     db.sleep_logs.toArray(),
@@ -220,6 +226,12 @@ export async function buildMesoAnalysisLive(opts?: FullLocalExportOptions): Prom
   });
 
   const programTargetsForSummary = await loadExportProgramTargetsForSummary();
+  const programTargetsEnriched = enrichProgramTargetsAtExport(
+    programTargetsForSummary,
+    set_logs,
+    prescriptions,
+    mindfulness_logs,
+  );
 
   return computeMesoAnalysis({
     exportedAtIso,
@@ -227,9 +239,13 @@ export async function buildMesoAnalysisLive(opts?: FullLocalExportOptions): Prom
     set_logs,
     lifts,
     prescriptions: prescriptions.map((p) => ({
+      id: p.id,
       templateId: p.templateId,
       liftId: p.liftId,
       sets: p.sets,
+      repMin: p.repMin,
+      repMax: p.repMax,
+      weight: p.weight,
     })),
     readiness_logs,
     bodyweight_logs,
@@ -238,7 +254,8 @@ export async function buildMesoAnalysisLive(opts?: FullLocalExportOptions): Prom
     stress_logs,
     mindfulness_logs,
     injury_episodes,
-    programTargets: programTargetsForSummary,
+    programTargets: programTargetsEnriched,
+    body_measurement_logs,
     mesoStartDate: opts?.mesoStartDate,
     mesoEndDate: opts?.mesoEndDate,
   });
@@ -301,10 +318,18 @@ export async function buildFullLocalExport(opts?: FullLocalExportOptions): Promi
 
   const sessionById = new Map(session_logs.map((s) => [s.id, s]));
 
+  const setsBySessionForStatus = new Map<string, SetLog[]>();
+  for (const st of set_logs) {
+    const arr = setsBySessionForStatus.get(st.sessionLogId) ?? [];
+    arr.push(st);
+    setsBySessionForStatus.set(st.sessionLogId, arr);
+  }
+
   const session_logs_out: FullLocalExport['session_logs'] = session_logs.map((s) => ({
     ...s,
     sessionType: opts?.sessionTypeOverrides?.[s.id] ?? sessionTypeOf(s),
     mesoBoundary: s.date === mesoStartNorm ? 'start' : s.date === mesoEndNorm ? 'end' : null,
+    sessionStatus: deriveSessionStatus(s, prescriptions, setsBySessionForStatus.get(s.id) ?? []),
   }));
 
   const set_logs_out: ExportedSetLog[] = set_logs.map((s) => ({
@@ -359,6 +384,8 @@ export async function buildFullLocalExport(opts?: FullLocalExportOptions): Promi
     extraDates: extraDatesForRange,
     mesoConfig,
     programTargets: programTargetsForSummary,
+    prescriptions,
+    mindfulness_logs,
     mesoStartDate: opts?.mesoStartDate,
     mesoEndDate: opts?.mesoEndDate,
   });
@@ -369,9 +396,13 @@ export async function buildFullLocalExport(opts?: FullLocalExportOptions): Promi
     set_logs,
     lifts,
     prescriptions: prescriptions.map((p) => ({
+      id: p.id,
       templateId: p.templateId,
       liftId: p.liftId,
       sets: p.sets,
+      repMin: p.repMin,
+      repMax: p.repMax,
+      weight: p.weight,
     })),
     readiness_logs,
     bodyweight_logs,
@@ -380,7 +411,8 @@ export async function buildFullLocalExport(opts?: FullLocalExportOptions): Promi
     stress_logs,
     mindfulness_logs,
     injury_episodes,
-    programTargets: programTargetsForSummary,
+    programTargets: summary.programTargets,
+    body_measurement_logs,
     mesoStartDate: opts?.mesoStartDate,
     mesoEndDate: opts?.mesoEndDate,
   });

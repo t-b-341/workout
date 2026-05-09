@@ -27,6 +27,8 @@ export type ExportSummary = {
   exportedAt: string;
   dateRange: { start: string | null; end: string | null };
   sessionCount: number;
+  /** Sessions with zero set_logs (excluded from sessionCount and meso aggregates). */
+  ghostSessions: Array<{ sessionId: string; date: string; templateId: string }>;
   totalSets: number;
   totalVolumeLbReps: number;
   prFlags: Array<{
@@ -83,6 +85,9 @@ function summarySchema(): SchemaEntry {
       'dateRange.start': 'YYYY-MM-DD | null',
       'dateRange.end': 'YYYY-MM-DD | null',
       sessionCount: 'number',
+      'ghostSessions[].sessionId': 'string',
+      'ghostSessions[].date': 'YYYY-MM-DD',
+      'ghostSessions[].templateId': 'TemplateId',
       totalSets: 'number',
       totalVolumeLbReps: 'number',
       'prFlags[].liftId': 'string',
@@ -101,6 +106,7 @@ function summarySchema(): SchemaEntry {
       'programTargets[].targetReps': 'number | null',
       'programTargets[].targetSets': 'number | null',
       'programTargets[].currentValue': 'number | null',
+      'programTargets[].currentValueSource': '"manual" | "computed" | null',
       'programTargets[].unit': joinEnums(PROGRAM_TARGET_UNITS),
       'programTargets[].liftId': 'string | null (lifts[].id)',
       mesoStartDate: 'YYYY-MM-DD | null',
@@ -121,7 +127,24 @@ function mesoAnalysisFields(): SchemaEntry {
       intentBreakdown: 'object | null',
       nutritionAdherence: 'object | null',
       bodyweightTrend: 'object | null',
+      bodyMeasurementDelta: 'object | null',
+      'bodyMeasurementDelta.protocolConsistent': 'boolean',
+      'bodyMeasurementDelta.protocol': 'string | null',
+      'bodyMeasurementDelta.measurementCount': 'number',
+      'bodyMeasurementDelta.firstDate': 'YYYY-MM-DD | null',
+      'bodyMeasurementDelta.lastDate': 'YYYY-MM-DD | null',
+      'bodyMeasurementDelta.waistDeltaIn': 'number | null',
+      'bodyMeasurementDelta.abdomenDeltaIn': 'number | null',
+      'bodyMeasurementDelta.hipsDeltaIn': 'number | null',
+      'bodyMeasurementDelta.reliabilityNote': 'string | null',
       wellnessCorrelations: 'object | null',
+      'wellnessCorrelations.lowSleepQualitySessionCompletion': '{ sessions, avgCompletionPct }',
+      'wellnessCorrelations.highSleepQualitySessionCompletion': '{ sessions, avgCompletionPct }',
+      'wellnessCorrelations.highStressSessionCompletion': '{ sessions, avgCompletionPct }',
+      'wellnessCorrelations.highMotivationSessionCompletion':
+        '{ sessions, avgCompletionPct } (readiness motivation ≥ 4 same session)',
+      'wellnessCorrelations.lowMotivationSessionCompletion':
+        '{ sessions, avgCompletionPct } (readiness motivation ≤ 2 same session)',
       'injuryFlags[].date': 'YYYY-MM-DD',
       'injuryFlags[].sessionId': 'string',
       'injuryFlags[].sessionType': 'string',
@@ -131,6 +154,26 @@ function mesoAnalysisFields(): SchemaEntry {
       'injuryFlags[].liftName': 'string | null',
       'injuryFlags[].detail': 'string',
       mindfulnessAdherence: 'object | null',
+      repRangeCompliance: 'array | null',
+      'repRangeCompliance[].liftId': 'string',
+      'repRangeCompliance[].liftName': 'string',
+      'repRangeCompliance[].prescribedMin': 'number',
+      'repRangeCompliance[].prescribedMax': 'number',
+      'repRangeCompliance[].avgActualReps': 'number',
+      'repRangeCompliance[].compliancePct': 'number (working sets within prescription rep range)',
+      'repRangeCompliance[].belowRangeSets': 'number',
+      'repRangeCompliance[].aboveRangeSets': 'number',
+      'repRangeCompliance[].note': 'string | null',
+      prescriptionDivergence: 'array | null',
+      'prescriptionDivergence[].liftId': 'string',
+      'prescriptionDivergence[].liftName': 'string',
+      'prescriptionDivergence[].prescribedWeight': 'number (lb, mean across working sets)',
+      'prescriptionDivergence[].avgActualWeight': 'number',
+      'prescriptionDivergence[].divergenceLb': 'number',
+      'prescriptionDivergence[].divergencePct': 'number',
+      'prescriptionDivergence[].direction': '"over" | "under"',
+      'prescriptionDivergence[].sessionsLogged': 'number',
+      'prescriptionDivergence[].suggestPrescriptionUpdate': 'boolean',
       liftRecommendations: 'array | null',
       sectionNullNotes: 'Record<section, string> | undefined',
     },
@@ -204,6 +247,8 @@ function sessionLogFields(): SchemaEntry {
       effortScale: '-1 | 0 | 1 | undefined',
       readinessCompletedAt: 'ISO timestamp | undefined',
       tags: 'SessionStrategyTagId[] | undefined',
+      sessionStatus:
+        '"completed" | "skipped" | "partial" | "ghost" | undefined (derived at export; persisted when skipped)',
       mesoBoundary: '"start" | "end" | null (export-only marker from selected mesocycle window)',
     },
   };
@@ -272,6 +317,8 @@ function bodyMeasurementFields(): SchemaEntry {
       waist: 'number',
       abdomen: 'number',
       hips: 'number',
+      protocol: 'string | null | undefined',
+      timeOfDay: '"morning" | "afternoon" | "evening" | null | undefined',
     },
   };
 }

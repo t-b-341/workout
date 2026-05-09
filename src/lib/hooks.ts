@@ -109,6 +109,11 @@ export function useTodaySession(templateId: TemplateId): SessionLog | undefined 
   }, [templateId]);
 }
 
+/** All session rows for a calendar day (any templates). */
+export function useSessionsForDate(date: string): SessionLog[] | undefined {
+  return useLiveQuery(async () => getDb().session_logs.where('date').equals(date).toArray(), [date]);
+}
+
 export function useSetsForSession(sessionId?: string): SetLog[] | undefined {
   return useLiveQuery(async () => {
     if (!sessionId) return [];

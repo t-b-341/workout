@@ -37,6 +37,8 @@ export type SummaryProgramTarget = {
   targetReps: number | null;
   targetSets: number | null;
   currentValue: number | null;
+  /** Set at export: user-entered vs derived from logs vs neither. */
+  currentValueSource: 'manual' | 'computed' | null;
   unit: ProgramTargetUnit;
   liftId: string | null;
 };
@@ -151,6 +153,7 @@ export function deriveProgramTargetText(p: ProgramTargetStored): string {
 }
 
 export function programTargetToExportRow(p: ProgramTargetStored): SummaryProgramTarget {
+  const cv = p.currentValue ?? null;
   return {
     id: p.id,
     label: p.label,
@@ -159,7 +162,8 @@ export function programTargetToExportRow(p: ProgramTargetStored): SummaryProgram
     targetValue: p.targetValue ?? null,
     targetReps: p.targetReps ?? null,
     targetSets: p.targetSets ?? null,
-    currentValue: p.currentValue ?? null,
+    currentValue: cv,
+    currentValueSource: cv != null && Number.isFinite(cv) ? 'manual' : null,
     unit: p.unit,
     liftId: p.liftId ?? null,
   };

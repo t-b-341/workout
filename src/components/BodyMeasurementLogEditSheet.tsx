@@ -3,7 +3,8 @@
 import { useEffect, useState } from 'react';
 import { flushDirty, localUpsert } from '@/lib/sync';
 import { fmtDate } from '@/lib/time';
-import type { BodyMeasurementLog } from '@/lib/types';
+import { MEASUREMENT_TIME_OF_DAY } from '@/lib/types';
+import type { BodyMeasurementLog, MeasurementTimeOfDay } from '@/lib/types';
 
 function MeasureInput({
   label,
@@ -39,6 +40,8 @@ export function BodyMeasurementLogEditSheet({
   const [waist, setWaist] = useState(log.waist);
   const [abdomen, setAbdomen] = useState(log.abdomen);
   const [hips, setHips] = useState(log.hips);
+  const [protocol, setProtocol] = useState(log.protocol ?? '');
+  const [timeOfDay, setTimeOfDay] = useState<MeasurementTimeOfDay | null>(log.timeOfDay ?? null);
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
@@ -52,13 +55,17 @@ export function BodyMeasurementLogEditSheet({
   async function save() {
     setBusy(true);
     try {
-      await localUpsert('body_measurement_logs', {
+      const row: BodyMeasurementLog = {
         id: log.id,
         date: log.date,
         waist,
         abdomen,
         hips,
-      });
+      };
+      const p = protocol.trim();
+      if (p) row.protocol = p;
+      if (timeOfDay) row.timeOfDay = timeOfDay;
+      await localUpsert('body_measurement_logs', row);
       await flushDirty().catch(() => {});
       onClose();
     } finally {
@@ -89,6 +96,35 @@ export function BodyMeasurementLogEditSheet({
             <MeasureInput label="Abdomen (navel)" value={abdomen} onChange={setAbdomen} />
             <MeasureInput label="Hips (widest)" value={hips} onChange={setHips} />
           </div>
+          <label className="block text-xs text-zinc-500">
+            Protocol (optional)
+            <input
+              type="text"
+              value={protocol}
+              onChange={(e) => setProtocol(e.target.value)}
+              placeholder="e.g. morning, fasted, after bathroom"
+              className="mt-1 h-10 w-full rounded-lg bg-zinc-950 border border-zinc-800 px-3 text-sm text-zinc-200"
+            />
+          </label>
+          <label className="block text-xs text-zinc-500">
+            Time of day
+            <select
+              value={timeOfDay ?? ''}
+              onChange={(e) =>
+                setTimeOfDay(
+                  e.target.value === '' ? null : (e.target.value as MeasurementTimeOfDay),
+                )
+              }
+              className="mt-1 h-10 w-full rounded-lg bg-zinc-950 border border-zinc-800 px-3 text-sm text-zinc-200"
+            >
+              <option value="">—</option>
+              {MEASUREMENT_TIME_OF_DAY.map((t) => (
+                <option key={t} value={t}>
+                  {t}
+                </option>
+              ))}
+            </select>
+          </label>
         </div>
 
         <div className="p-4 border-t border-zinc-800 shrink-0 flex gap-2 justify-end">

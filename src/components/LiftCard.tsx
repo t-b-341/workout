@@ -69,6 +69,7 @@ const INTENT_LABEL: Record<SetIntent, string> = {
   working: 'Working',
   backoff: 'Backoff',
   max_test: 'PR / max test',
+  skipped: 'Skipped',
 };
 
 const BAR_LB = 45;

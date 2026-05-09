@@ -14,15 +14,16 @@ import {
   useTemplates,
 } from '@/lib/hooks';
 import { localDelete, localUpsert, flushDirty, pullAll } from '@/lib/sync';
-import type {
-  Lift,
-  Prescription,
-  SessionLabelType,
-  SessionLog,
-  SessionTemplate,
-  SetIntent,
-  SetLog,
-  TemplateId,
+import {
+  SET_INTENTS,
+  type Lift,
+  type Prescription,
+  type SessionLabelType,
+  type SessionLog,
+  type SessionTemplate,
+  type SetIntent,
+  type SetLog,
+  type TemplateId,
 } from '@/lib/types';
 import { getDb } from '@/lib/db';
 import { defaultTemplateForLocalDate, sortTemplatesProgramOrder } from '@/lib/seed';
@@ -119,7 +120,10 @@ type SetIntentReviewRow = {
 };
 
 const SESSION_TYPE_OPTIONS: SessionLabelType[] = ['standard', 'accumulation', 'deload', 'pr_test', 'abbreviated'];
-const INTENT_OPTIONS: SetIntent[] = ['warmup', 'working', 'backoff', 'max_test'];
+
+function guidedExportIntentButtonLabel(opt: SetIntent): string {
+  return opt === 'skipped' ? 'Skipped' : opt;
+}
 
 export function ProgramEditor() {
   const templates = useTemplates();
@@ -678,14 +682,14 @@ export function ProgramEditor() {
                             <div className="text-zinc-300">{r.liftName} · set #{r.setIndex + 1} · {r.weight} x {r.reps}</div>
                             <div className="text-zinc-500">Current: {r.currentIntent} · Suggested: {r.suggestedIntent}</div>
                             <div className="mt-1 flex flex-wrap gap-1.5">
-                              {INTENT_OPTIONS.map((opt) => (
+                              {SET_INTENTS.map((opt) => (
                                 <button
                                   key={opt}
                                   type="button"
                                   onClick={() => setSetIntentReviewRows((prev) => prev.map((x) => x.setId === r.setId ? { ...x, selectedIntent: opt } : x))}
                                   className={`h-7 px-2 rounded-md ${r.selectedIntent === opt ? 'bg-amber-500 text-zinc-950' : 'bg-zinc-800 text-zinc-300'}`}
                                 >
-                                  {opt}
+                                  {guidedExportIntentButtonLabel(opt)}
                                 </button>
                               ))}
                             </div>

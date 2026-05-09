@@ -290,6 +290,7 @@ export function SessionEditSheet({ session, initialSets, onClose }: Props) {
                           <option value="working">Working</option>
                           <option value="backoff">Backoff</option>
                           <option value="max_test">PR / max test</option>
+                          <option value="skipped">Skipped</option>
                         </select>
                       </label>
                       {shouldTrackRpeForReps(row.reps) ? (

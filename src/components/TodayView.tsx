@@ -56,6 +56,7 @@ import { StartWorkoutButton, WorkoutStopwatchBar } from './WorkoutSessionTimer';
 import { TrainingMindsetCard } from './TrainingMindsetCard';
 import { MesoBoundaryPromptCard } from './MesoBoundaryPromptCard';
 import { MacroTrendCallout } from './MacroTrendCallout';
+import { GhostSessionPromptCard } from './GhostSessionPromptCard';
 import { MindfulnessTodayCard } from './MindfulnessTodayCard';
 import { SessionStrategyTagsCard } from './SessionStrategyTagsCard';
 import { DayNotesCard } from './DayNotesCard';
@@ -202,6 +203,12 @@ export function TodayView() {
       <SyncStatusBar />
       <MesoBoundaryPromptCard />
       <MacroTrendTodayBanner />
+      <GhostSessionPromptCard
+        onLogNow={(templateId) => {
+          setChosenTemplateId(templateId);
+          writeTodayPlanPreference({ date: todayIso(), templateId });
+        }}
+      />
       <WeekActivityStrip />
       {session.completedAt && (
         <SessionCompleteBanner
