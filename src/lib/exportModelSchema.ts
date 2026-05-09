@@ -124,6 +124,7 @@ function mesoAnalysisFields(): SchemaEntry {
       windowStart: 'YYYY-MM-DD',
       windowEnd: 'YYYY-MM-DD',
       volumeProgression: 'array | null',
+      'volumeProgression[].primaryTemplateId': 'TemplateId | null (template used for load trend / loadDelta)',
       targetDeltas: 'array | null',
       completionRates: 'array | null',
       intentBreakdown: 'object | null',

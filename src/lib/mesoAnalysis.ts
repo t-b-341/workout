@@ -35,6 +35,8 @@ export type VolumeProgressionRow = {
   liftId: string;
   liftName: string;
   weeklyVolumeByWeek: MesoVolumeWeekRow[];
+  /** Session template whose load-trend sets dominated the window (most load sets; tie → lexicographic id). */
+  primaryTemplateId: TemplateId | null;
   firstWorkingSetLoad: number | null;
   lastWorkingSetLoad: number | null;
   loadDelta: number | null;
@@ -246,6 +248,73 @@ function intentOf(s: SetLog): SetIntent {
   return 'working';
 }
 
+/** Sets included in per-template load trend (matches legacy global volumeProgression load series). */
+function isLoadTrendSet(s: SetLog): boolean {
+  if (s.status !== 'completed') return false;
+  const i = intentOf(s);
+  return i === 'working' || i === 'backoff';
+}
+
+/**
+ * Group load-trend sets by session `templateId`, pick the template with the most such sets in the
+ * window (tie-break lexicographic template id), then first/last load and delta within that
+ * template only (chronological order preserved from `forLiftSorted`).
+ */
+function primaryTemplateLoadTrend(
+  forLiftSorted: SetLog[],
+  sessionById: Map<string, SessionLog>,
+): {
+  primaryTemplateId: TemplateId | null;
+  firstWorkingSetLoad: number | null;
+  lastWorkingSetLoad: number | null;
+  loadDelta: number | null;
+} {
+  const byTemplate = new Map<TemplateId, SetLog[]>();
+  for (const st of forLiftSorted) {
+    if (!isLoadTrendSet(st)) continue;
+    const sess = sessionById.get(st.sessionLogId);
+    if (!sess) continue;
+    const tid = sess.templateId;
+    const arr = byTemplate.get(tid) ?? [];
+    arr.push(st);
+    byTemplate.set(tid, arr);
+  }
+
+  if (byTemplate.size === 0) {
+    return {
+      primaryTemplateId: null,
+      firstWorkingSetLoad: null,
+      lastWorkingSetLoad: null,
+      loadDelta: null,
+    };
+  }
+
+  let primaryTemplateId: TemplateId | null = null;
+  let bestCount = -1;
+  for (const tid of [...byTemplate.keys()].sort()) {
+    const n = byTemplate.get(tid)!.length;
+    if (n > bestCount) {
+      bestCount = n;
+      primaryTemplateId = tid;
+    }
+  }
+
+  const primarySets = primaryTemplateId ? (byTemplate.get(primaryTemplateId) ?? []) : [];
+  const firstW = primarySets[0]?.weight ?? null;
+  const lastW = primarySets.length ? primarySets[primarySets.length - 1]!.weight : null;
+  const loadDelta =
+    firstW != null && lastW != null && Number.isFinite(firstW) && Number.isFinite(lastW)
+      ? lastW - firstW
+      : null;
+
+  return {
+    primaryTemplateId,
+    firstWorkingSetLoad: firstW,
+    lastWorkingSetLoad: lastW,
+    loadDelta,
+  };
+}
+
 function cmpIsoDate(a: string, b: string): number {
   if (a === b) return 0;
   return a < b ? -1 : 1;
@@ -434,25 +503,16 @@ export function computeMesoAnalysis(args: {
         return { week: i + 1, totalLbReps, workingSets };
       });
 
-      const workingLoads = forLift.filter((st) => {
-        if (st.status !== 'completed') return false;
-        const i = intentOf(st);
-        return i === 'working' || i === 'backoff';
-      });
-      const firstW = workingLoads[0]?.weight ?? null;
-      const lastW = workingLoads.length ? workingLoads[workingLoads.length - 1]!.weight : null;
-      const loadDelta =
-        firstW != null && lastW != null && Number.isFinite(firstW) && Number.isFinite(lastW)
-          ? lastW - firstW
-          : null;
+      const trend = primaryTemplateLoadTrend(forLift, sessionById);
 
       rows.push({
         liftId,
         liftName,
         weeklyVolumeByWeek,
-        firstWorkingSetLoad: firstW,
-        lastWorkingSetLoad: lastW,
-        loadDelta,
+        primaryTemplateId: trend.primaryTemplateId,
+        firstWorkingSetLoad: trend.firstWorkingSetLoad,
+        lastWorkingSetLoad: trend.lastWorkingSetLoad,
+        loadDelta: trend.loadDelta,
       });
     }
     volumeProgression = rows.sort((a, b) => a.liftName.localeCompare(b.liftName));
@@ -1141,13 +1201,27 @@ export function computeMesoAnalysis(args: {
   // ----- liftRecommendations -----
   let liftRecommendations: LiftRecommendation[] | null = null;
   {
-    const liftsWithFourWorking = new Set<string>();
+    const liftsWithThreeWorking = new Set<string>();
     for (const liftId of liftIdsWithSets) {
-      const n = setsInWindow.filter(
+      const forLiftSorted = sortSetsChronologically(
+        setsInWindow.filter((st) => st.liftId === liftId),
+        sessionsAnalytical,
+      );
+      const trend = primaryTemplateLoadTrend(forLiftSorted, sessionById);
+      if (!trend.primaryTemplateId) continue;
+      const n = forLiftSorted.filter(
         (st) =>
-          st.liftId === liftId && st.status === 'completed' && intentOf(st) === 'working',
+          st.status === 'completed' &&
+          intentOf(st) === 'working' &&
+          sessionById.get(st.sessionLogId)?.templateId === trend.primaryTemplateId,
       ).length;
-      if (n >= 4) liftsWithFourWorking.add(liftId);
+      if (n >= 3) liftsWithThreeWorking.add(liftId);
+    }
+
+    function countCompletedWorkingSetsInWindow(liftId: string): number {
+      return setsInWindow.filter(
+        (st) => st.liftId === liftId && st.status === 'completed' && intentOf(st) === 'working',
+      ).length;
     }
 
     function targetForLift(liftId: string): number | null {
@@ -1166,7 +1240,7 @@ export function computeMesoAnalysis(args: {
     const recs: LiftRecommendation[] = [];
     const crByLift = new Map(completionRates?.map((r) => [r.liftId, r]) ?? []);
 
-    for (const liftId of liftsWithFourWorking) {
+    for (const liftId of liftsWithThreeWorking) {
       const lift = liftById.get(liftId);
       const loadScale = lift?.loadScale === 'inverse' ? 'inverse' : 'normal';
       const liftName = lift?.name ?? liftId;
@@ -1220,15 +1294,23 @@ export function computeMesoAnalysis(args: {
         rationale = `Load held flat but near target (${lastLoad} lb vs ${targetVal} lb goal) at ${completionPct.toFixed(0)}% completion — hold and accumulate reps.`;
       } else if (
         completionPct >= 85 &&
+        loadDelta === 0 &&
+        targetVal != null &&
+        lastLoad != null &&
+        lastLoad < targetVal * 0.9
+      ) {
+        recommendation = 'hold';
+        rationale = `Load held flat at ${lastLoad} lb with ${completionPct.toFixed(0)}% completion — maintain load and push rep ceiling before adding weight.`;
+      } else if (
+        completionPct >= 85 &&
         loadDelta != null &&
-        loadDelta >= 0 &&
+        loadDelta > 0 &&
         targetVal != null &&
         lastLoad != null &&
         lastLoad < targetVal * 0.9
       ) {
         recommendation = 'progress';
-        const ld = loadDelta ?? 0;
-        rationale = `Completed ${completionPct.toFixed(0)}% of sets, load ${ld >= 0 ? `up ${ld}` : 'flat'} lb — progress load next meso.`;
+        rationale = `Completed ${completionPct.toFixed(0)}% of sets, load up ${loadDelta} lb — progress load next meso.`;
       } else {
         recommendation = 'hold';
         rationale = `Completion ${completionPct.toFixed(0)}%, load delta ${loadDelta ?? 'n/a'} lb — hold pattern next meso.`;
@@ -1248,10 +1330,43 @@ export function computeMesoAnalysis(args: {
 
       recs.push({ liftId, liftName, recommendation, rationale });
     }
+
+    const monitorLowDataIds = new Set<string>();
+    for (const row of completionRates ?? []) {
+      if (row.programmedSets < 3) continue;
+      if (liftsWithThreeWorking.has(row.liftId)) continue;
+      if (countCompletedWorkingSetsInWindow(row.liftId) >= 3) continue;
+      monitorLowDataIds.add(row.liftId);
+    }
+    for (const liftId of monitorLowDataIds) {
+      const lift = liftById.get(liftId);
+      if (lift?.equipment === 'cardio' || lift?.equipment === 'time') continue;
+      const wc = countCompletedWorkingSetsInWindow(liftId);
+      const liftName = lift?.name ?? liftId;
+      let rationale = `Insufficient completed sets (${wc}) in this window to assess trend — check session completion and intent tagging.`;
+      const rrPoorLow = (repRangeCompliance ?? []).filter(
+        (r) => r.liftId === liftId && r.compliancePct < 70,
+      );
+      if (rrPoorLow.length > 0) {
+        const extra =
+          rrPoorLow
+            .map((r) => r.note)
+            .filter((n): n is string => Boolean(n && n.length > 0))
+            .join(' ') || 'Rep range compliance below 70% on working sets.';
+        rationale = `${rationale.trim()} ${extra}`;
+      }
+      recs.push({
+        liftId,
+        liftName,
+        recommendation: 'monitor',
+        rationale,
+      });
+    }
+
     liftRecommendations = recs.length ? recs.sort((a, b) => a.liftName.localeCompare(b.liftName)) : null;
     if (!liftRecommendations) {
       sectionNullNotes.liftRecommendations =
-        'No lifts with ≥4 completed working sets and normal loadScale in the window.';
+        'No lifts with ≥3 prescribed sets in the window, or none met recommendation criteria.';
     }
   }
 
