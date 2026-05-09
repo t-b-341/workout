@@ -673,6 +673,16 @@ export function computeMesoAnalysis(args: {
     };
     const aggByLift = new Map<string, DivAgg>();
 
+    function resolvePrescriptionForSet(st: SetLog, sess: SessionLog) {
+      const direct = rxByIdDiv.get(st.prescriptionId);
+      if (direct && direct.templateId === sess.templateId && direct.liftId === st.liftId) {
+        return direct;
+      }
+      return args.prescriptions.find(
+        (p) => p.templateId === sess.templateId && p.liftId === st.liftId,
+      );
+    }
+
     for (const st of args.set_logs) {
       if (st.status !== 'completed') continue;
       if (intentOf(st) !== 'working') continue;
@@ -681,8 +691,8 @@ export function computeMesoAnalysis(args: {
       if (lift.loadScale === 'inverse') continue;
       const sess = sessionByIdAll.get(st.sessionLogId);
       if (!sess) continue;
-      const rx = rxByIdDiv.get(st.prescriptionId);
-      if (!rx || rx.templateId !== sess.templateId || rx.liftId !== st.liftId) continue;
+      const rx = resolvePrescriptionForSet(st, sess);
+      if (!rx) continue;
       const prescribed = rx.weight;
       if (!Number.isFinite(prescribed) || prescribed <= 0) continue;
       if (!Number.isFinite(st.weight)) continue;
@@ -916,7 +926,7 @@ export function computeMesoAnalysis(args: {
       }
 
       const stresses = stressBySessionDay.get(s.date) ?? [];
-      if (stresses.some((x) => x.rating === 3)) highStress.push(pct);
+      if (stresses.some((x) => x.rating >= 4)) highStress.push(pct);
 
       const rx = rxBySession.get(s.id);
       if (rx) {
@@ -1169,6 +1179,10 @@ export function computeMesoAnalysis(args: {
           rationale:
             'Inverse load scale — monitor load closely relative to prescription.',
         });
+        continue;
+      }
+
+      if (lift?.equipment === 'cardio' || lift?.equipment === 'time') {
         continue;
       }
 

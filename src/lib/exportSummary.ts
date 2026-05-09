@@ -64,12 +64,32 @@ export function computeProgramTargetCurrentFromLogs(
   prescriptions: Prescription[],
   mindfulness_logs: MindfulnessLog[],
 ): number | null {
+  const liftId = pt.liftId ?? null;
+  const setLogsLengthForLift =
+    liftId != null ? set_logs.filter((s) => s.liftId === liftId).length : 0;
+
   if (pt.metric === 'duration_min') {
-    return averageMindfulnessDurationMin(mindfulness_logs);
+    const computed = averageMindfulnessDurationMin(mindfulness_logs);
+    console.log('[computeProgramTargetCurrentFromLogs]', {
+      targetId: pt.id,
+      liftId,
+      metric: pt.metric,
+      computed,
+      set_logs_length_for_liftId: setLogsLengthForLift,
+    });
+    return computed;
   }
 
-  const liftId = pt.liftId;
-  if (!liftId) return null;
+  if (!liftId) {
+    console.log('[computeProgramTargetCurrentFromLogs]', {
+      targetId: pt.id,
+      liftId: null,
+      metric: pt.metric,
+      computed: null,
+      set_logs_length_for_liftId: 0,
+    });
+    return null;
+  }
 
   const rxById = new Map(prescriptions.map((p) => [p.id, p]));
   const sets = set_logs.filter((s) => s.liftId === liftId && s.status === 'completed');
@@ -106,7 +126,15 @@ export function computeProgramTargetCurrentFromLogs(
       if (maxTest > -Infinity) best = Math.max(best, maxTest);
       if (maxSingle > -Infinity) best = Math.max(best, maxSingle);
       if (bestEst > -Infinity) best = Math.max(best, bestEst);
-      return best > -Infinity ? Math.round(best * 10) / 10 : null;
+      const computed = best > -Infinity ? Math.round(best * 10) / 10 : null;
+      console.log('[computeProgramTargetCurrentFromLogs]', {
+        targetId: pt.id,
+        liftId,
+        metric: pt.metric,
+        computed,
+        set_logs_length_for_liftId: setLogsLengthForLift,
+      });
+      return computed;
     }
     case 'working_set': {
       const passing: number[] = [];
@@ -121,8 +149,25 @@ export function computeProgramTargetCurrentFromLogs(
         else fallback.push(s.weight);
       }
       const pool = passing.length > 0 ? passing : fallback;
-      if (pool.length === 0) return null;
-      return Math.max(...pool);
+      if (pool.length === 0) {
+        console.log('[computeProgramTargetCurrentFromLogs]', {
+          targetId: pt.id,
+          liftId,
+          metric: pt.metric,
+          computed: null,
+          set_logs_length_for_liftId: setLogsLengthForLift,
+        });
+        return null;
+      }
+      const computed = Math.max(...pool);
+      console.log('[computeProgramTargetCurrentFromLogs]', {
+        targetId: pt.id,
+        liftId,
+        metric: pt.metric,
+        computed,
+        set_logs_length_for_liftId: setLogsLengthForLift,
+      });
+      return computed;
     }
     case 'reps': {
       let bestReps = -Infinity;
@@ -130,9 +175,24 @@ export function computeProgramTargetCurrentFromLogs(
         if (s.weight !== 0) continue;
         if (Number.isFinite(s.reps) && s.reps > bestReps) bestReps = s.reps;
       }
-      return bestReps > -Infinity ? bestReps : null;
+      const computed = bestReps > -Infinity ? bestReps : null;
+      console.log('[computeProgramTargetCurrentFromLogs]', {
+        targetId: pt.id,
+        liftId,
+        metric: pt.metric,
+        computed,
+        set_logs_length_for_liftId: setLogsLengthForLift,
+      });
+      return computed;
     }
     default:
+      console.log('[computeProgramTargetCurrentFromLogs]', {
+        targetId: pt.id,
+        liftId,
+        metric: pt.metric,
+        computed: null,
+        set_logs_length_for_liftId: setLogsLengthForLift,
+      });
       return null;
   }
 }
@@ -159,7 +219,7 @@ export function enrichProgramTargetsAtExport(
         .filter((id): id is string => typeof id === 'string' && id.length > 0),
     ),
   ].sort();
-  console.log('[export programTargets] currentValue computation liftIds:', liftIdsForCompute);
+  console.log('[enrichProgramTargetsAtExport] liftIds processed for currentValue:', liftIdsForCompute);
 
   return rows.map((row) => {
     const hasManual =

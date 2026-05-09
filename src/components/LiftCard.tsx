@@ -141,6 +141,7 @@ export function LiftCard({ prescription, lift, session, pinned }: Props) {
     : 'reps';
 
   const isCardio = lift.equipment === 'cardio';
+  const defaultIntent: SetIntent = session.sessionType === 'pr_test' ? 'max_test' : 'working';
 
   // Most recent loggedAt for THIS lift in THIS session — feeds the rest timer
   // shown above the next un-logged set row.
@@ -192,7 +193,7 @@ export function LiftCard({ prescription, lift, session, pinned }: Props) {
   function intentFor(setIndex: number, side?: 'L' | 'R'): SetIntent {
     const existing = getSet(setIndex, side);
     const k = intentKey(setIndex, side);
-    return pendingIntentByKey[k] ?? existing?.intent ?? 'working';
+    return pendingIntentByKey[k] ?? existing?.intent ?? defaultIntent;
   }
 
   async function logSet(args: {
@@ -212,7 +213,7 @@ export function LiftCard({ prescription, lift, session, pinned }: Props) {
     const weight = snapWorkingWeight(args.weight, lift);
     const ctForRow = liftToCardioType(lift.id);
     const k = intentKey(args.setIndex, args.side);
-    const intent = pendingIntentByKey[k] ?? existing?.intent ?? 'working';
+    const intent = pendingIntentByKey[k] ?? existing?.intent ?? defaultIntent;
     const row: SetLog = {
       id,
       sessionLogId: session.id,

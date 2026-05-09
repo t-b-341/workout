@@ -13,6 +13,7 @@ import {
   subscribeRealtime,
 } from '@/lib/sync';
 import { backfillCardioFromSets } from '@/lib/backfill';
+import { repairOpeningPrBaselineSession } from '@/lib/openingPrBaseline';
 import { fireDueTrackerReminders, isTrackerRemindersEnabled } from '@/lib/trackerReminders';
 
 export function AppShell({ children }: { children: React.ReactNode }) {
@@ -39,6 +40,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         await seedRemotePrescriptionsIfEmpty(user.id);
         setSyncing(true);
         await pullAll();
+        await repairOpeningPrBaselineSession();
         await backfillCardioFromSets();
         await flushDirty();
         if (!cancelled) {
