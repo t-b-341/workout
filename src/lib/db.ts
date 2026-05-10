@@ -474,10 +474,31 @@ export class WorkoutDB extends Dexie {
       dirty: 'id, table, rowId, enqueuedAt',
       meta: 'key',
     });
+    // v15 — SCHEMA_VERSION bump (workday + supplement meta snapshots in export).
+    this.version(15).stores({
+      lifts: 'id, name',
+      templates: 'id, dayOfWeek',
+      prescriptions: 'id, templateId, liftId, [templateId+order]',
+      session_logs: 'id, date, templateId',
+      set_logs: 'id, sessionLogId, liftId, [sessionLogId+liftId+setIndex]',
+      cardio_logs: 'id, date, sessionLogId',
+      bodyweight_logs: 'id, date, isoWeek',
+      body_measurement_logs: 'id, date',
+      readiness_logs: 'id, sessionLogId, date',
+      nutrition_logs: 'id, date',
+      hydration_logs: 'id, date',
+      sleep_logs: 'id, date',
+      stress_logs: 'id, date, loggedAt',
+      mindfulness_logs: 'id, date, loggedAt',
+      injury_episodes: 'id, siteKey, startedAt',
+      body_readiness_logs: 'id, date',
+      dirty: 'id, table, rowId, enqueuedAt',
+      meta: 'key',
+    });
   }
 }
 
-export const SCHEMA_VERSION = 14;
+export const SCHEMA_VERSION = 15;
 
 let _db: WorkoutDB | null = null;
 export function getDb(): WorkoutDB {

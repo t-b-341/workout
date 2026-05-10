@@ -60,6 +60,8 @@ import { GhostSessionPromptCard } from './GhostSessionPromptCard';
 import { MindfulnessTodayCard } from './MindfulnessTodayCard';
 import { SessionStrategyTagsCard } from './SessionStrategyTagsCard';
 import { DayNotesCard } from './DayNotesCard';
+import { WorkdayCard } from './WorkdayCard';
+import { SupplementsCard } from './SupplementsCard';
 import {
   setGoalCheckedForSession,
   useFitnessGoals,
@@ -236,6 +238,8 @@ export function TodayView() {
       {!sundayGateActive && <SessionGoalsCard sessionId={session.id} />}
       {!needsReadiness && session.mode !== 'skip' && <SessionStrategyTagsCard session={session} />}
       <MindfulnessTodayCard session={session} />
+      <WorkdayCard date={todayIso()} />
+      <SupplementsCard date={todayIso()} />
       <DayNotesCard date={todayIso()} />
       {(weeklyFlags.bodyweightOverdue || weeklyFlags.measurementsOverdue) && (
         <WeeklyTrackingReminder

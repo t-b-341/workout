@@ -22,6 +22,8 @@ describe('buildExportSchemaDocumentation', () => {
     expect(doc.hrv_logs?.fields.hrvMs).toContain('RMSSD');
     expect(doc.mesocycle?.fields.anchorDate).toContain('YYYY-MM-DD');
     expect(doc.mesocycle?.fields['lengthRecommendation.action']).toContain('maintain');
+    expect(doc.workday_logs?.fields.shift).toContain('double');
+    expect(doc.supplement_logs?.fields.allTaken).toContain('boolean');
   });
 });
 

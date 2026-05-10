@@ -1,8 +1,15 @@
 'use client';
 
 import type { DirtyRow } from './db';
-import { getDb, SCHEMA_VERSION } from './db';
-import { buildExportSchemaDocumentation, type ExportedFitnessGoal, type MesoAnalysisReport } from './exportModelSchema';
+import { getDb } from './db';
+import { buildSupplementLogsExport } from './supplements';
+import { buildWorkdayLogsExport } from './workday';
+import {
+  buildExportSchemaDocumentation,
+  EXPORT_SCHEMA_VERSION,
+  type ExportedFitnessGoal,
+  type MesoAnalysisReport,
+} from './exportModelSchema';
 import { computeExportSummary, enrichProgramTargetsAtExport } from './exportSummary';
 import { loadFitnessGoals, type FitnessGoal } from './goals';
 import { buildExportMesocycleBlock } from './exportMesocycleBlock';
@@ -189,6 +196,10 @@ export type FullLocalExport = {
   body_readiness_logs: BodyReadinessLog[];
   /** Morning RMSSD readings derived from `readiness_logs` (same data as in-app HRV history). */
   hrv_logs: ExportedHrvLog[];
+  /** Work shift checklist entries from Dexie meta (`workout:workday:v1:*`). */
+  workday_logs: ReturnType<typeof buildWorkdayLogsExport>;
+  /** Supplement checklist rows from Dexie meta (`workout:supplements:v1:*`). */
+  supplement_logs: ReturnType<typeof buildSupplementLogsExport>;
   /** Current mesocycle block mirror (aligned with Program tab / meso week stats). */
   mesocycle: ReturnType<typeof buildExportMesocycleBlock>;
   dirty: DirtyRow[];
@@ -380,6 +391,8 @@ export async function buildFullLocalExport(opts?: FullLocalExportOptions): Promi
   });
 
   const hrv_logs = buildHrvLogsExport(readiness_logs);
+  const workday_logs = buildWorkdayLogsExport(meta);
+  const supplement_logs = buildSupplementLogsExport(meta);
   const mesocycle = buildExportMesocycleBlock({
     cfg: mesoConfig,
     today: todayIso(),
@@ -471,7 +484,7 @@ export async function buildFullLocalExport(opts?: FullLocalExportOptions): Promi
 
   return {
     kind: 'workout-full-local-v1',
-    schemaVersion: SCHEMA_VERSION,
+    schemaVersion: EXPORT_SCHEMA_VERSION,
     schema: buildExportSchemaDocumentation(),
     summary,
     exportedAt,
@@ -496,6 +509,8 @@ export async function buildFullLocalExport(opts?: FullLocalExportOptions): Promi
     injury_episodes,
     body_readiness_logs,
     hrv_logs,
+    workday_logs,
+    supplement_logs,
     mesocycle,
     dirty,
     meta,

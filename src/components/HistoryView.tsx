@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { format } from 'date-fns';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { useMemo, useState } from 'react';
+import { useMemo, useState, type ReactNode } from 'react';
 import {
   useAllBodyweight,
   useAllBodyMeasurements,
@@ -36,6 +36,7 @@ import {
   fmtDurationShort,
   isoWeekOf,
   prFeed,
+  est1RM,
   rollingStrengthTrainingWindow,
   sessionTotalRestBetweenSetsMs,
   type TemplateSessionProgressPoint,
@@ -84,6 +85,7 @@ type Tab =
   | 'diet'
   | 'injuries'
   | 'hrv'
+  | 'lifting-goals'
   | 'types';
 
 const TABS: Array<{ id: Tab; label: string }> = [
@@ -98,6 +100,7 @@ const TABS: Array<{ id: Tab; label: string }> = [
   { id: 'diet', label: 'Diet' },
   { id: 'injuries', label: 'Injuries' },
   { id: 'hrv', label: 'HRV' },
+  { id: 'lifting-goals', label: 'Goals 2026' },
 ];
 
 export function HistoryView() {
@@ -184,6 +187,9 @@ export function HistoryView() {
       {tab === 'diet' && <DietList logs={nutrition} />}
       {tab === 'injuries' && <InjuriesList episodes={episodes} />}
       {tab === 'hrv' && <HrvList readiness={readiness} />}
+      {tab === 'lifting-goals' && (
+        <LiftGoalsList sessions={sessions} sets={allSets} lifts={lifts} />
+      )}
     </PageShell>
   );
 }
@@ -522,12 +528,22 @@ function LiftTrendCard({
       <div className="px-4 pb-4 space-y-3 border-t border-zinc-800 pt-3">
         <div>
           <div className="text-xs uppercase tracking-wider text-zinc-500 mb-1">Estimated 1RM (last {recent.length})</div>
-          <Sparkline values={e1rm} height={70} />
+          <Sparkline
+            values={e1rm}
+            height={70}
+            labels={recent.map((p) => p.date)}
+            tooltipUnit="lb e1RM"
+          />
         </div>
         {volumes.some((v) => v > 0) && (
           <div>
             <div className="text-xs uppercase tracking-wider text-zinc-500 mb-1">Volume per session</div>
-            <MiniBars values={volumes} height={40} />
+            <MiniBars
+              values={volumes}
+              height={40}
+              labels={recent.map((p) => p.date)}
+              tooltipUnit="lb-reps"
+            />
           </div>
         )}
         {recentRpe.length > 0 && (
@@ -535,7 +551,15 @@ function LiftTrendCard({
             <div className="text-xs uppercase tracking-wider text-zinc-500 mb-1">
               RPE trend (last {recentRpe.length} tracked sets)
             </div>
-            <Sparkline values={recentRpe} height={46} stroke="#f59e0b" fill="transparent" showDots={false} />
+            <Sparkline
+              values={recentRpe}
+              height={46}
+              stroke="#f59e0b"
+              fill="transparent"
+              showDots
+              labels={recentRpe.map((_, i) => `Set ${i + 1}`)}
+              tooltipUnit="RPE"
+            />
             <div className="text-[11px] text-zinc-500 mt-1">
               Avg recent RPE <span className="font-mono text-zinc-300">{avgRecentRpe?.toFixed(1)}</span>
             </div>
@@ -1353,6 +1377,189 @@ function DietList({ logs }: { logs: NutritionLog[] }) {
           </div>
         ))}
       </div>
+    </div>
+  );
+}
+
+function setsForLift(sets: SetLog[], liftId: string): SetLog[] {
+  return sets.filter((s) => s.liftId === liftId);
+}
+
+/** Max-test weight, else best Epley e1RM from completed working/backoff sets. */
+function currentBest1RmFromSets(sets: SetLog[]): number {
+  const completed = sets.filter((s) => s.status === 'completed');
+  let maxTest = -Infinity;
+  for (const s of completed) {
+    if (s.intent === 'max_test' && Number.isFinite(s.weight)) {
+      maxTest = Math.max(maxTest, s.weight);
+    }
+  }
+  if (maxTest > -Infinity) return maxTest;
+  let bestEst = -Infinity;
+  for (const s of completed) {
+    const intent = s.intent ?? 'working';
+    if (intent !== 'working' && intent !== 'backoff') continue;
+    if (!Number.isFinite(s.weight) || s.weight <= 0) continue;
+    if (s.reps < 1 || s.reps > 20) continue;
+    const e = est1RM(s.weight, s.reps);
+    if (Number.isFinite(e)) bestEst = Math.max(bestEst, e);
+  }
+  return bestEst > -Infinity ? bestEst : 0;
+}
+
+function bestBarbellRowWeightAt5Plus(sets: SetLog[]): number {
+  const completed = sets.filter((s) => s.status === 'completed');
+  let best = -Infinity;
+  for (const s of completed) {
+    if (!Number.isFinite(s.weight) || s.reps < 5) continue;
+    best = Math.max(best, s.weight);
+  }
+  return best > -Infinity ? best : 0;
+}
+
+function maxBwPullupReps(sets: SetLog[]): number {
+  let best = -Infinity;
+  for (const s of sets) {
+    if (s.status !== 'completed' || s.weight !== 0) continue;
+    if (Number.isFinite(s.reps)) best = Math.max(best, s.reps);
+  }
+  return best > -Infinity ? best : 0;
+}
+
+function LiftingGoalCard({
+  title,
+  subtitle,
+  currentLabel,
+  targetLabel,
+  pct,
+  done,
+}: {
+  title: string;
+  subtitle?: ReactNode;
+  currentLabel: string;
+  targetLabel: string;
+  pct: number;
+  done: boolean;
+}) {
+  const clamped = Math.min(100, Math.max(0, pct));
+  return (
+    <div className="rounded-2xl bg-zinc-900 border border-zinc-800 p-4 space-y-2">
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0">
+          <div className="font-medium text-zinc-100">{title}</div>
+          {subtitle}
+        </div>
+        <span
+          className={`text-[10px] uppercase tracking-wider px-2 py-0.5 rounded-full shrink-0 border ${
+            done
+              ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/35'
+              : 'bg-zinc-800 text-zinc-400 border-zinc-700'
+          }`}
+        >
+          {done ? '✓ Done' : 'In progress'}
+        </span>
+      </div>
+      <div className="h-2 rounded-full bg-zinc-800 overflow-hidden">
+        <div className="h-full rounded-full bg-amber-500" style={{ width: `${clamped}%` }} />
+      </div>
+      <div className="font-mono text-xs text-zinc-400">
+        {currentLabel} / {targetLabel}
+      </div>
+    </div>
+  );
+}
+
+function LiftGoalsList({
+  sessions: _sessions,
+  sets,
+  lifts: _lifts,
+}: {
+  sessions: SessionLog[];
+  sets: SetLog[];
+  lifts: Lift[];
+}) {
+  void _sessions;
+  void _lifts;
+  const fmtLb = (n: number) => `${Math.round(n * 10) / 10} lb`;
+
+  const dl = currentBest1RmFromSets(setsForLift(sets, 'dl'));
+  const squat = currentBest1RmFromSets(setsForLift(sets, 'back_squat'));
+  const bench = currentBest1RmFromSets(setsForLift(sets, 'bp'));
+  const row5 = bestBarbellRowWeightAt5Plus(setsForLift(sets, 'bbr'));
+  const pullBw = maxBwPullupReps(setsForLift(sets, 'p1_bw'));
+  const ohp = currentBest1RmFromSets(setsForLift(sets, 'ohp'));
+  const pp = currentBest1RmFromSets(setsForLift(sets, 'pp'));
+
+  return (
+    <div className="space-y-3">
+      <p className="text-xs text-zinc-500">
+        2026 strength targets — progress from completed sets (max-test and estimated 1RM from working sets).
+      </p>
+
+      <LiftingGoalCard
+        title="Deadlift 1RM"
+        currentLabel={fmtLb(dl)}
+        targetLabel="475 lb"
+        pct={(dl / 475) * 100}
+        done={dl >= 475}
+      />
+
+      <LiftingGoalCard
+        title="Back Squat 1RM"
+        currentLabel={fmtLb(squat)}
+        targetLabel="365 lb"
+        pct={(squat / 365) * 100}
+        done={squat >= 365}
+      />
+
+      <LiftingGoalCard
+        title="Bench Press 1RM"
+        subtitle={<div className="text-xs text-zinc-500 mt-0.5">Life PR: 235 lb</div>}
+        currentLabel={fmtLb(bench)}
+        targetLabel="265 lb"
+        pct={(bench / 265) * 100}
+        done={bench >= 265}
+      />
+
+      <LiftingGoalCard
+        title="Bench Press reach target"
+        currentLabel={fmtLb(bench)}
+        targetLabel="265–275 lb"
+        pct={(bench / 265) * 100}
+        done={bench >= 265}
+      />
+
+      <LiftingGoalCard
+        title="Barbell Row 5RM"
+        currentLabel={row5 > 0 ? `${Math.round(row5)} × 5` : '—'}
+        targetLabel="235 × 5"
+        pct={(row5 / 235) * 100}
+        done={row5 >= 235}
+      />
+
+      <LiftingGoalCard
+        title="Pull-ups BW"
+        currentLabel={`${pullBw} reps`}
+        targetLabel="8 reps"
+        pct={(pullBw / 8) * 100}
+        done={pullBw >= 8}
+      />
+
+      <LiftingGoalCard
+        title="OHP 1RM"
+        currentLabel={fmtLb(ohp)}
+        targetLabel="165 lb"
+        pct={(ohp / 165) * 100}
+        done={ohp >= 165}
+      />
+
+      <LiftingGoalCard
+        title="Push Press 1RM"
+        currentLabel={fmtLb(pp)}
+        targetLabel="200 lb"
+        pct={(pp / 200) * 100}
+        done={pp >= 200}
+      />
     </div>
   );
 }

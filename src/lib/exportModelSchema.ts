@@ -1,4 +1,8 @@
 import type { DirtyRow } from './db';
+import { SCHEMA_VERSION } from './db';
+
+/** JSON export top-level `schemaVersion` — mirrors `SCHEMA_VERSION` in `db.ts`. */
+export const EXPORT_SCHEMA_VERSION = SCHEMA_VERSION;
 import {
   NUTRITION_DAY_TYPES,
   SESSION_LABEL_TYPES,
@@ -451,6 +455,30 @@ function hrvLogsExportFields(): SchemaEntry {
   };
 }
 
+function workdayLogsExportFields(): SchemaEntry {
+  return {
+    fields: {
+      date: 'YYYY-MM-DD',
+      shift: '"am" | "pm" | "double" | "off" | "sunday"',
+      durationHr: 'number',
+      updatedAt: 'ISO-8601',
+    },
+  };
+}
+
+function supplementLogsExportFields(): SchemaEntry {
+  return {
+    fields: {
+      date: 'YYYY-MM-DD',
+      zma: 'boolean',
+      d3k2: 'boolean',
+      multi: 'boolean',
+      allTaken: 'boolean',
+      updatedAt: 'ISO-8601',
+    },
+  };
+}
+
 function mesocycleExportFields(): SchemaEntry {
   return {
     fields: {
@@ -507,6 +535,8 @@ export function buildExportSchemaDocumentation(): Record<string, SchemaEntry> {
     mesoAnalysis: mesoAnalysisFields(),
     mesocycle: mesocycleExportFields(),
     hrv_logs: hrvLogsExportFields(),
+    workday_logs: workdayLogsExportFields(),
+    supplement_logs: supplementLogsExportFields(),
     dirty: dirtyRowFields(),
   };
 }
