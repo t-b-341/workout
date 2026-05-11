@@ -58,6 +58,8 @@ export function GhostSessionPromptCard({
 
   if (!templates?.length || ghostSessions.length === 0) return null;
 
+  const isLocalSunday = new Date(`${date}T12:00:00`).getDay() === 0;
+
   return (
     <div className="space-y-3">
       {ghostSessions.map((session) => {
@@ -72,7 +74,9 @@ export function GhostSessionPromptCard({
             className="rounded-2xl border border-violet-500/40 bg-violet-950/35 px-4 py-3.5 space-y-3"
           >
             <div id={`ghost-prompt-${session.id}`} className="text-sm font-medium text-zinc-100">
-              Did you train {templateName} on {fmtDate(session.date, 'MMM d, yyyy')}?
+              {isLocalSunday
+                ? `Up next: ${templateName} -- Planning for tomorrow`
+                : `Did you train ${templateName} on ${fmtDate(session.date, 'MMM d, yyyy')}?`}
             </div>
             <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
               <button
