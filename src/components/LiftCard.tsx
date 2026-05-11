@@ -72,10 +72,6 @@ const INTENT_LABEL: Record<SetIntent, string> = {
   skipped: 'Skipped',
 };
 
-const BAR_LB = 45;
-const QUARTER_TOTAL_LB = 50; // 25 lb per side.
-const PLATE_TOTAL_LB = 90; // 45 lb per side.
-
 function getPriorBestE1rm(
   liftId: string,
   currentSessionId: string,
@@ -90,38 +86,6 @@ function getPriorBestE1rm(
     if (Number.isFinite(e)) best = Math.max(best, e);
   }
   return best;
-}
-
-function buildWarmupLoadsLb(targetLb: number): number[] {
-  const target = Math.max(0, Math.round(targetLb));
-  const base = [BAR_LB];
-  if (target <= BAR_LB) return base;
-  if (target < BAR_LB + PLATE_TOTAL_LB) return [BAR_LB, target];
-  let cur = BAR_LB;
-  while (cur + PLATE_TOTAL_LB < target) {
-    cur += PLATE_TOTAL_LB;
-    base.push(cur);
-  }
-  // Add quarter-plate bridge steps when a jump is large.
-  const withBridges: number[] = [base[0]!];
-  for (let i = 1; i < base.length; i++) {
-    const prev = withBridges[withBridges.length - 1]!;
-    const next = base[i]!;
-    if (next - prev > 70) {
-      const bridge = prev + QUARTER_TOTAL_LB;
-      if (bridge < next) withBridges.push(bridge);
-    }
-    withBridges.push(next);
-  }
-  if (withBridges[withBridges.length - 1] !== target) {
-    const prev = withBridges[withBridges.length - 1]!;
-    if (target - prev > 70) {
-      const bridge = prev + QUARTER_TOTAL_LB;
-      if (bridge < target) withBridges.push(bridge);
-    }
-    withBridges.push(target);
-  }
-  return withBridges;
 }
 
 export function LiftCard({ prescription, lift, session, pinned }: Props) {
@@ -372,7 +336,7 @@ export function LiftCard({ prescription, lift, session, pinned }: Props) {
         </div>
       )}
 
-      <WarmupSection lift={lift} prescription={prescription} />
+      <WarmupSection lift={lift} />
 
       <div className="space-y-2">
         {indexes.map((idx) =>
@@ -560,14 +524,8 @@ function liftToCardioType(liftId: string): CardioType {
   return liftId.includes('interval') ? 'intervals' : 'liss';
 }
 
-function WarmupSection({ lift, prescription }: { lift: Lift; prescription: Prescription }) {
+function WarmupSection({ lift }: { lift: Lift }) {
   const isStrength = lift.equipment !== 'cardio' && lift.equipment !== 'time';
-  const targetLb = Math.max(0, Math.round(prescription.weight));
-  const suggested = useMemo(
-    () => (isStrength && targetLb > 0 ? buildWarmupLoadsLb(targetLb) : []),
-    [isStrength, targetLb],
-  );
-  const [warmupLoad, setWarmupLoad] = useState(BAR_LB);
   const [startedAtIso, setStartedAtIso] = useState<string | null>(null);
   const [nowMs, setNowMs] = useState(() => Date.now());
 
@@ -621,48 +579,7 @@ function WarmupSection({ lift, prescription }: { lift: Lift; prescription: Presc
         </button>
       </div>
 
-      {isStrength ? (
-        <>
-          <div className="text-xs text-zinc-500">
-            Quick load: <span className="text-zinc-300 font-mono">{warmupLoad} lb</span>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <button
-              type="button"
-              className="h-8 px-2.5 rounded-lg bg-zinc-800 text-xs"
-              onClick={() => setWarmupLoad(BAR_LB)}
-            >
-              Bar (45)
-            </button>
-            <button
-              type="button"
-              className="h-8 px-2.5 rounded-lg bg-zinc-800 text-xs"
-              onClick={() => setWarmupLoad((x) => x + QUARTER_TOTAL_LB)}
-            >
-              + Quarter (+50)
-            </button>
-            <button
-              type="button"
-              className="h-8 px-2.5 rounded-lg bg-zinc-800 text-xs"
-              onClick={() => setWarmupLoad((x) => x + PLATE_TOTAL_LB)}
-            >
-              + Plate (+90)
-            </button>
-          </div>
-          {suggested.length > 0 && (
-            <div className="text-xs text-zinc-500">
-              Suggested warmup for <span className="font-mono text-zinc-300">{targetLb} lb</span>:{' '}
-              <span className="font-mono text-zinc-300">{suggested.join(' → ')}</span>
-              {targetLb >= BAR_LB + PLATE_TOTAL_LB && (
-                <span className="text-zinc-600"> (then work sets at {targetLb})</span>
-              )}
-            </div>
-          )}
-          <div className="text-[11px] text-zinc-600">
-            Bar = 45 lb, Quarter = 25/side (50 total), Plate = 45/side (90 total).
-          </div>
-        </>
-      ) : (
+      {!isStrength && (
         <div className="text-xs text-zinc-500">
           Use this timer for ramp-up/cardio prep before logging working sets.
         </div>

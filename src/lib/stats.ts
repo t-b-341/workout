@@ -315,6 +315,8 @@ export function liftPRs(
   for (const s of sets) {
     if (s.liftId !== liftId) continue;
     if (s.status !== 'completed') continue;
+    const intent = s.intent ?? 'working';
+    if (intent === 'warmup') continue;
     const date = sessionDate.get(s.sessionLogId);
     if (!date) continue;
 
@@ -410,11 +412,25 @@ export function detectPR(
 
   const previousAtReps = prs.bestByReps.find((b) => b.reps === set.reps)?.weight;
   const repPR = previousAtReps == null ? true : set.weight > previousAtReps;
+
+  // Double-progression rep PR: same weight achieved at a higher rep count than
+  // any prior set at that weight.
+  let sameWeightMoreReps = false;
+  if (!repPR && set.weight > 0) {
+    const bestRepsAtThisWeight = prs.bestByReps
+      .filter((b) => b.weight === set.weight)
+      .reduce((max, b) => Math.max(max, b.reps), 0);
+    sameWeightMoreReps =
+      bestRepsAtThisWeight > 0 &&
+      set.reps > bestRepsAtThisWeight;
+  }
+
+  const isRepPR = repPR || sameWeightMoreReps;
   const e1rmNow = est1RM(set.weight, set.reps);
   const e1rmPR = !prs.bestE1RM || e1rmNow > prs.bestE1RM.value;
 
-  if (!repPR && !e1rmPR) return null;
-  return { repPR, e1rmPR, previousAtReps };
+  if (!isRepPR && !e1rmPR) return null;
+  return { repPR: isRepPR, e1rmPR, previousAtReps };
 }
 
 /** Best-ever LISS treadmill speed (mph) and incline (%); independent maxima vs prior completed `liss` sets. */

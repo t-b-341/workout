@@ -238,7 +238,7 @@ function DailyRecoveryExplainSheet({
 
   const lines: Array<{ title: string; pct: number }> = [
     { title: 'Sleep', pct: weights.sleep },
-    { title: 'Hydration', pct: weights.hydration },
+    { title: 'Hydration (yesterday)', pct: weights.hydration },
     { title: 'Nutrition (yesterday)', pct: weights.nutrition },
     { title: 'Readiness', pct: weights.readiness },
   ];
@@ -317,8 +317,8 @@ function DailyRecoveryExplainSheet({
             <p className="text-zinc-400">
               If a pillar has no usable data yet, its pillar score defaults to{' '}
               <span className="font-mono text-zinc-200">60</span> so the composite can still compute. Log the section below
-              to replace that placeholder with a real signal. Nutrition specifically needs{' '}
-              <span className="text-zinc-200">yesterday&apos;s</span> log for a non-placeholder score.
+              to replace that placeholder with a real signal. Hydration and nutrition both use{' '}
+              <span className="text-zinc-200">yesterday&apos;s</span> logs as lagging signals for a non-placeholder score.
             </p>
           </section>
 
@@ -342,7 +342,10 @@ function DailyRecoveryExplainSheet({
           <section className="space-y-2">
             <h3 className="text-xs uppercase tracking-wider text-zinc-500">Hydration pillar</h3>
             <ul className="text-zinc-400 space-y-1 list-disc list-inside">
-              <li>Water consumed vs today&apos;s target, capped so going past target doesn&apos;t run away (extras above ~120% of target don&apos;t add more).</li>
+              <li>
+                Uses <span className="text-zinc-200">yesterday&apos;s</span> hydration log (lagging): intake vs that
+                day&apos;s target, capped so going past target doesn&apos;t run away (extras above ~120% of target don&apos;t add more).
+              </li>
               <li>Small bonus if you flagged electrolytes.</li>
               <li>Urine color (when set) subtracts slightly for darker buckets (dehydration signal).</li>
             </ul>
@@ -399,6 +402,7 @@ export function RecoveryView() {
   const nutrition = useNutritionForDate(date);
   const nutritionLagged = useNutritionForDate(yesterday);
   const hydration = useHydrationForDate(date);
+  const hydrationLagged = useHydrationForDate(yesterday);
   const sleep = useSleepForDate(date);
   const stress = useStressForDate(date);
   const mindfulness = useMindfulnessForDate(date);
@@ -411,13 +415,13 @@ export function RecoveryView() {
       buildRecoveryScore({
         date,
         sleep,
-        hydration,
+        hydration: hydrationLagged,
         nutrition: nutritionLagged,
         readiness,
         stress: stress ?? [],
         mindfulness: mindfulness ?? [],
       }),
-    [date, sleep, hydration, nutritionLagged, readiness, stress, mindfulness],
+    [date, sleep, hydrationLagged, nutritionLagged, readiness, stress, mindfulness],
   );
   const plan = useMemo(() => recoveryPlan(score.band), [score.band]);
   const performanceRecommendations = useMemo(
@@ -468,7 +472,7 @@ export function RecoveryView() {
         </div>
         <div className="mt-3 grid grid-cols-2 gap-2 text-sm">
           <Stat label="Sleep" value={score.sleepScore} />
-          <Stat label="Hydration" value={score.hydrationScore} />
+          <Stat label="Hydration (yesterday)" value={score.hydrationScore} />
           <Stat label="Nutrition (yesterday)" value={score.nutritionScore} />
           <Stat label="Readiness" value={score.readinessScore} />
           <Stat label="Stress" value={score.stressScore ?? '—'} />
