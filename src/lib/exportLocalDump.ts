@@ -8,6 +8,7 @@ import {
   buildExportSchemaDocumentation,
   EXPORT_SCHEMA_VERSION,
   type ExportedFitnessGoal,
+  type LiftingGoalSnapshot,
   type MesoAnalysisReport,
 } from './exportModelSchema';
 import { computeExportSummary, enrichProgramTargetsAtExport } from './exportSummary';
@@ -46,6 +47,7 @@ import {
 } from './types';
 import { TRAINING_PLAN_GOALS, type TrainingPlanGoalRow } from './trainingPlanGoals';
 import { deriveSessionStatus } from './sessionStatus';
+import { est1RM } from './stats';
 import { todayIso } from './time';
 
 /** Keys this app uses in `localStorage` (UI prefs only; not secrets). */
@@ -129,6 +131,324 @@ function intentOf(s: SetLog, overrides?: Record<string, SetIntent>): SetIntent {
   return 'working';
 }
 
+function setsForLiftSnapshot(sets: SetLog[], liftId: string): SetLog[] {
+  return sets.filter((s) => s.liftId === liftId);
+}
+
+/** Same logic as HistoryView `currentBest1RmFromSets` / goal cards. */
+function currentBest1RmFromSetsSnapshot(sets: SetLog[]): number {
+  const completed = sets.filter((s) => s.status === 'completed');
+  let maxTest = -Infinity;
+  for (const s of completed) {
+    if (s.intent === 'max_test' && Number.isFinite(s.weight)) {
+      maxTest = Math.max(maxTest, s.weight);
+    }
+  }
+  if (maxTest > -Infinity) return maxTest;
+  let bestEst = -Infinity;
+  for (const s of completed) {
+    const intent = s.intent ?? 'working';
+    if (intent !== 'working' && intent !== 'backoff') continue;
+    if (!Number.isFinite(s.weight) || s.weight <= 0) continue;
+    if (s.reps < 1 || s.reps > 20) continue;
+    const e = est1RM(s.weight, s.reps);
+    if (Number.isFinite(e)) bestEst = Math.max(bestEst, e);
+  }
+  return bestEst > -Infinity ? bestEst : 0;
+}
+
+function bestBarbellRowWeightAt5PlusSnapshot(sets: SetLog[]): number {
+  const completed = sets.filter((s) => s.status === 'completed');
+  let best = -Infinity;
+  for (const s of completed) {
+    if (!Number.isFinite(s.weight) || s.reps < 5) continue;
+    best = Math.max(best, s.weight);
+  }
+  return best > -Infinity ? best : 0;
+}
+
+function maxBwPullupRepsSnapshot(sets: SetLog[]): number {
+  let best = -Infinity;
+  for (const s of sets) {
+    if (s.status !== 'completed' || s.weight !== 0) continue;
+    if (Number.isFinite(s.reps)) best = Math.max(best, s.reps);
+  }
+  return best > -Infinity ? best : 0;
+}
+
+function bestWeightAtMinRepsSnapshot(sets: SetLog[], minReps: number): number {
+  let best = 0;
+  for (const s of sets) {
+    if (s.status !== 'completed') continue;
+    if (s.reps < minReps) continue;
+    if (!Number.isFinite(s.weight)) continue;
+    best = Math.max(best, s.weight);
+  }
+  return best;
+}
+
+function bestWorkingSetWeightSnapshot(sets: SetLog[]): number {
+  let best = 0;
+  for (const s of sets) {
+    if (s.status !== 'completed') continue;
+    const intent = s.intent ?? 'working';
+    if (intent !== 'working' && intent !== 'backoff') continue;
+    if (!Number.isFinite(s.weight)) continue;
+    best = Math.max(best, s.weight);
+  }
+  return best;
+}
+
+/** Exported for tests — same derivation as Goals 2026 / Accessories UI. */
+export function buildLiftingGoalSnapshots(set_logs: SetLog[]): LiftingGoalSnapshot[] {
+  const dl = currentBest1RmFromSetsSnapshot(setsForLiftSnapshot(set_logs, 'dl'));
+  const squat = currentBest1RmFromSetsSnapshot(setsForLiftSnapshot(set_logs, 'back_squat'));
+  const bench = currentBest1RmFromSetsSnapshot(setsForLiftSnapshot(set_logs, 'bp'));
+  const row5 = bestBarbellRowWeightAt5PlusSnapshot(setsForLiftSnapshot(set_logs, 'bbr'));
+  const pullBw = maxBwPullupRepsSnapshot(setsForLiftSnapshot(set_logs, 'p1_bw'));
+  const ohp = currentBest1RmFromSetsSnapshot(setsForLiftSnapshot(set_logs, 'ohp'));
+  const pp = currentBest1RmFromSetsSnapshot(setsForLiftSnapshot(set_logs, 'pp'));
+
+  const main: LiftingGoalSnapshot[] = [
+    {
+      goalId: 'dl_1rm',
+      label: 'Deadlift 1RM',
+      liftId: 'dl',
+      targetValue: 475,
+      targetReps: null,
+      currentValue: dl,
+      pct: (dl / 475) * 100,
+      lbsToGo: dl >= 475 ? null : Math.max(0, Math.round(475 - dl)),
+      repsToGo: null,
+      done: dl >= 475,
+      type: 'main',
+    },
+    {
+      goalId: 'squat_1rm',
+      label: 'Back Squat 1RM',
+      liftId: 'back_squat',
+      targetValue: 365,
+      targetReps: null,
+      currentValue: squat,
+      pct: (squat / 365) * 100,
+      lbsToGo: squat >= 365 ? null : Math.max(0, Math.round(365 - squat)),
+      repsToGo: null,
+      done: squat >= 365,
+      type: 'main',
+    },
+    {
+      goalId: 'bp_1rm',
+      label: 'Bench Press 1RM',
+      liftId: 'bp',
+      targetValue: 265,
+      targetReps: null,
+      currentValue: bench,
+      pct: (bench / 265) * 100,
+      lbsToGo: bench >= 265 ? null : Math.max(0, Math.round(265 - bench)),
+      repsToGo: null,
+      done: bench >= 265,
+      type: 'main',
+    },
+    {
+      goalId: 'bp_reach',
+      label: 'Bench Press reach target',
+      liftId: 'bp',
+      targetValue: 265,
+      targetReps: null,
+      currentValue: bench,
+      pct: (bench / 265) * 100,
+      lbsToGo: bench >= 265 ? null : Math.max(0, Math.round(265 - bench)),
+      repsToGo: null,
+      done: bench >= 265,
+      type: 'main',
+    },
+    {
+      goalId: 'bbr_5rm',
+      label: 'Barbell Row 5RM',
+      liftId: 'bbr',
+      targetValue: 235,
+      targetReps: 5,
+      currentValue: row5,
+      pct: (row5 / 235) * 100,
+      lbsToGo: row5 >= 235 ? null : Math.max(0, Math.round(235 - row5)),
+      repsToGo: null,
+      done: row5 >= 235,
+      type: 'main',
+    },
+    {
+      goalId: 'p1_bw_pullups',
+      label: 'Pull-ups BW',
+      liftId: 'p1_bw',
+      targetValue: 8,
+      targetReps: 8,
+      currentValue: pullBw,
+      pct: (pullBw / 8) * 100,
+      lbsToGo: null,
+      repsToGo: pullBw >= 8 ? null : Math.max(0, Math.round(8 - pullBw)),
+      done: pullBw >= 8,
+      type: 'main',
+    },
+    {
+      goalId: 'ohp_1rm',
+      label: 'OHP 1RM',
+      liftId: 'ohp',
+      targetValue: 165,
+      targetReps: null,
+      currentValue: ohp,
+      pct: (ohp / 165) * 100,
+      lbsToGo: ohp >= 165 ? null : Math.max(0, Math.round(165 - ohp)),
+      repsToGo: null,
+      done: ohp >= 165,
+      type: 'main',
+    },
+    {
+      goalId: 'pp_1rm',
+      label: 'Push Press 1RM',
+      liftId: 'pp',
+      targetValue: 200,
+      targetReps: null,
+      currentValue: pp,
+      pct: (pp / 200) * 100,
+      lbsToGo: pp >= 200 ? null : Math.max(0, Math.round(200 - pp)),
+      repsToGo: null,
+      done: pp >= 200,
+      type: 'main',
+    },
+  ];
+
+  const accBpPaused = bestWorkingSetWeightSnapshot(setsForLiftSnapshot(set_logs, 'bp_paused'));
+  const accP1Ecc = bestWorkingSetWeightSnapshot(setsForLiftSnapshot(set_logs, 'p1_eccentric'));
+  const accOhpVol = bestWeightAtMinRepsSnapshot(setsForLiftSnapshot(set_logs, 'ohp'), 10);
+  const accPendlay = bestWeightAtMinRepsSnapshot(setsForLiftSnapshot(set_logs, 'pendlay_row'), 5);
+  const accBsPause = bestWeightAtMinRepsSnapshot(setsForLiftSnapshot(set_logs, 'back_squat_paused'), 6);
+  const accFs = bestWeightAtMinRepsSnapshot(setsForLiftSnapshot(set_logs, 'front_squat'), 3);
+  const accBss = bestWeightAtMinRepsSnapshot(setsForLiftSnapshot(set_logs, 'bss'), 10);
+  const accDdl = bestWeightAtMinRepsSnapshot(setsForLiftSnapshot(set_logs, 'ddl'), 6);
+  const accRdl = bestWeightAtMinRepsSnapshot(setsForLiftSnapshot(set_logs, 'rdl'), 10);
+
+  const accessory: LiftingGoalSnapshot[] = [
+    {
+      goalId: 'acc_bp_paused',
+      label: 'BP (Paused) Working Set',
+      liftId: 'bp_paused',
+      targetValue: 225,
+      targetReps: null,
+      currentValue: accBpPaused,
+      pct: (accBpPaused / 225) * 100,
+      lbsToGo: accBpPaused >= 225 ? null : Math.max(0, Math.round(225 - accBpPaused)),
+      repsToGo: null,
+      done: accBpPaused >= 225,
+      type: 'accessory',
+    },
+    {
+      goalId: 'acc_p1_ecc',
+      label: 'P1 Eccentric (added load)',
+      liftId: 'p1_eccentric',
+      targetValue: 25,
+      targetReps: null,
+      currentValue: accP1Ecc,
+      pct: (accP1Ecc / 25) * 100,
+      lbsToGo: accP1Ecc >= 25 ? null : Math.max(0, Math.round(25 - accP1Ecc)),
+      repsToGo: null,
+      done: accP1Ecc >= 25,
+      type: 'accessory',
+    },
+    {
+      goalId: 'acc_ohp_vol',
+      label: 'OHP 100 × 10',
+      liftId: 'ohp',
+      targetValue: 100,
+      targetReps: 10,
+      currentValue: accOhpVol,
+      pct: (accOhpVol / 100) * 100,
+      lbsToGo: accOhpVol >= 100 ? null : Math.max(0, Math.round(100 - accOhpVol)),
+      repsToGo: null,
+      done: accOhpVol >= 100,
+      type: 'accessory',
+    },
+    {
+      goalId: 'acc_pendlay_5',
+      label: 'Pendlay Row 5RM',
+      liftId: 'pendlay_row',
+      targetValue: 215,
+      targetReps: 5,
+      currentValue: accPendlay,
+      pct: (accPendlay / 215) * 100,
+      lbsToGo: accPendlay >= 215 ? null : Math.max(0, Math.round(215 - accPendlay)),
+      repsToGo: null,
+      done: accPendlay >= 215,
+      type: 'accessory',
+    },
+    {
+      goalId: 'acc_bs_pause_6',
+      label: 'Back Squat (paused) 6RM',
+      liftId: 'back_squat_paused',
+      targetValue: 265,
+      targetReps: 6,
+      currentValue: accBsPause,
+      pct: (accBsPause / 265) * 100,
+      lbsToGo: accBsPause >= 265 ? null : Math.max(0, Math.round(265 - accBsPause)),
+      repsToGo: null,
+      done: accBsPause >= 265,
+      type: 'accessory',
+    },
+    {
+      goalId: 'acc_fs_3',
+      label: 'Front Squat 3RM (project)',
+      liftId: 'front_squat',
+      targetValue: 185,
+      targetReps: 3,
+      currentValue: accFs,
+      pct: (accFs / 185) * 100,
+      lbsToGo: accFs >= 185 ? null : Math.max(0, Math.round(185 - accFs)),
+      repsToGo: null,
+      done: accFs >= 185,
+      type: 'accessory',
+    },
+    {
+      goalId: 'acc_bss_2x10',
+      label: 'BSS 2 × 10 L/R',
+      liftId: 'bss',
+      targetValue: 95,
+      targetReps: 10,
+      currentValue: accBss,
+      pct: (accBss / 95) * 100,
+      lbsToGo: accBss >= 95 ? null : Math.max(0, Math.round(95 - accBss)),
+      repsToGo: null,
+      done: accBss >= 95,
+      type: 'accessory',
+    },
+    {
+      goalId: 'acc_ddl_6',
+      label: 'Deficit Deadlift 6RM',
+      liftId: 'ddl',
+      targetValue: 345,
+      targetReps: 6,
+      currentValue: accDdl,
+      pct: (accDdl / 345) * 100,
+      lbsToGo: accDdl >= 345 ? null : Math.max(0, Math.round(345 - accDdl)),
+      repsToGo: null,
+      done: accDdl >= 345,
+      type: 'accessory',
+    },
+    {
+      goalId: 'acc_rdl_10',
+      label: 'RDL 10RM',
+      liftId: 'rdl',
+      targetValue: 275,
+      targetReps: 10,
+      currentValue: accRdl,
+      pct: (accRdl / 275) * 100,
+      lbsToGo: accRdl >= 275 ? null : Math.max(0, Math.round(275 - accRdl)),
+      repsToGo: null,
+      done: accRdl >= 275,
+      type: 'accessory',
+    },
+  ];
+
+  return [...main, ...accessory];
+}
+
 function normalizedLoadScale(loadScale: Lift['loadScale']): 'normal' | 'inverse' {
   return loadScale === 'inverse' ? 'inverse' : 'normal';
 }
@@ -196,6 +516,8 @@ export type FullLocalExport = {
   body_readiness_logs: BodyReadinessLog[];
   /** Morning RMSSD readings derived from `readiness_logs` (same data as in-app HRV history). */
   hrv_logs: ExportedHrvLog[];
+  /** 2026 main + accessory lifting goal progress derived from `set_logs` at export time. */
+  lifting_goal_snapshots: LiftingGoalSnapshot[];
   /** Work shift checklist entries from Dexie meta (`workout:workday:v1:*`). */
   workday_logs: ReturnType<typeof buildWorkdayLogsExport>;
   /** Supplement checklist rows from Dexie meta (`workout:supplements:v1:*`). */
@@ -455,6 +777,8 @@ export async function buildFullLocalExport(opts?: FullLocalExportOptions): Promi
     mesoEndDate: opts?.mesoEndDate,
   });
 
+  const lifting_goal_snapshots = buildLiftingGoalSnapshots(set_logs);
+
   const mesoAnalysis = computeMesoAnalysis({
     exportedAtIso: exportedAt,
     session_logs,
@@ -509,6 +833,7 @@ export async function buildFullLocalExport(opts?: FullLocalExportOptions): Promi
     injury_episodes,
     body_readiness_logs,
     hrv_logs,
+    lifting_goal_snapshots,
     workday_logs,
     supplement_logs,
     mesocycle,

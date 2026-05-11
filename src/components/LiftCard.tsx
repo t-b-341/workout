@@ -76,6 +76,22 @@ const BAR_LB = 45;
 const QUARTER_TOTAL_LB = 50; // 25 lb per side.
 const PLATE_TOTAL_LB = 90; // 45 lb per side.
 
+function getPriorBestE1rm(
+  liftId: string,
+  currentSessionId: string,
+  allSets: SetLog[] | undefined,
+): number {
+  if (!allSets?.length) return 0;
+  let best = 0;
+  for (const s of allSets) {
+    if (s.liftId !== liftId || s.sessionLogId === currentSessionId) continue;
+    if (s.status !== 'completed') continue;
+    const e = est1RM(s.weight, s.reps);
+    if (Number.isFinite(e)) best = Math.max(best, e);
+  }
+  return best;
+}
+
 function buildWarmupLoadsLb(targetLb: number): number[] {
   const target = Math.max(0, Math.round(targetLb));
   const base = [BAR_LB];
@@ -397,11 +413,30 @@ export function LiftCard({ prescription, lift, session, pinned }: Props) {
                           Incline PR
                         </span>
                       )}
-                      {pr?.e1rmPR && !pr?.repPR && existing && (
-                        <span className="text-[10px] uppercase tracking-wider px-2 py-0.5 rounded-full bg-amber-700 text-amber-100 font-semibold">
-                          e1RM PR · {Math.round(est1RM(existing.weight, existing.reps))}
-                        </span>
-                      )}
+                      {pr?.e1rmPR && !pr?.repPR && existing && (() => {
+                        const newE1rm = Math.round(est1RM(existing.weight, existing.reps));
+                        const priorBestE1rm = getPriorBestE1rm(lift.id, session.id, allSets);
+                        return (
+                          <span className="text-[10px] tracking-wider px-2 py-0.5 rounded-full bg-amber-700 text-amber-100 font-semibold inline-flex flex-wrap items-baseline gap-x-1 gap-y-0.5">
+                            {priorBestE1rm <= 0 ? (
+                              <>
+                                <span className="uppercase">e1RM PR</span>
+                                <span>·</span>
+                                <span className="font-mono font-semibold">{newE1rm} lb</span>
+                                <span className="text-amber-200 font-normal normal-case">(first recorded)</span>
+                              </>
+                            ) : (
+                              <>
+                                <span className="uppercase">e1RM PR</span>
+                                <span className="font-mono font-semibold">{newE1rm} lb</span>
+                                <span className="text-amber-200 font-normal normal-case">
+                                  ↑ +{newE1rm - Math.round(priorBestE1rm)} lb
+                                </span>
+                              </>
+                            )}
+                          </span>
+                        );
+                      })()}
                       {existing && (
                         <span className={`text-xs px-2 py-0.5 rounded-full text-white ${STATUS_COLOR[existing.status]}`}>
                           {STATUS_LABEL[existing.status]}

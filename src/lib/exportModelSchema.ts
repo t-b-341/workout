@@ -1,8 +1,10 @@
 import type { DirtyRow } from './db';
-import { SCHEMA_VERSION } from './db';
 
-/** JSON export top-level `schemaVersion` — mirrors `SCHEMA_VERSION` in `db.ts`. */
-export const EXPORT_SCHEMA_VERSION = SCHEMA_VERSION;
+/**
+ * JSON export top-level `schemaVersion` — bump when new top-level export fields or shapes ship
+ * (independent of Dexie `SCHEMA_VERSION`).
+ */
+export const EXPORT_SCHEMA_VERSION = 16;
 import {
   NUTRITION_DAY_TYPES,
   SESSION_LABEL_TYPES,
@@ -25,6 +27,20 @@ export type ExportedFitnessGoal = {
   target: number | null;
   unit: string | null;
   direction: 'above' | 'below' | 'exact' | null;
+};
+
+export type LiftingGoalSnapshot = {
+  goalId: string;
+  label: string;
+  liftId: string;
+  targetValue: number;
+  targetReps: number | null;
+  currentValue: number;
+  pct: number;
+  lbsToGo: number | null;
+  repsToGo: number | null;
+  done: boolean;
+  type: 'main' | 'accessory';
 };
 
 export type ExportSummary = {
@@ -479,6 +495,24 @@ function supplementLogsExportFields(): SchemaEntry {
   };
 }
 
+function liftingGoalSnapshotsFields(): SchemaEntry {
+  return {
+    fields: {
+      goalId: 'string',
+      label: 'string',
+      liftId: 'string',
+      targetValue: 'number',
+      targetReps: 'number | null',
+      currentValue: 'number',
+      pct: 'number',
+      lbsToGo: 'number | null',
+      repsToGo: 'number | null',
+      done: 'boolean',
+      type: '"main" | "accessory"',
+    },
+  };
+}
+
 function mesocycleExportFields(): SchemaEntry {
   return {
     fields: {
@@ -537,6 +571,7 @@ export function buildExportSchemaDocumentation(): Record<string, SchemaEntry> {
     hrv_logs: hrvLogsExportFields(),
     workday_logs: workdayLogsExportFields(),
     supplement_logs: supplementLogsExportFields(),
+    lifting_goal_snapshots: liftingGoalSnapshotsFields(),
     dirty: dirtyRowFields(),
   };
 }

@@ -86,6 +86,7 @@ type Tab =
   | 'injuries'
   | 'hrv'
   | 'lifting-goals'
+  | 'accessory-goals'
   | 'types';
 
 const TABS: Array<{ id: Tab; label: string }> = [
@@ -101,6 +102,7 @@ const TABS: Array<{ id: Tab; label: string }> = [
   { id: 'injuries', label: 'Injuries' },
   { id: 'hrv', label: 'HRV' },
   { id: 'lifting-goals', label: 'Goals 2026' },
+  { id: 'accessory-goals', label: 'Accessories' },
 ];
 
 export function HistoryView() {
@@ -190,6 +192,7 @@ export function HistoryView() {
       {tab === 'lifting-goals' && (
         <LiftGoalsList sessions={sessions} sets={allSets} lifts={lifts} />
       )}
+      {tab === 'accessory-goals' && <AccessoryGoalsList sets={allSets} />}
     </PageShell>
   );
 }
@@ -1385,6 +1388,45 @@ function setsForLift(sets: SetLog[], liftId: string): SetLog[] {
   return sets.filter((s) => s.liftId === liftId);
 }
 
+function bestWeightAtMinReps(sets: SetLog[], minReps: number): number {
+  let best = 0;
+  for (const s of sets) {
+    if (s.status !== 'completed') continue;
+    if (s.reps < minReps) continue;
+    if (!Number.isFinite(s.weight)) continue;
+    best = Math.max(best, s.weight);
+  }
+  return best;
+}
+
+function bestWorkingSetWeight(sets: SetLog[]): number {
+  let best = 0;
+  for (const s of sets) {
+    if (s.status !== 'completed') continue;
+    const intent = s.intent ?? 'working';
+    if (intent !== 'working' && intent !== 'backoff') continue;
+    if (!Number.isFinite(s.weight)) continue;
+    best = Math.max(best, s.weight);
+  }
+  return best;
+}
+
+function liftingGoalProgressDetail(
+  done: boolean,
+  pct: number,
+  mode: { kind: 'lb'; target: number; current: number } | { kind: 'reps'; target: number; current: number },
+): { pctLabel?: string; remaining?: string } {
+  if (done) return {};
+  const pctRounded = Math.round(Math.min(100, Math.max(0, pct)));
+  const pctLabel = `${pctRounded}% complete`;
+  if (mode.kind === 'lb') {
+    const toGo = Math.max(0, Math.round(mode.target - mode.current));
+    return { pctLabel, remaining: `${toGo} lb to go` };
+  }
+  const toGo = Math.max(0, Math.round(mode.target - mode.current));
+  return { pctLabel, remaining: `${toGo} reps to go` };
+}
+
 /** Max-test weight, else best Epley e1RM from completed working/backoff sets. */
 function currentBest1RmFromSets(sets: SetLog[]): number {
   const completed = sets.filter((s) => s.status === 'completed');
@@ -1433,6 +1475,8 @@ function LiftingGoalCard({
   targetLabel,
   pct,
   done,
+  pctLabel,
+  remaining,
 }: {
   title: string;
   subtitle?: ReactNode;
@@ -1440,6 +1484,8 @@ function LiftingGoalCard({
   targetLabel: string;
   pct: number;
   done: boolean;
+  pctLabel?: string;
+  remaining?: string;
 }) {
   const clamped = Math.min(100, Math.max(0, pct));
   return (
@@ -1465,6 +1511,14 @@ function LiftingGoalCard({
       <div className="font-mono text-xs text-zinc-400">
         {currentLabel} / {targetLabel}
       </div>
+      {done ? (
+        <div className="text-xs text-emerald-400">✓ Goal reached</div>
+      ) : (
+        <>
+          {pctLabel != null && <div className="text-xs text-zinc-400">{pctLabel}</div>}
+          {remaining != null && <div className="text-xs text-zinc-500">{remaining}</div>}
+        </>
+      )}
     </div>
   );
 }
@@ -1502,6 +1556,7 @@ function LiftGoalsList({
         targetLabel="475 lb"
         pct={(dl / 475) * 100}
         done={dl >= 475}
+        {...liftingGoalProgressDetail(dl >= 475, (dl / 475) * 100, { kind: 'lb', target: 475, current: dl })}
       />
 
       <LiftingGoalCard
@@ -1510,6 +1565,7 @@ function LiftGoalsList({
         targetLabel="365 lb"
         pct={(squat / 365) * 100}
         done={squat >= 365}
+        {...liftingGoalProgressDetail(squat >= 365, (squat / 365) * 100, { kind: 'lb', target: 365, current: squat })}
       />
 
       <LiftingGoalCard
@@ -1519,6 +1575,7 @@ function LiftGoalsList({
         targetLabel="265 lb"
         pct={(bench / 265) * 100}
         done={bench >= 265}
+        {...liftingGoalProgressDetail(bench >= 265, (bench / 265) * 100, { kind: 'lb', target: 265, current: bench })}
       />
 
       <LiftingGoalCard
@@ -1527,6 +1584,7 @@ function LiftGoalsList({
         targetLabel="265–275 lb"
         pct={(bench / 265) * 100}
         done={bench >= 265}
+        {...liftingGoalProgressDetail(bench >= 265, (bench / 265) * 100, { kind: 'lb', target: 265, current: bench })}
       />
 
       <LiftingGoalCard
@@ -1535,6 +1593,7 @@ function LiftGoalsList({
         targetLabel="235 × 5"
         pct={(row5 / 235) * 100}
         done={row5 >= 235}
+        {...liftingGoalProgressDetail(row5 >= 235, (row5 / 235) * 100, { kind: 'lb', target: 235, current: row5 })}
       />
 
       <LiftingGoalCard
@@ -1543,6 +1602,7 @@ function LiftGoalsList({
         targetLabel="8 reps"
         pct={(pullBw / 8) * 100}
         done={pullBw >= 8}
+        {...liftingGoalProgressDetail(pullBw >= 8, (pullBw / 8) * 100, { kind: 'reps', target: 8, current: pullBw })}
       />
 
       <LiftingGoalCard
@@ -1551,6 +1611,7 @@ function LiftGoalsList({
         targetLabel="165 lb"
         pct={(ohp / 165) * 100}
         done={ohp >= 165}
+        {...liftingGoalProgressDetail(ohp >= 165, (ohp / 165) * 100, { kind: 'lb', target: 165, current: ohp })}
       />
 
       <LiftingGoalCard
@@ -1559,6 +1620,112 @@ function LiftGoalsList({
         targetLabel="200 lb"
         pct={(pp / 200) * 100}
         done={pp >= 200}
+        {...liftingGoalProgressDetail(pp >= 200, (pp / 200) * 100, { kind: 'lb', target: 200, current: pp })}
+      />
+    </div>
+  );
+}
+
+function AccessoryGoalsList({ sets }: { sets: SetLog[] }) {
+  const fmtLb = (n: number) => `${Math.round(n * 10) / 10} lb`;
+
+  const bpPaused = bestWorkingSetWeight(setsForLift(sets, 'bp_paused'));
+  const p1Ecc = bestWorkingSetWeight(setsForLift(sets, 'p1_eccentric'));
+  const ohpVol = bestWeightAtMinReps(setsForLift(sets, 'ohp'), 10);
+  const pendlay = bestWeightAtMinReps(setsForLift(sets, 'pendlay_row'), 5);
+  const bsPause = bestWeightAtMinReps(setsForLift(sets, 'back_squat_paused'), 6);
+  const fs = bestWeightAtMinReps(setsForLift(sets, 'front_squat'), 3);
+  const bss = bestWeightAtMinReps(setsForLift(sets, 'bss'), 10);
+  const ddl = bestWeightAtMinReps(setsForLift(sets, 'ddl'), 6);
+  const rdl = bestWeightAtMinReps(setsForLift(sets, 'rdl'), 10);
+
+  return (
+    <div className="space-y-3">
+      <p className="text-xs text-zinc-500">
+        Accessory targets — best completed sets (working/backoff for simple strength targets; rep-qualified where noted).
+      </p>
+
+      <LiftingGoalCard
+        title="BP (Paused) Working Set"
+        currentLabel={bpPaused > 0 ? fmtLb(bpPaused) : '—'}
+        targetLabel="225 lb"
+        pct={(bpPaused / 225) * 100}
+        done={bpPaused >= 225}
+        {...liftingGoalProgressDetail(bpPaused >= 225, (bpPaused / 225) * 100, { kind: 'lb', target: 225, current: bpPaused })}
+      />
+
+      <LiftingGoalCard
+        title="P1 Eccentric (added load)"
+        currentLabel={p1Ecc > 0 ? fmtLb(p1Ecc) : '—'}
+        targetLabel="25 lb"
+        pct={(p1Ecc / 25) * 100}
+        done={p1Ecc >= 25}
+        {...liftingGoalProgressDetail(p1Ecc >= 25, (p1Ecc / 25) * 100, { kind: 'lb', target: 25, current: p1Ecc })}
+      />
+
+      <LiftingGoalCard
+        title="OHP 100 × 10"
+        currentLabel={ohpVol > 0 ? `${fmtLb(ohpVol)} × 10` : '—'}
+        targetLabel="100 lb × 10"
+        pct={(ohpVol / 100) * 100}
+        done={ohpVol >= 100}
+        {...liftingGoalProgressDetail(ohpVol >= 100, (ohpVol / 100) * 100, { kind: 'lb', target: 100, current: ohpVol })}
+      />
+
+      <LiftingGoalCard
+        title="Pendlay Row 5RM"
+        currentLabel={pendlay > 0 ? `${fmtLb(pendlay)} × 5` : '—'}
+        targetLabel="215 lb × 5"
+        pct={(pendlay / 215) * 100}
+        done={pendlay >= 215}
+        {...liftingGoalProgressDetail(pendlay >= 215, (pendlay / 215) * 100, { kind: 'lb', target: 215, current: pendlay })}
+      />
+
+      <LiftingGoalCard
+        title="Back Squat (paused) 6RM"
+        currentLabel={bsPause > 0 ? `${fmtLb(bsPause)} × 6` : '—'}
+        targetLabel="265 lb × 6"
+        pct={(bsPause / 265) * 100}
+        done={bsPause >= 265}
+        {...liftingGoalProgressDetail(bsPause >= 265, (bsPause / 265) * 100, { kind: 'lb', target: 265, current: bsPause })}
+      />
+
+      <LiftingGoalCard
+        title="Front Squat 3RM (project)"
+        subtitle={<div className="text-zinc-500 text-[10px] mt-0.5">project</div>}
+        currentLabel={fs > 0 ? `${fmtLb(fs)} × 3` : '—'}
+        targetLabel="185 lb × 3"
+        pct={(fs / 185) * 100}
+        done={fs >= 185}
+        {...liftingGoalProgressDetail(fs >= 185, (fs / 185) * 100, { kind: 'lb', target: 185, current: fs })}
+      />
+
+      <LiftingGoalCard
+        title="BSS 2 × 10 L/R"
+        subtitle={<div className="text-xs text-zinc-500 mt-0.5">Each side</div>}
+        currentLabel={bss > 0 ? `${fmtLb(bss)} × 10` : '—'}
+        targetLabel="95 lb × 10"
+        pct={(bss / 95) * 100}
+        done={bss >= 95}
+        {...liftingGoalProgressDetail(bss >= 95, (bss / 95) * 100, { kind: 'lb', target: 95, current: bss })}
+      />
+
+      <LiftingGoalCard
+        title="Deficit Deadlift 6RM"
+        currentLabel={ddl > 0 ? `${fmtLb(ddl)} × 6` : '—'}
+        targetLabel="345 lb × 6"
+        pct={(ddl / 345) * 100}
+        done={ddl >= 345}
+        {...liftingGoalProgressDetail(ddl >= 345, (ddl / 345) * 100, { kind: 'lb', target: 345, current: ddl })}
+      />
+
+      <LiftingGoalCard
+        title="RDL 10RM"
+        currentLabel={rdl > 0 ? `${fmtLb(rdl)} × 10` : '—'}
+        targetLabel="275 lb × 10"
+        pct={(rdl / 275) * 100}
+        done={rdl >= 275}
+        {...liftingGoalProgressDetail(rdl >= 275, (rdl / 275) * 100, { kind: 'lb', target: 275, current: rdl })}
       />
     </div>
   );

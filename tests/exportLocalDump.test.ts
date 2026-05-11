@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { buildExportSchemaDocumentation } from '@/lib/exportModelSchema';
+import { buildLiftingGoalSnapshots } from '@/lib/exportLocalDump';
+import { buildExportSchemaDocumentation, EXPORT_SCHEMA_VERSION } from '@/lib/exportModelSchema';
 import { computeExportSummary } from '@/lib/exportSummary';
 import { DEFAULT_PROGRAM_TARGETS_STORED, programTargetToExportRow } from '@/lib/programExportTargets';
 import type { Lift, MindfulnessLog, Prescription, ReadinessLog, SessionLog, SetLog, BodyweightLog } from '@/lib/types';
@@ -24,6 +25,73 @@ describe('buildExportSchemaDocumentation', () => {
     expect(doc.mesocycle?.fields['lengthRecommendation.action']).toContain('maintain');
     expect(doc.workday_logs?.fields.shift).toContain('double');
     expect(doc.supplement_logs?.fields.allTaken).toContain('boolean');
+    expect(doc.lifting_goal_snapshots?.fields.goalId).toContain('string');
+    expect(doc.lifting_goal_snapshots?.fields.type).toContain('accessory');
+  });
+});
+
+describe('buildLiftingGoalSnapshots', () => {
+  it('returns 8 main + 9 accessory rows with stable goalIds', () => {
+    const snaps = buildLiftingGoalSnapshots([]);
+    expect(snaps).toHaveLength(17);
+    expect(snaps.filter((s) => s.type === 'main').map((s) => s.goalId)).toEqual([
+      'dl_1rm',
+      'squat_1rm',
+      'bp_1rm',
+      'bp_reach',
+      'bbr_5rm',
+      'p1_bw_pullups',
+      'ohp_1rm',
+      'pp_1rm',
+    ]);
+    expect(snaps.find((s) => s.goalId === 'acc_rdl_10')).toMatchObject({
+      label: 'RDL 10RM',
+      liftId: 'rdl',
+      targetValue: 275,
+      targetReps: 10,
+      type: 'accessory',
+    });
+  });
+
+  it('derives bench and pull-up progress from set_logs', () => {
+    const set_logs = [
+      {
+        id: 'a',
+        sessionLogId: 's1',
+        liftId: 'bp',
+        prescriptionId: 'p',
+        setIndex: 0,
+        intent: 'working' as const,
+        weight: 200,
+        reps: 3,
+        status: 'completed' as const,
+      },
+      {
+        id: 'b',
+        sessionLogId: 's1',
+        liftId: 'p1_bw',
+        prescriptionId: 'p2',
+        setIndex: 0,
+        intent: 'working' as const,
+        weight: 0,
+        reps: 6,
+        status: 'completed' as const,
+      },
+    ];
+    const snaps = buildLiftingGoalSnapshots(set_logs);
+    const bp = snaps.find((s) => s.goalId === 'bp_1rm')!;
+    expect(bp.currentValue).toBeGreaterThan(200);
+    expect(bp.repsToGo).toBeNull();
+    const pu = snaps.find((s) => s.goalId === 'p1_bw_pullups')!;
+    expect(pu.currentValue).toBe(6);
+    expect(pu.repsToGo).toBe(2);
+    expect(pu.lbsToGo).toBeNull();
+  });
+});
+
+describe('EXPORT_SCHEMA_VERSION', () => {
+  it('is bumped for lifting_goal_snapshots export shape', () => {
+    expect(EXPORT_SCHEMA_VERSION).toBe(16);
   });
 });
 
