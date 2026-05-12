@@ -21,6 +21,8 @@ export function ReadinessForm({
 }) {
   const [sleep, setSleep] = useState<number>(8);
   const [sleepInterruptions, setSleepInterruptions] = useState<number>(0);
+  const [napDuration, setNapDuration] = useState<number>(0);
+  const [napTiming, setNapTiming] = useState<'early' | 'late'>('early');
   const [soreness, setSoreness] = useState<number>(2);
   const [motivation, setMotivation] = useState<number>(3);
   const existingBw = useThisWeekBodyweight();
@@ -45,6 +47,8 @@ export function ReadinessForm({
         date: session.date,
         sleepHours: sleep,
         sleepInterruptions,
+        napDurationMin: napDuration > 0 ? napDuration : undefined,
+        napTiming: napDuration > 0 ? napTiming : undefined,
         soreness,
         motivation,
         hrvSkipped,
@@ -54,6 +58,10 @@ export function ReadinessForm({
       if (!hrvSkipped) {
         row.hrvRmssd = hrvRmssd;
         row.hrvMeasuredMin = 5;
+      }
+      if (napDuration <= 0) {
+        delete row.napDurationMin;
+        delete row.napTiming;
       }
       await localUpsert('readiness_logs', row);
 
@@ -103,6 +111,48 @@ export function ReadinessForm({
         onChange={setSleepInterruptions}
         helper="Count awakenings/interruptions overnight."
       />
+      <div className="space-y-2">
+        <div className="text-sm text-zinc-300">Nap yesterday?</div>
+        <div className="flex flex-wrap gap-2">
+          {[0, 20, 30, 60, 90].map((min) => (
+            <button
+              key={min}
+              type="button"
+              onClick={() => setNapDuration(min)}
+              className={`h-9 px-3 rounded-lg text-xs font-medium border transition-colors ${
+                napDuration === min
+                  ? 'bg-amber-600 border-amber-500 text-zinc-950'
+                  : 'bg-zinc-800 border-zinc-700 text-zinc-300'
+              }`}
+            >
+              {min === 0 ? 'None' : `${min} min`}
+            </button>
+          ))}
+        </div>
+        {napDuration > 0 && (
+          <div className="flex gap-2">
+            {(['early', 'late'] as const).map((t) => (
+              <button
+                key={t}
+                type="button"
+                onClick={() => setNapTiming(t)}
+                className={`h-8 px-3 rounded-lg text-xs border transition-colors ${
+                  napTiming === t
+                    ? 'bg-zinc-600 border-zinc-500 text-zinc-100'
+                    : 'bg-zinc-800 border-zinc-700 text-zinc-400'
+                }`}
+              >
+                {t === 'early' ? 'Before 3pm' : '3pm or later'}
+              </button>
+            ))}
+            <span className="text-[11px] text-zinc-500 self-center">
+              {napTiming === 'late'
+                ? "Late naps may affect tonight's sleep"
+                : 'Good timing for recovery'}
+            </span>
+          </div>
+        )}
+      </div>
       <ReadinessScale label="Soreness" value={soreness} onChange={setSoreness} lowLabel="None" highLabel="Severe" />
       <ReadinessScale label="Motivation" value={motivation} onChange={setMotivation} lowLabel="Dead" highLabel="Fired up" />
       <div className="rounded-xl border border-zinc-800 bg-zinc-950 p-3 space-y-2">
@@ -256,6 +306,8 @@ export function ReadinessEditForm({
 }) {
   const [sleep, setSleep] = useState(readiness.sleepHours);
   const [sleepInterruptions, setSleepInterruptions] = useState(readiness.sleepInterruptions ?? 0);
+  const [napDuration, setNapDuration] = useState(readiness.napDurationMin ?? 0);
+  const [napTiming, setNapTiming] = useState<'early' | 'late'>(readiness.napTiming ?? 'early');
   const [soreness, setSoreness] = useState(readiness.soreness);
   const [motivation, setMotivation] = useState(readiness.motivation);
   const hadBw = readiness.bodyweight != null;
@@ -275,6 +327,8 @@ export function ReadinessEditForm({
         ...readiness,
         sleepHours: sleep,
         sleepInterruptions,
+        napDurationMin: napDuration > 0 ? napDuration : undefined,
+        napTiming: napDuration > 0 ? napTiming : undefined,
         soreness,
         motivation,
         hrvSkipped,
@@ -286,6 +340,10 @@ export function ReadinessEditForm({
       } else {
         row.hrvRmssd = hrvRmssd;
         row.hrvMeasuredMin = 5;
+      }
+      if (napDuration <= 0) {
+        delete row.napDurationMin;
+        delete row.napTiming;
       }
       await localUpsert('readiness_logs', row);
       if (hadBw) {
@@ -342,6 +400,48 @@ export function ReadinessEditForm({
         onChange={setSleepInterruptions}
         helper="Count awakenings/interruptions overnight."
       />
+      <div className="space-y-2">
+        <div className="text-sm text-zinc-300">Nap yesterday?</div>
+        <div className="flex flex-wrap gap-2">
+          {[0, 20, 30, 60, 90].map((min) => (
+            <button
+              key={min}
+              type="button"
+              onClick={() => setNapDuration(min)}
+              className={`h-9 px-3 rounded-lg text-xs font-medium border transition-colors ${
+                napDuration === min
+                  ? 'bg-amber-600 border-amber-500 text-zinc-950'
+                  : 'bg-zinc-800 border-zinc-700 text-zinc-300'
+              }`}
+            >
+              {min === 0 ? 'None' : `${min} min`}
+            </button>
+          ))}
+        </div>
+        {napDuration > 0 && (
+          <div className="flex gap-2">
+            {(['early', 'late'] as const).map((t) => (
+              <button
+                key={t}
+                type="button"
+                onClick={() => setNapTiming(t)}
+                className={`h-8 px-3 rounded-lg text-xs border transition-colors ${
+                  napTiming === t
+                    ? 'bg-zinc-600 border-zinc-500 text-zinc-100'
+                    : 'bg-zinc-800 border-zinc-700 text-zinc-400'
+                }`}
+              >
+                {t === 'early' ? 'Before 3pm' : '3pm or later'}
+              </button>
+            ))}
+            <span className="text-[11px] text-zinc-500 self-center">
+              {napTiming === 'late'
+                ? "Late naps may affect tonight's sleep"
+                : 'Good timing for recovery'}
+            </span>
+          </div>
+        )}
+      </div>
       <ReadinessScale label="Soreness" value={soreness} onChange={setSoreness} lowLabel="None" highLabel="Severe" />
       <ReadinessScale label="Motivation" value={motivation} onChange={setMotivation} lowLabel="Dead" highLabel="Fired up" />
       <div className="rounded-xl border border-zinc-800 bg-zinc-950 p-3 space-y-2">

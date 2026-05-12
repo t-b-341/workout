@@ -243,6 +243,17 @@ export type ReadinessLog = {
   sleepHours: number;
   /** Night interruptions/awakenings counted during sleep. */
   sleepInterruptions?: number;
+  /**
+   * Duration of a nap taken the day before this check-in (min).
+   * Undefined or 0 = no nap. Valid values: 20, 30, 60, 90.
+   */
+  napDurationMin?: number;
+  /**
+   * Approximate nap timing the day before this check-in.
+   * 'early' = before 3pm, 'late' = 3pm or after.
+   * Only meaningful when napDurationMin > 0.
+   */
+  napTiming?: 'early' | 'late';
   /** 1 = none, 5 = severe. */
   soreness: number;
   /** 1 = dead, 5 = fired up. */

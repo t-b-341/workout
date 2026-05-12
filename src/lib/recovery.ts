@@ -99,11 +99,26 @@ export function nutritionScore(log?: NutritionLog): number {
 export function readinessScore(log?: ReadinessLog): number {
   if (!log) return 60;
   const sleep = clamp((log.sleepHours / 8) * 100, 0, 100);
+  // Nap recovery bonus: adds to the sleep component.
+  // A well-timed nap meaningfully improves next-day readiness;
+  // a late nap partially offsets tonight's sleep quality.
+  function napBonus(durationMin?: number, timing?: 'early' | 'late'): number {
+    if (!durationMin || durationMin <= 0) return 0;
+    let bonus = 0;
+    if (durationMin <= 30) bonus = 6; // 20–30 min: light restorative
+    else if (durationMin <= 60) bonus = 10; // 60 min: full slow-wave cycle
+    else bonus = 12; // 90 min: full cycle + REM
+    if (timing === 'late') bonus -= 4; // late nap risks tonight's sleep
+    return Math.max(0, bonus);
+  }
+  const napAdj = napBonus(log.napDurationMin, log.napTiming);
+  const sleepWithNap = clamp(sleep + napAdj, 0, 100);
   const interruptions = Math.max(0, log.sleepInterruptions ?? 0);
   const interruptionScore = clamp(100 - interruptions * 10, 40, 100);
   const soreness = clamp(((6 - log.soreness) / 5) * 100, 0, 100);
   const motivation = clamp((log.motivation / 5) * 100, 0, 100);
-  const base = sleep * 0.28 + interruptionScore * 0.07 + soreness * 0.35 + motivation * 0.3;
+  const base =
+    sleepWithNap * 0.28 + interruptionScore * 0.07 + soreness * 0.35 + motivation * 0.3;
   if (log.hrvSkipped || log.hrvRmssd == null) return Math.round(base);
   // Lightweight HRV signal (RMSSD): low suppresses readiness, high supports it.
   const hrvScore = clamp(((log.hrvRmssd - 20) / 50) * 100, 0, 100);

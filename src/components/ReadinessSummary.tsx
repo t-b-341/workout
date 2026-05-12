@@ -52,7 +52,7 @@ export function ReadinessSummary({
   if (canEdit && editing && session) {
     return (
       <ReadinessEditForm
-        key={`${readiness.id}-${readiness.sleepHours}-${readiness.soreness}-${readiness.motivation}`}
+        key={`${readiness.id}-${readiness.sleepHours}-${readiness.soreness}-${readiness.motivation}-${readiness.napDurationMin ?? 0}-${readiness.napTiming ?? ''}`}
         readiness={readiness}
         session={session}
         onDone={() => setEditing(false)}
@@ -73,6 +73,12 @@ export function ReadinessSummary({
       <span className={`${chipBase} ${sleepTone(readiness.sleepHours)}`}>
         sleep {readiness.sleepHours}h
       </span>
+      {readiness.napDurationMin != null && readiness.napDurationMin > 0 && (
+        <span className={`${chipBase} bg-sky-900/40 text-sky-200`}>
+          nap {readiness.napDurationMin}m
+          {readiness.napTiming === 'late' ? ' (late)' : ''}
+        </span>
+      )}
       <span className={`${chipBase} ${sorenessTone(readiness.soreness)}`}>
         soreness {readiness.soreness}/5
       </span>
