@@ -312,6 +312,17 @@ export function liftPRs(
   const bestPerReps = new Map<number, PRBucket>();
   let bestE1RM: LiftPRs['bestE1RM'] = null;
 
+  const workingWeightsBaseline = sets
+    .filter(
+      (x) =>
+        x.liftId === liftId &&
+        x.status === 'completed' &&
+        (x.intent ?? 'working') !== 'warmup',
+    )
+    .map((x) => x.weight ?? 0);
+  const maxWorkingWeight =
+    workingWeightsBaseline.length >= 3 ? Math.max(...workingWeightsBaseline) : 0;
+
   for (const s of sets) {
     if (s.liftId !== liftId) continue;
     if (s.status !== 'completed') continue;
@@ -349,6 +360,7 @@ export function liftPRs(
     }
 
     if (s.weight <= 0) continue;
+    if (maxWorkingWeight > 0 && (s.weight ?? 0) <= maxWorkingWeight * 0.5) continue;
     const cur = bestPerReps.get(s.reps);
     if (!cur || s.weight > cur.weight) {
       bestPerReps.set(s.reps, {

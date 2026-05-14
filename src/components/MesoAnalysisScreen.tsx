@@ -65,6 +65,12 @@ export function MesoAnalysisScreen() {
 
   return (
     <PageShell variant="program" className="p-4 space-y-4 max-w-3xl mx-auto">
+      <Link
+        href="/program"
+        className="inline-flex items-center gap-1.5 text-sm text-zinc-400 hover:text-zinc-200 transition-colors"
+      >
+        <span aria-hidden>←</span> Program
+      </Link>
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h1 className="text-2xl font-semibold">Mesocycle analysis</h1>
         <button

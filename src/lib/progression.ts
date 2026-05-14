@@ -89,6 +89,7 @@ export function decideProgression(
   setLogs: SetLog[],
   sessionLog: SessionLog,
   liftIncrementOverride?: number,
+  liftById?: Map<string, Lift>,
 ): ProgressionDecision {
   const base = {
     liftId: prescription.liftId,
@@ -136,9 +137,21 @@ export function decideProgression(
     }
   }
 
+  const liftMeta = liftForSnap(prescription.liftId);
+  const catalogLift = liftById?.get(prescription.liftId) ?? LIFTS.find((l) => l.id === prescription.liftId);
+  if (catalogLift?.lockedWeight) {
+    return {
+      ...base,
+      nextWeight: prescription.weight,
+      advanced: false,
+      held: false,
+      skipped: false,
+      reason: 'Weight locked for this lift',
+    };
+  }
+
   const step =
     prescription.increment ?? liftIncrementOverride ?? catalogLiftIncrementLb(prescription.liftId);
-  const liftMeta = liftForSnap(prescription.liftId);
 
   /** Positive weight = counterweight assistance; progress by reducing assist toward 0 (unassisted). */
   if (prescription.liftId === 'p1_assisted' && prescription.weight > 0) {

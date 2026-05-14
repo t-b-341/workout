@@ -388,6 +388,7 @@ export function TodayView() {
           <FinishSessionButton
             session={session}
             prescriptions={displayPrescriptions ?? []}
+            lifts={lifts ?? []}
             onRecap={(p) => setSessionRecap(p)}
           />
         </>
@@ -639,15 +640,18 @@ function applySessionMode(p: Prescription, s: SessionLog, lift: Lift): Prescript
 function FinishSessionButton({
   session,
   prescriptions,
+  lifts,
   onRecap,
 }: {
   session: SessionLog;
   prescriptions: Prescription[];
+  lifts: Lift[];
   onRecap: (payload: SessionRecapPayload) => void;
 }) {
   const [busy, setBusy] = useState(false);
   const [summary, setSummary] = useState<{ advanced: number; held: number; skipped: number; durationMs: number | null } | null>(null);
   const [nowTick, setNowTick] = useState(() => Date.now());
+  const liftById = useMemo(() => new Map(lifts.map((l) => [l.id, l])), [lifts]);
 
   useEffect(() => {
     if (!session.startedAt || session.completedAt || session.workoutPausedAt) return;
@@ -668,7 +672,7 @@ function FinishSessionButton({
       const sessionSets = await db.set_logs.where('sessionLogId').equals(session.id).toArray();
       let advanced = 0, held = 0, skipped = 0;
       for (const p of prescriptions) {
-        const dec = decideProgression(p, sessionSets, session);
+        const dec = decideProgression(p, sessionSets, session, undefined, liftById);
         if (dec.advanced) {
           advanced++;
           await localUpsert('prescriptions', { ...p, weight: dec.nextWeight });

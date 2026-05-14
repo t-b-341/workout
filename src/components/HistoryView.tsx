@@ -1579,15 +1579,6 @@ function LiftGoalsList({
       />
 
       <LiftingGoalCard
-        title="Bench Press reach target"
-        currentLabel={fmtLb(bench)}
-        targetLabel="265–275 lb"
-        pct={(bench / 265) * 100}
-        done={bench >= 265}
-        {...liftingGoalProgressDetail(bench >= 265, (bench / 265) * 100, { kind: 'lb', target: 265, current: bench })}
-      />
-
-      <LiftingGoalCard
         title="Barbell Row 5RM"
         currentLabel={row5 > 0 ? `${Math.round(row5)} × 5` : '—'}
         targetLabel="235 × 5"
@@ -1702,7 +1693,14 @@ function AccessoryGoalsList({ sets }: { sets: SetLog[] }) {
 
       <LiftingGoalCard
         title="BSS 2 × 10 L/R"
-        subtitle={<div className="text-xs text-zinc-500 mt-0.5">Each side</div>}
+        subtitle={(
+          <div className="text-xs text-zinc-500 mt-0.5 space-y-0.5">
+            <div>Each side</div>
+            <div className="text-[10px] text-zinc-500">
+              10 reps × each leg = 20 total reps per set. Log reps per leg.
+            </div>
+          </div>
+        )}
         currentLabel={bss > 0 ? `${fmtLb(bss)} × 10` : '—'}
         targetLabel="95 lb × 10"
         pct={(bss / 95) * 100}

@@ -14,6 +14,8 @@ import {
   useTodayPlanTemplateId,
   useTodaySession,
   useReadinessForSession,
+  useReadinessForDate,
+  useSessionsForDate,
   useAllSessions,
 } from '@/lib/hooks';
 import {
@@ -35,7 +37,7 @@ import { deriveMealMetrics, sortMealTimestamps } from '@/lib/mealTiming';
 import { replaceMealTimestampsForDay } from '@/lib/nutritionMealQuick';
 import { flushDirty, localDelete, localUpsert } from '@/lib/sync';
 import { todayIso } from '@/lib/time';
-import type { HydrationLog, NutritionDayType, NutritionLog, StressLog } from '@/lib/types';
+import type { HydrationLog, NutritionDayType, NutritionLog, ReadinessLog, SessionLog, StressLog } from '@/lib/types';
 import { NUTRITION_DAY_TYPES } from '@/lib/types';
 import { defaultNutritionDayType } from '@/lib/nutritionDayType';
 import { BodyweightQuickLog } from './BodyweightQuickLog';
@@ -60,6 +62,14 @@ const STRESS_RATING_SCALE: Record<1 | 2 | 3 | 4 | 5, string> = {
 };
 
 const STRESS_RATING_ORDER = [1, 2, 3, 4, 5] as const;
+
+const STRESS_LABELS: Record<1 | 2 | 3 | 4 | 5, string> = {
+  1: 'No stress',
+  2: 'Mild',
+  3: 'Moderate',
+  4: 'High',
+  5: 'Severe',
+};
 
 function fmtCheckInTimestamp(iso: string): string {
   try {
@@ -452,6 +462,8 @@ export function RecoveryView() {
           <StressSection date={date} entries={stress ?? []} />
         </div>
 
+        <NapQuickLogCard date={date} />
+
         <MindfulnessEntriesSection date={date} />
       <SleepSection date={date} existing={sleep} />
 
@@ -586,6 +598,113 @@ function DidYouEatQuickSection({
   );
 }
 
+function NapQuickLogCard({ date }: { date: string }) {
+  const existing = useReadinessForDate(date);
+  const sessions = useSessionsForDate(date) ?? [];
+  const syncKey = `${existing?.id ?? 'none'}|${existing?.napDurationMin ?? 'x'}|${existing?.napTiming ?? 'x'}`;
+  return <NapQuickLogCardForm key={syncKey} date={date} existing={existing} sessions={sessions} />;
+}
+
+function NapQuickLogCardForm({
+  date,
+  existing,
+  sessions,
+}: {
+  date: string;
+  existing: ReadinessLog | undefined;
+  sessions: SessionLog[];
+}) {
+  const anchorSessionId = existing?.sessionLogId ?? sessions[0]?.id;
+
+  const [duration, setDuration] = useState(existing?.napDurationMin ?? 0);
+  const [timing, setTiming] = useState<'early' | 'late'>(existing?.napTiming ?? 'early');
+
+  async function persist(nextDur: number, nextTiming: 'early' | 'late') {
+    if (!anchorSessionId) return;
+    if (!existing && nextDur <= 0) {
+      setDuration(0);
+      setTiming('early');
+      return;
+    }
+    setDuration(nextDur);
+    setTiming(nextTiming);
+    if (existing) {
+      const row: ReadinessLog = { ...existing };
+      if (nextDur > 0) {
+        row.napDurationMin = nextDur;
+        row.napTiming = nextTiming;
+      } else {
+        delete row.napDurationMin;
+        delete row.napTiming;
+      }
+      await localUpsert('readiness_logs', row);
+    } else {
+      const row: ReadinessLog = {
+        id: `readiness-${anchorSessionId}`,
+        sessionLogId: anchorSessionId,
+        date,
+        sleepHours: 8,
+        soreness: 2,
+        motivation: 3,
+        createdAt: new Date().toISOString(),
+      };
+      if (nextDur > 0) {
+        row.napDurationMin = nextDur;
+        row.napTiming = nextTiming;
+      }
+      await localUpsert('readiness_logs', row);
+    }
+    await flushDirty().catch(() => {});
+  }
+
+  return (
+    <div className="rounded-2xl bg-zinc-900 border border-zinc-800 p-4 space-y-3">
+      <div className="text-sm font-medium">Nap today?</div>
+      {!anchorSessionId && (
+        <p className="text-xs text-zinc-500">
+          Start today&apos;s session from the Today tab first so a readiness row can attach to it.
+        </p>
+      )}
+      <div className="flex flex-wrap gap-2">
+        {[0, 20, 30, 60, 90].map((min) => (
+          <button
+            key={min}
+            type="button"
+            disabled={!anchorSessionId}
+            onClick={() => void persist(min, min > 0 ? timing : 'early')}
+            className={`h-9 px-3 rounded-lg text-xs font-medium border transition-colors disabled:opacity-40 ${
+              duration === min
+                ? 'bg-amber-600 border-amber-500 text-zinc-950'
+                : 'bg-zinc-800 border-zinc-700 text-zinc-300'
+            }`}
+          >
+            {min === 0 ? 'None' : `${min} min`}
+          </button>
+        ))}
+      </div>
+      {duration > 0 && (
+        <div className="flex flex-wrap gap-2 items-center">
+          {(['early', 'late'] as const).map((t) => (
+            <button
+              key={t}
+              type="button"
+              disabled={!anchorSessionId}
+              onClick={() => void persist(duration, t)}
+              className={`h-8 px-3 rounded-lg text-xs border transition-colors disabled:opacity-40 ${
+                timing === t
+                  ? 'bg-zinc-600 border-zinc-500 text-zinc-100'
+                  : 'bg-zinc-800 border-zinc-700 text-zinc-400'
+              }`}
+            >
+              {t === 'early' ? 'Before 3pm' : '3pm or later'}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function StressSection({
   date,
   entries,
@@ -714,7 +833,28 @@ function StressSection({
         />
       </label>
       <div className="flex flex-wrap items-end gap-3">
-        <StressField label="Rating (1–5)" value={rating} onChange={setRating} />
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={() => setRating((v) => Math.max(1, v - 1) as 1 | 2 | 3 | 4 | 5)}
+            className="h-9 w-9 rounded-lg bg-zinc-800 border border-zinc-700 text-zinc-200 text-lg font-medium flex items-center justify-center disabled:opacity-40"
+            disabled={rating <= 1}
+          >
+            −
+          </button>
+          <div className="text-center min-w-[3rem]">
+            <div className="text-2xl font-mono font-semibold text-zinc-100">{rating}</div>
+            <div className="text-[10px] text-zinc-500 mt-0.5">{STRESS_LABELS[rating]}</div>
+          </div>
+          <button
+            type="button"
+            onClick={() => setRating((v) => Math.min(5, v + 1) as 1 | 2 | 3 | 4 | 5)}
+            className="h-9 w-9 rounded-lg bg-zinc-800 border border-zinc-700 text-zinc-200 text-lg font-medium flex items-center justify-center disabled:opacity-40"
+            disabled={rating >= 5}
+          >
+            +
+          </button>
+        </div>
         <button
           type="button"
           className="h-11 px-4 rounded-lg bg-amber-500 text-zinc-950 text-sm font-medium shrink-0"
@@ -731,73 +871,6 @@ function StressSection({
           <div>- Reduce stimulant load and hydrate before the next session.</div>
         </div>
       )}
-    </div>
-  );
-}
-
-function StressField({
-  label,
-  value,
-  onChange,
-}: {
-  label: string;
-  value: 1 | 2 | 3 | 4 | 5;
-  onChange: (v: 1 | 2 | 3 | 4 | 5) => void;
-}) {
-  const [focused, setFocused] = useState(false);
-  const [text, setText] = useState(String(value));
-  const stressFieldSyncKey = `${value}|${focused}`;
-  const [stressFieldKeySeen, setStressFieldKeySeen] = useState(stressFieldSyncKey);
-  if (stressFieldSyncKey !== stressFieldKeySeen) {
-    setStressFieldKeySeen(stressFieldSyncKey);
-    if (!focused) setText(String(value));
-  }
-
-  function commit() {
-    const digits = text.replace(/\D/g, '');
-    if (digits === '') {
-      setText(String(value));
-      return;
-    }
-    const n = clamp(parseInt(digits.slice(0, 2), 10), 1, 5) as 1 | 2 | 3 | 4 | 5;
-    onChange(n);
-    setText(String(n));
-  }
-
-  const previewLevel =
-    /^[1-5]$/.test(text) ? (parseInt(text, 10) as 1 | 2 | 3 | 4 | 5) : value;
-
-  return (
-    <div className="min-w-[12rem] flex-1 max-w-xs">
-      <label className="text-xs text-zinc-500">
-        {label}
-        <input
-          className="mt-1 h-11 w-full rounded-lg bg-zinc-950 border border-zinc-800 px-3 text-center font-mono"
-          type="text"
-          inputMode="numeric"
-          autoComplete="off"
-          value={text}
-          onFocus={() => setFocused(true)}
-          onBlur={() => {
-            commit();
-            setFocused(false);
-          }}
-          onChange={(e) => {
-            let v = e.target.value.replace(/\D/g, '');
-            if (v.length > 1) v = v.slice(-1);
-            setText(v);
-            if (v !== '') {
-              const n = parseInt(v, 10);
-              if (n >= 1 && n <= 5) onChange(n as 1 | 2 | 3 | 4 | 5);
-            }
-          }}
-        />
-      </label>
-      <p className="mt-1.5 text-xs text-zinc-300 leading-snug min-h-[2.75rem]">
-        <span className="font-mono text-amber-200/90">{previewLevel}</span>
-        <span className="text-zinc-600"> — </span>
-        {STRESS_RATING_SCALE[previewLevel]}
-      </p>
     </div>
   );
 }

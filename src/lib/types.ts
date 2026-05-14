@@ -54,6 +54,8 @@ export type Lift = {
   increment: number;
   /** How to interpret weight progression. Defaults to 'normal'. */
   loadScale?: LoadScale;
+  /** When true, progression system never suggests a weight increase. */
+  lockedWeight?: boolean;
   /** Notes shown on the lift card (tempo, cues, etc). */
   notes?: string;
   /** Primary + secondary muscles trained. Empty for cardio. */

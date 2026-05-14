@@ -72,6 +72,33 @@ describe('decideProgression — standard mode', () => {
     expect(dec.reason).toMatch(/All sets hit 8 reps/);
   });
 
+  it('does not advance weight when lift has lockedWeight (rear delt plate flyes)', () => {
+    const presc = makePrescription({
+      id: 'U3-rdf',
+      templateId: 'U3' as TemplateId,
+      liftId: 'rdf',
+      order: 99,
+      weight: 10,
+      sets: 3,
+      repMin: 15,
+      repMax: 15,
+    });
+    const sets: SetLog[] = Array.from({ length: 3 }, (_, i) => ({
+      id: `${SESSION_ID}-rdf-${i}-X`,
+      sessionLogId: SESSION_ID,
+      liftId: 'rdf',
+      prescriptionId: presc.id,
+      setIndex: i,
+      weight: 10,
+      reps: 15,
+      status: 'completed' as const,
+    }));
+    const dec = decideProgression(presc, sets, makeSession());
+    expect(dec.advanced).toBe(false);
+    expect(dec.nextWeight).toBe(10);
+    expect(dec.reason).toMatch(/locked/i);
+  });
+
   it('uses prescription.increment when provided', () => {
     const dec = decideProgression(
       makePrescription({ increment: 2.5 }),

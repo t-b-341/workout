@@ -33,7 +33,7 @@ export const LIFTS: Lift[] = [
   { id: 'pec_flyes', name: 'Pec Flyes', equipment: 'dumbbell', loadUnit: 'lb', repUnit: 'reps', increment: 2.5,
     pattern: 'horiz-push', muscleGroups: ['chest', 'front-delt'] },
   { id: 'rdf', name: 'Rear Delt Plate Flyes', equipment: 'bodyweight', loadUnit: 'lb', repUnit: 'reps', increment: 5, notes: 'Supinated grip; one 10# plate per hand (substitute for DB rear-delt fly)',
-    pattern: 'horiz-pull', muscleGroups: ['rear-delt', 'traps'] },
+    lockedWeight: true, pattern: 'horiz-pull', muscleGroups: ['rear-delt', 'traps'] },
   { id: 'supinated_barbell_curls', name: 'Supinated Barbell Curls', equipment: 'barbell', loadUnit: 'lb', repUnit: 'reps', increment: 5,
     pattern: 'horiz-pull', muscleGroups: ['biceps', 'forearms'] },
   { id: 'pronated_barbell_curls', name: 'Pronated Barbell Curls', equipment: 'barbell', loadUnit: 'lb', repUnit: 'reps', increment: 5, notes: 'Overhand grip',
@@ -63,7 +63,8 @@ export const LIFTS: Lift[] = [
   { id: 'rdl', name: 'RDL', equipment: 'barbell', loadUnit: 'lb', repUnit: 'reps', increment: 5,
     pattern: 'hinge', muscleGroups: ['hamstrings', 'glutes', 'low-back'] },
   { id: 'bss', name: 'Bulgarian Split Squat', equipment: 'barbell', loadUnit: 'lb', repUnit: 'reps', increment: 5,
-    pattern: 'squat', muscleGroups: ['quads', 'glutes', 'hamstrings'], notes: 'Barbell on back; progress in 5 lb steps from empty short bar (~45#)' },
+    pattern: 'squat', muscleGroups: ['quads', 'glutes', 'hamstrings'],
+    notes: 'Barbell; rear foot elevated. Log reps PER LEG — 2×10 means 10 each leg (20 total). Each set is one leg cycle.' },
 
   // Lower - dumbbell
   { id: 'planks', name: 'Planks', equipment: 'time', loadUnit: 'none', repUnit: 'seconds', increment: 5, notes: '+5 sec/wk per set',

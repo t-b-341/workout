@@ -372,6 +372,15 @@ export function subscribeRealtime(userId: string): () => void {
   const supabase = createClient();
   const channels: RealtimeChannel[] = [];
 
+  const onVisible = () => {
+    if (document.visibilityState === 'visible') {
+      void pullAll().catch(() => {});
+    }
+  };
+  if (typeof window !== 'undefined') {
+    document.addEventListener('visibilitychange', onVisible);
+  }
+
   for (const table of ALL_TABLES) {
     const channel = supabase
       .channel(`rt-${table}`)
@@ -405,6 +414,9 @@ export function subscribeRealtime(userId: string): () => void {
   }
 
   return () => {
+    if (typeof window !== 'undefined') {
+      document.removeEventListener('visibilitychange', onVisible);
+    }
     for (const ch of channels) supabase.removeChannel(ch);
   };
 }

@@ -211,6 +211,15 @@ export function useReadinessForSession(sessionId?: string): ReadinessLog | undef
   }, [sessionId]);
 }
 
+/** Latest readiness row for a calendar day (by `createdAt`), any session. */
+export function useReadinessForDate(date: string): ReadinessLog | undefined {
+  return useLiveQuery(async () => {
+    const matches = await getDb().readiness_logs.where('date').equals(date).toArray();
+    if (matches.length === 0) return undefined;
+    return matches.sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))[0];
+  }, [date]);
+}
+
 export function useAllBodyweight(): BodyweightLog[] | undefined {
   return useLiveQuery(async () => {
     const all = await getDb().bodyweight_logs.toArray();

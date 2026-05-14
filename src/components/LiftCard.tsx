@@ -816,6 +816,9 @@ function SetRow({
           <div className="text-[11px] text-zinc-500">RPE hidden for sets over 12 reps</div>
         ) : null}
       </div>
+      {lift.id === 'bss' && !isCardio && (
+        <p className="text-[10px] text-zinc-500">Reps = per leg (×2 total)</p>
+      )}
       {lift.id === 'p1_assisted' && showWeight && (
         <p className="text-[10px] text-zinc-500 leading-snug">
           Counterweight assistance: <span className="text-zinc-400">lower lb = lighter band and closer to full bodyweight</span>
