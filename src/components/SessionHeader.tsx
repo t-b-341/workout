@@ -19,6 +19,7 @@ const SESSION_TYPE_LABELS: Record<SessionLabelType, string> = {
   pr_test: 'PR / strength test',
   abbreviated: 'Short session',
   standard: 'Standard',
+  opportunistic: 'Quick / opportunistic',
 };
 
 const FLAGS: { id: WatchFlag; label: string }[] = [

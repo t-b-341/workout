@@ -28,6 +28,7 @@ const SESSION_FOCUS_UI: Record<SessionLabelType, string> = {
   pr_test: 'PR / strength test',
   abbreviated: 'Short session',
   standard: 'Standard',
+  opportunistic: 'Quick / opportunistic',
 };
 
 const STATUSES: SetStatus[] = ['completed', 'reduced', 'skipped', 'substituted'];

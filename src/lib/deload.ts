@@ -1,6 +1,6 @@
 import type { Lift, Prescription } from './types';
 
-const INTENSITY = 0.6;
+const DELOAD_INTENSITY = 0.85;
 
 /** Isolation / core / cardio slots get ~half volume during a deload week. */
 export const DELOAD_ACCESSORY_LIFT_IDS = new Set<string>([
@@ -37,20 +37,25 @@ function halfRepRange(lo: number, hi: number): { repMin: number; repMax: number 
 
 /**
  * Standard deload Rx (matches docs/program.md intent):
- * - **Main** lifts: ~60% prescribed load; same sets/reps structure.
- * - **Accessory** lifts: same ~60% load when weighted; roughly **half** set count for typical strength work.
+ * - **Main** lifts: ~85% of recent working weight (or prescription when unknown); same sets/reps structure.
+ * - **Accessory** lifts: same ~85% load when weighted; roughly **half** set count for typical strength work.
  * - **LISS**: one structural set expressing duration — ~half duration (minimum 5 minutes).
  * - **Echo intervals**: rep fields are sprint rounds (~halve rounds); steady-minutes branching does not apply.
  * - **Planks**: multiple sets → half set count only; single set → ~half hold (minimum 10s).
  *
  * Applies only when the session uses `deload: true`; does not mutate stored prescriptions.
  */
-export function applyStandardDeload(p: Prescription, lift: Lift): Prescription {
+export function applyStandardDeload(
+  p: Prescription,
+  lift: Lift,
+  recentWorkingWeight?: number | null,
+): Prescription {
   const group = deloadVolumeGroup(lift);
 
+  const baseWeight = recentWorkingWeight ?? p.weight;
   let weight = p.weight;
   if (hasScalableLoad(lift)) {
-    weight = Math.round(p.weight * INTENSITY);
+    weight = Math.round(baseWeight * DELOAD_INTENSITY);
   }
 
   if (group === 'main') {

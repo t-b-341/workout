@@ -98,7 +98,15 @@ export function nutritionScore(log?: NutritionLog): number {
 
 export function readinessScore(log?: ReadinessLog): number {
   if (!log) return 60;
-  const sleep = clamp((log.sleepHours / 8) * 100, 0, 100);
+  const syntheticSleepLog: SleepLog = {
+    id: `readiness-sleep-${log.id}`,
+    date: log.date ?? '',
+    sleepHours: log.sleepHours ?? 0,
+    sleepQuality: 3,
+    wakeCount: log.sleepInterruptions ?? undefined,
+    sleepOnsetLatencyMin: undefined,
+  };
+  const sleep = sleepScore(syntheticSleepLog);
   // Nap recovery bonus: adds to the sleep component.
   // A well-timed nap meaningfully improves next-day readiness;
   // a late nap partially offsets tonight's sleep quality.
@@ -113,12 +121,9 @@ export function readinessScore(log?: ReadinessLog): number {
   }
   const napAdj = napBonus(log.napDurationMin, log.napTiming);
   const sleepWithNap = clamp(sleep + napAdj, 0, 100);
-  const interruptions = Math.max(0, log.sleepInterruptions ?? 0);
-  const interruptionScore = clamp(100 - interruptions * 10, 40, 100);
   const soreness = clamp(((6 - log.soreness) / 5) * 100, 0, 100);
   const motivation = clamp((log.motivation / 5) * 100, 0, 100);
-  const base =
-    sleepWithNap * 0.28 + interruptionScore * 0.07 + soreness * 0.35 + motivation * 0.3;
+  const base = sleepWithNap * 0.35 + soreness * 0.35 + motivation * 0.3;
   if (log.hrvSkipped || log.hrvRmssd == null) return Math.round(base);
   // Lightweight HRV signal (RMSSD): low suppresses readiness, high supports it.
   const hrvScore = clamp(((log.hrvRmssd - 20) / 50) * 100, 0, 100);

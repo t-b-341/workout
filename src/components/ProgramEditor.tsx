@@ -1237,6 +1237,8 @@ function Schedule({
       }
       lifts={lifts}
       meso={meso}
+      setLogs={sets}
+      sessions={sessions}
       onSelectTemplate={onSelectTemplate}
     />
     </>

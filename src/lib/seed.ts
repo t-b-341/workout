@@ -86,6 +86,21 @@ export const TEMPLATES: SessionTemplate[] = [
   { id: 'U1', name: 'Monday — Upper (Heavy)',      dayOfWeek: 1, group: 'upper', intensity: 'heavy' },
   { id: 'U2', name: 'Wednesday — Upper (Light)',   dayOfWeek: 3, group: 'upper', intensity: 'light' },
   { id: 'U3', name: 'Friday — Upper (volume/medium)', dayOfWeek: 5, group: 'upper', intensity: 'moderate' },
+  {
+    id: 'QUICK',
+    name: 'Quick Session',
+    dayOfWeek: -1,
+    group: 'upper',
+    intensity: 'heavy',
+  },
+];
+
+export const QUICK_DEFAULT_LIFT_IDS: string[] = [
+  'dl',
+  'back_squat',
+  'bp',
+  'p1_bw',
+  'pendlay_row',
 ];
 
 /**
@@ -128,7 +143,10 @@ export function defaultTemplateForLocalDate(
       intensity: 'heavy',
     };
   }
-  const byDow = [...templates].sort((a, b) => a.dayOfWeek - b.dayOfWeek);
+  const schedulable = templates.filter((t) => t.dayOfWeek >= 0);
+  const byDow = [...(schedulable.length > 0 ? schedulable : templates)].sort(
+    (a, b) => a.dayOfWeek - b.dayOfWeek,
+  );
   const js = at.getDay();
   if (js >= 1 && js <= 6) {
     const hit = byDow.find((t) => t.dayOfWeek === js);

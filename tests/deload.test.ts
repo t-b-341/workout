@@ -41,10 +41,10 @@ describe('deloadVolumeGroup', () => {
 });
 
 describe('applyStandardDeload', () => {
-  it('main: scales load only (~60%), keeps sets and reps', () => {
+  it('main: scales load only (~85%), keeps sets and reps', () => {
     const p = rx({ liftId: 'bp', weight: 200, sets: 3, repMin: 5, repMax: 8 });
     const out = applyStandardDeload(p, lift({ id: 'bp', equipment: 'barbell', loadUnit: 'lb' }));
-    expect(out.weight).toBe(120);
+    expect(out.weight).toBe(170);
     expect(out.sets).toBe(3);
     expect(out.repMin).toBe(5);
     expect(out.repMax).toBe(8);
@@ -53,7 +53,7 @@ describe('applyStandardDeload', () => {
   it('accessory weighted: halves sets (rounded) and scales load', () => {
     const p = rx({ liftId: 'jm_press', weight: 100, sets: 5, repMin: 8, repMax: 12 });
     const out = applyStandardDeload(p, lift({ id: 'jm_press', loadUnit: 'lb', equipment: 'dumbbells' }));
-    expect(out.weight).toBe(60);
+    expect(out.weight).toBe(85);
     expect(out.sets).toBe(3);
     expect(out.repMin).toBe(8);
     expect(out.repMax).toBe(12);
@@ -118,9 +118,19 @@ describe('applyStandardDeload', () => {
     expect(out.repMax).toBe(30);
   });
 
-  it('negative counterweight scales with ~60% on main lifts', () => {
+  it('uses recent working weight when provided', () => {
+    const p = rx({ liftId: 'bp', weight: 405, sets: 3, repMin: 5, repMax: 8 });
+    const out = applyStandardDeload(
+      p,
+      lift({ id: 'bp', equipment: 'barbell', loadUnit: 'lb' }),
+      380,
+    );
+    expect(out.weight).toBe(323);
+  });
+
+  it('negative counterweight scales with ~85% on main lifts', () => {
     const out = applyStandardDeload(rx({ liftId: 'p1_assisted', weight: -10 }), lift({ id: 'p1_assisted', loadUnit: 'lb' }));
-    expect(out.weight).toBe(-6);
+    expect(out.weight).toBe(-8);
     expect(out.sets).toBe(3);
   });
 });

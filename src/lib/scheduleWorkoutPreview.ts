@@ -1,7 +1,8 @@
 import { applyStandardDeload } from '@/lib/deload';
 import { mesocyclePosition, type MesocycleConfig } from '@/lib/mesocycle';
 import { liftForSnap, snapWorkingWeight } from '@/lib/progression';
-import type { Lift, Prescription, TemplateId } from '@/lib/types';
+import { mostRecentWorkingWeight } from '@/lib/stats';
+import type { Lift, Prescription, SessionLog, SetLog, TemplateId } from '@/lib/types';
 
 export type ScheduledWorkoutPreviewRow = {
   lift: Lift;
@@ -27,6 +28,8 @@ export function buildScheduledWorkoutPreview(
   templatePrescriptions: Prescription[],
   lifts: Lift[],
   mesoCfg: MesocycleConfig | undefined,
+  setLogs?: SetLog[],
+  sessions?: SessionLog[],
 ): ScheduledWorkoutPreview {
   const liftMap = new Map(lifts.map((l) => [l.id, l]));
   const isMesoDeloadDay =
@@ -42,7 +45,11 @@ export function buildScheduledWorkoutPreview(
     const lift = liftMap.get(p.liftId);
     if (!lift) continue;
 
-    const adjusted = isMesoDeloadDay ? applyStandardDeload(p, lift) : { ...p };
+    const recentWorkingWeight =
+      setLogs && sessions ? mostRecentWorkingWeight(p.liftId, setLogs, sessions) : undefined;
+    const adjusted = isMesoDeloadDay
+      ? applyStandardDeload(p, lift, recentWorkingWeight)
+      : { ...p };
     const weight = snapWorkingWeight(adjusted.weight, liftForSnap(p.liftId));
     rows.push({
       lift,

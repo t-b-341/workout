@@ -64,7 +64,7 @@ export type Lift = {
   pattern?: MovementPattern;
 };
 
-export type TemplateId = 'U1' | 'U2' | 'U3' | 'L1' | 'L2' | 'L3';
+export type TemplateId = 'U1' | 'U2' | 'U3' | 'L1' | 'L2' | 'L3' | 'QUICK';
 
 export type SessionTemplate = {
   id: TemplateId;
@@ -144,6 +144,7 @@ export const SESSION_LABEL_TYPES = [
   'pr_test',
   'abbreviated',
   'standard',
+  'opportunistic',
 ] as const;
 export type SessionLabelType = (typeof SESSION_LABEL_TYPES)[number];
 

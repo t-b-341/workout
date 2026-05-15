@@ -5,7 +5,7 @@ import type { MesocycleConfig } from '@/lib/mesocycle';
 import { fmtDate } from '@/lib/time';
 import { buildScheduledWorkoutPreview, type ScheduledWorkoutPreviewRow } from '@/lib/scheduleWorkoutPreview';
 import { writeTodayPlanPreference } from '@/lib/todayPlanPreference';
-import type { Lift, Prescription, SessionTemplate, TemplateId } from '@/lib/types';
+import type { Lift, Prescription, SessionLog, SessionTemplate, SetLog, TemplateId } from '@/lib/types';
 
 /** Row from Program schedule (`ProgramEditor` → `buildSchedule`). */
 export type ScheduleWorkoutPeekRow = {
@@ -21,6 +21,8 @@ type Props = {
   templatePrescriptions: Prescription[] | undefined;
   lifts: Lift[];
   meso: MesocycleConfig | undefined;
+  setLogs?: SetLog[];
+  sessions?: SessionLog[];
   onSelectTemplate: (id: TemplateId) => void;
 };
 
@@ -30,6 +32,8 @@ export function ScheduleWorkoutSheet({
   templatePrescriptions,
   lifts,
   meso,
+  setLogs,
+  sessions,
   onSelectTemplate,
 }: Props) {
   useEffect(() => {
@@ -48,8 +52,10 @@ export function ScheduleWorkoutSheet({
       templatePrescriptions,
       lifts,
       meso,
+      setLogs,
+      sessions,
     );
-  }, [row, templatePrescriptions, lifts, meso]);
+  }, [row, templatePrescriptions, lifts, meso, setLogs, sessions]);
 
   if (!row) return null;
 

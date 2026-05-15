@@ -441,7 +441,10 @@ export function computeMesoAnalysis(args: {
 
   const sessionsAnalytical = sessionsFiltered.filter((sess) => {
     const sets = setsBySessionId.get(sess.id) ?? [];
-    return deriveSessionStatus(sess, args.prescriptions as Prescription[], sets) !== 'ghost';
+    return (
+      deriveSessionStatus(sess, args.prescriptions as Prescription[], sets) !== 'ghost'
+      && sess.sessionType !== 'opportunistic'
+    );
   });
 
   const sessionIds = new Set(sessionsAnalytical.map((s) => s.id));

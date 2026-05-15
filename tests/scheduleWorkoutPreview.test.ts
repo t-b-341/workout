@@ -76,9 +76,9 @@ describe('buildScheduledWorkoutPreview', () => {
     expect(out.isMesoDeloadDay).toBe(true);
     const bpRow = out.rows.find((r) => r.lift.id === 'bp');
     const pecRow = out.rows.find((r) => r.lift.id === 'pec_flyes');
-    const expectedBp = snapWorkingWeight(Math.round(205 * 0.6), liftForSnap('bp'));
+    const expectedBp = snapWorkingWeight(Math.round(205 * 0.85), liftForSnap('bp'));
     expect(bpRow!.displayed.weight).toBe(expectedBp);
-    const expectedPec = snapWorkingWeight(Math.round(60 * 0.6), liftForSnap('pec_flyes'));
+    const expectedPec = snapWorkingWeight(Math.round(60 * 0.85), liftForSnap('pec_flyes'));
     expect(pecRow!.displayed.weight).toBe(expectedPec);
     expect(pecRow!.displayed.sets).toBe(4);
   });

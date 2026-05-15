@@ -137,6 +137,23 @@ export function decideProgression(
     }
   }
 
+  // RPE gate: if every set with a logged RPE is at RPE ≥ 9,
+  // the lifter is likely near their limit at this weight.
+  // Hold progression until at least one set lands at RPE ≤ 8.
+  const rpeLoggedSets = setsForLift.filter(
+    (s) => s.rpe != null && Number.isFinite(s.rpe),
+  );
+  if (rpeLoggedSets.length > 0) {
+    const allAtOrAbove9 = rpeLoggedSets.every((s) => (s.rpe ?? 0) >= 9);
+    if (allAtOrAbove9) {
+      return {
+        ...base,
+        held: true,
+        reason: `All sets RPE ≥ 9 — consolidate at this load before advancing`,
+      };
+    }
+  }
+
   const liftMeta = liftForSnap(prescription.liftId);
   const catalogLift = liftById?.get(prescription.liftId) ?? LIFTS.find((l) => l.id === prescription.liftId);
   if (catalogLift?.lockedWeight) {

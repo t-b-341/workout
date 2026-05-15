@@ -5,6 +5,7 @@ import {
   useAllBodyMeasurements,
   useAllBodyweight,
   useAllReadiness,
+  useAllSessions,
   useAllSets,
   useLifts,
   useMacroTrendAdvice,
@@ -24,6 +25,7 @@ import { decideProgression, liftForSnap, snapWorkingWeight } from '@/lib/progres
 import {
   finalizeWorkoutPauseAtCompletion,
   fmtDurationShort,
+  mostRecentWorkingWeight,
   sessionDurationMs,
   sessionFinishHighlights,
   workoutWallClockElapsedMs,
@@ -69,6 +71,8 @@ import {
   useGoalSessionPrefs,
 } from '@/lib/goals';
 import { sortPrescriptionsWithFavoritesFirst, useFavoriteLiftIds } from '@/lib/favoriteLifts';
+import { sortTemplatesProgramOrder } from '@/lib/seed';
+import { QuickSessionView } from './QuickSessionView';
 
 export function TodayView() {
   const templates = useTemplates();
@@ -79,19 +83,25 @@ export function TodayView() {
     return todayPlanPreferenceIsForToday(p) ? p.templateId : null;
   });
   const [readinessSkipped, setReadinessSkipped] = useState(false);
+  const [quickMode, setQuickMode] = useState(false);
+
+  const programTemplates = useMemo(
+    () => (templates ?? []).filter((t) => t.id !== 'QUICK'),
+    [templates],
+  );
 
   const suggested: SessionTemplate | undefined = useMemo(() => {
-    if (!templates?.length) return undefined;
-    return defaultTemplateForLocalDate(templates);
-  }, [templates]);
+    if (!programTemplates.length) return undefined;
+    return defaultTemplateForLocalDate(programTemplates);
+  }, [programTemplates]);
 
   const validatedChosenTemplateId = useMemo((): TemplateId | null => {
-    if (!chosenTemplateId || !templates?.length) return null;
-    return templates.some((t) => t.id === chosenTemplateId) ? chosenTemplateId : null;
-  }, [templates, chosenTemplateId]);
+    if (!chosenTemplateId || !programTemplates.length) return null;
+    return programTemplates.some((t) => t.id === chosenTemplateId) ? chosenTemplateId : null;
+  }, [programTemplates, chosenTemplateId]);
 
   const activeId = validatedChosenTemplateId ?? suggested?.id ?? null;
-  const activeTemplate = templates?.find((t) => t.id === activeId);
+  const activeTemplate = programTemplates.find((t) => t.id === activeId);
   const session = useTodaySession((activeId ?? 'U1') as TemplateId);
   const prescriptions = usePrescriptions((activeId ?? undefined) as TemplateId | undefined);
   const favoriteLiftIds = useFavoriteLiftIds();
@@ -103,6 +113,7 @@ export function TodayView() {
   const readiness = useReadinessForSession(session?.id);
   const allReadiness = useAllReadiness();
   const allSets = useAllSets();
+  const allSessions = useAllSessions();
   const allBodyweight = useAllBodyweight();
   const allMeasurements = useAllBodyMeasurements();
   const [sessionRecap, setSessionRecap] = useState<SessionRecapPayload | null>(null);
@@ -174,6 +185,10 @@ export function TodayView() {
     setSundayMondayUnlocked(readSundayMondayEarlyUnlocked(todayIso()));
   }
 
+  if (quickMode) {
+    return <QuickSessionView onBack={() => setQuickMode(false)} />;
+  }
+
   if (!templates || !lifts || !activeTemplate) {
     return <div className="p-6 text-zinc-500">Loading…</div>;
   }
@@ -225,10 +240,44 @@ export function TodayView() {
       <CardioBanner />
       <MindfulnessWeeklyBanner />
 
+      {!session.startedAt && !session.completedAt && !sundayGateActive && (
+        <div className="rounded-2xl border border-zinc-800 bg-zinc-900 p-4 space-y-3">
+          <div className="text-xs text-zinc-500 uppercase tracking-wider">Today&apos;s workout</div>
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+            {sortTemplatesProgramOrder(programTemplates).map((t) => (
+              <button
+                key={t.id}
+                type="button"
+                onClick={() => {
+                  setChosenTemplateId(t.id);
+                  writeTodayPlanPreference({ date: todayIso(), templateId: t.id });
+                }}
+                className={`py-2.5 px-3 rounded-xl text-sm font-medium border ${
+                  activeId === t.id
+                    ? 'bg-amber-500/15 border-amber-500/50 text-amber-100'
+                    : 'bg-zinc-950 border-zinc-800 text-zinc-300'
+                }`}
+              >
+                {t.id}
+              </button>
+            ))}
+          </div>
+          <div className="border-t border-zinc-800 pt-3">
+            <button
+              type="button"
+              onClick={() => setQuickMode(true)}
+              className="w-full py-3 rounded-xl bg-zinc-800 border border-zinc-700 text-zinc-300 text-sm"
+            >
+              ⚡ Quick Session — singles &amp; doubles
+            </button>
+          </div>
+        </div>
+      )}
+
       <SessionHeader
         template={activeTemplate}
         session={session}
-        templates={templates}
+        templates={programTemplates}
         hideTemplatePicker={sundayGateActive}
         onTemplateChange={(t) => {
           setChosenTemplateId(t.id);
@@ -360,7 +409,10 @@ export function TodayView() {
           {(displayPrescriptions ?? []).map((p) => {
             const lift = lifts.find((l) => l.id === p.liftId);
             if (!lift) return null;
-            const adjusted = applyEffortScale(applySessionMode(p, session, lift), session);
+            const adjusted = applyEffortScale(
+              applySessionMode(p, session, lift, allSets, allSessions),
+              session,
+            );
             const snapped = {
               ...adjusted,
               weight: snapWorkingWeight(adjusted.weight, liftForSnap(p.liftId)),
@@ -627,9 +679,17 @@ function DailyCheckinStatusBanner({
   );
 }
 
-function applySessionMode(p: Prescription, s: SessionLog, lift: Lift): Prescription {
+function applySessionMode(
+  p: Prescription,
+  s: SessionLog,
+  lift: Lift,
+  sets?: SetLog[],
+  sessions?: SessionLog[],
+): Prescription {
   if (s.deload) {
-    return applyStandardDeload(p, lift);
+    const recentWorkingWeight =
+      sets && sessions ? mostRecentWorkingWeight(p.liftId, sets, sessions) : undefined;
+    return applyStandardDeload(p, lift, recentWorkingWeight);
   }
   if (s.mode === 'light') {
     return { ...p, weight: Math.round(p.weight * 0.8) };

@@ -1313,3 +1313,32 @@ export function buildTemplateSessionProgressSeries(
   }
   return out;
 }
+
+/**
+ * Most recent completed working-set weight for a lift across
+ * all provided set_logs. Returns null if no qualifying sets exist.
+ * Excludes warmup and max_test intent.
+ */
+export function mostRecentWorkingWeight(
+  liftId: string,
+  sets: SetLog[],
+  sessions: SessionLog[],
+): number | null {
+  const sessionDate = new Map(sessions.map((s) => [s.id, s.date]));
+  const qualifying = sets
+    .filter(
+      (s) =>
+        s.liftId === liftId &&
+        s.status === 'completed' &&
+        (s.intent ?? 'working') !== 'warmup' &&
+        (s.intent ?? 'working') !== 'max_test' &&
+        (s.weight ?? 0) > 0 &&
+        sessionDate.has(s.sessionLogId),
+    )
+    .sort((a, b) => {
+      const da = sessionDate.get(a.sessionLogId) ?? '';
+      const db = sessionDate.get(b.sessionLogId) ?? '';
+      return da < db ? 1 : da > db ? -1 : 0;
+    });
+  return qualifying[0]?.weight ?? null;
+}
