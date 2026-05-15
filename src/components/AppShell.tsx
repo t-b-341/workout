@@ -2,8 +2,13 @@
 
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { useEffect, useState } from 'react';
+import { Suspense, useCallback, useEffect, useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
+import {
+  importCompletedSession,
+  PP_OHP_WORKOUT_MAY_15,
+} from '@/lib/importCompletedSession';
+import { AppShellImportTrigger } from '@/components/AppShellImportTrigger';
 import { shellMaxClass, useLayoutMode } from '@/lib/layoutMode';
 import {
   ensureLocalSeed,
@@ -16,10 +21,20 @@ import { backfillCardioFromSets } from '@/lib/backfill';
 import { repairOpeningPrBaselineSession } from '@/lib/openingPrBaseline';
 import { fireDueTrackerReminders, isTrackerRemindersEnabled } from '@/lib/trackerReminders';
 
+declare global {
+  interface Window {
+    __workoutDev?: {
+      importCompletedSession: typeof importCompletedSession;
+      PP_OHP_WORKOUT_MAY_15: typeof PP_OHP_WORKOUT_MAY_15;
+    };
+  }
+}
+
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
   const { mode, toggleMode } = useLayoutMode();
+  const onImportError = useCallback((msg: string) => setError(msg), []);
   const shell = shellMaxClass(mode);
   const [ready, setReady] = useState(false);
   const [syncing, setSyncing] = useState(false);
@@ -125,6 +140,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     };
   }, [ready]);
 
+  useEffect(() => {
+    if (process.env.NODE_ENV === 'development') {
+      window.__workoutDev = { importCompletedSession, PP_OHP_WORKOUT_MAY_15 };
+    }
+  }, []);
+
   if (error) {
     return (
       <main className="min-h-dvh p-6 flex flex-col gap-3">
@@ -153,6 +174,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="min-h-dvh flex flex-col">
+      {ready && (
+        <Suspense fallback={null}>
+          <AppShellImportTrigger onError={onImportError} />
+        </Suspense>
+      )}
       <main className="flex-1 w-full pb-28 supports-[padding:max(0px)]:pb-[max(7rem,env(safe-area-inset-bottom,0px)+4.5rem)]">
         {children}
       </main>
