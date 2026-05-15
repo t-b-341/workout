@@ -11,6 +11,7 @@ import {
   useAllReadiness,
   useAllStress,
   useAllNutrition,
+  useAllHydration,
   useAllInjuryEpisodes,
   useAllMindfulness,
   useSessionsAfterReadiness,
@@ -45,6 +46,7 @@ import { Sparkline, MiniBars, ProgressLineChart } from './Sparkline';
 import { ReadinessSummary } from './ReadinessSummary';
 import { SessionEditSheet } from './SessionEditSheet';
 import { NutritionLogEditSheet } from './NutritionLogEditSheet';
+import { HydrationLogEditSheet } from './HydrationLogEditSheet';
 import { BodyweightLogEditSheet } from './BodyweightLogEditSheet';
 import { BodyMeasurementLogEditSheet } from './BodyMeasurementLogEditSheet';
 import { PageShell } from './PageShell';
@@ -66,6 +68,7 @@ import type {
   Lift,
   MuscleGroup,
   NutritionLog,
+  HydrationLog,
   ReadinessLog,
   SessionLog,
   SetLog,
@@ -83,6 +86,7 @@ type Tab =
   | 'bodyweight'
   | 'measurements'
   | 'diet'
+  | 'hydration'
   | 'injuries'
   | 'hrv'
   | 'lifting-goals'
@@ -99,6 +103,7 @@ const TABS: Array<{ id: Tab; label: string }> = [
   { id: 'bodyweight', label: 'BW' },
   { id: 'measurements', label: 'Measure' },
   { id: 'diet', label: 'Diet' },
+  { id: 'hydration', label: 'Hydration' },
   { id: 'injuries', label: 'Injuries' },
   { id: 'hrv', label: 'HRV' },
   { id: 'lifting-goals', label: 'Goals 2026' },
@@ -117,6 +122,7 @@ export function HistoryView() {
   const readiness = useAllReadiness();
   const stress = useAllStress();
   const nutrition = useAllNutrition();
+  const hydration = useAllHydration();
   const episodes = useAllInjuryEpisodes();
   const mindfulness = useAllMindfulness();
   const wellnessTargets = useWellnessTargets();
@@ -133,6 +139,7 @@ export function HistoryView() {
     !readiness ||
     !stress ||
     !nutrition ||
+    !hydration ||
     !episodes ||
     !mindfulness
   ) {
@@ -187,6 +194,7 @@ export function HistoryView() {
       {tab === 'bodyweight' && <BodyweightList logs={bodyweights} />}
       {tab === 'measurements' && <MeasurementsList logs={bodyMeasurements} />}
       {tab === 'diet' && <DietList logs={nutrition} />}
+      {tab === 'hydration' && <HydrationList logs={hydration} />}
       {tab === 'injuries' && <InjuriesList episodes={episodes} />}
       {tab === 'hrv' && <HrvList readiness={readiness} />}
       {tab === 'lifting-goals' && (
@@ -1236,6 +1244,72 @@ function InjuriesList({ episodes }: { episodes: InjuryEpisode[] }) {
 function macroPct(actual: number, target: number): string | null {
   if (target <= 0) return null;
   return `${Math.round((actual / target) * 100)}%`;
+}
+
+function hydrationMlToOz(ml: number): number {
+  return Math.round((ml / 29.5737) * 10) / 10;
+}
+
+function HydrationList({ logs }: { logs: HydrationLog[] }) {
+  const [editing, setEditing] = useState<HydrationLog | null>(null);
+
+  if (logs.length === 0) {
+    return (
+      <div className="text-zinc-500 text-sm">
+        No hydration logs yet…
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-3">
+      {editing && (
+        <HydrationLogEditSheet key={editing.id} log={editing} onClose={() => setEditing(null)} />
+      )}
+      <div className="rounded-2xl bg-zinc-900 border border-zinc-800 divide-y divide-zinc-800">
+        {logs.map((h) => {
+          const actualOz = hydrationMlToOz(h.waterActualMl);
+          const targetOz = hydrationMlToOz(h.waterTargetMl);
+          return (
+            <div key={h.id} className="p-3 space-y-2">
+              <div className="flex items-baseline justify-between gap-2">
+                <div>
+                  <div className="text-sm font-medium text-zinc-200">
+                    {fmtDate(h.date, 'EEE, MMM d, yyyy')}
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2 mt-1">
+                    {h.electrolytes && (
+                      <span className="text-[10px] uppercase tracking-wider px-2 py-0.5 rounded-full bg-sky-500/15 text-sky-300 border border-sky-500/30">
+                        Electrolytes
+                      </span>
+                    )}
+                    {h.urineColor != null && (
+                      <span className="text-[11px] text-zinc-500">Urine color {h.urineColor}</span>
+                    )}
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  <div className="text-right">
+                    <div className="font-mono text-sm text-sky-300">
+                      {actualOz}
+                      <span className="text-zinc-500 text-xs"> / {targetOz} oz</span>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setEditing(h)}
+                    className="text-xs px-2 h-8 rounded-md border border-zinc-700 text-zinc-400 hover:text-amber-400 hover:border-zinc-600"
+                  >
+                    Edit
+                  </button>
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
 }
 
 function DietList({ logs }: { logs: NutritionLog[] }) {

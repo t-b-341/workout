@@ -7,12 +7,18 @@ function clamp(value: number, min: number, max: number): number {
 export type ReadinessRecommendation = {
   mode: SessionMode;
   reason: string;
+  /** Session-length guidance (e.g. school workload); does not change mode. */
+  note?: string;
 };
 
-export type RecommendModeHrvInput = {
+export type RecommendModeOptions = {
   hrvRmssd?: number;
   hrvSkipped?: boolean;
+  schoolLoad?: 0 | 1 | 2 | 3;
 };
+
+/** @deprecated Use {@link RecommendModeOptions}. */
+export type RecommendModeHrvInput = RecommendModeOptions;
 
 function baseRecommendMode(
   sleepHours: number,
@@ -35,25 +41,41 @@ export function recommendMode(
   sleepHours: number,
   soreness: number,
   motivation: number,
-  hrv?: RecommendModeHrvInput,
+  opts?: RecommendModeOptions,
 ): ReadinessRecommendation {
   const base = baseRecommendMode(sleepHours, soreness, motivation);
-  if (hrv?.hrvSkipped || hrv?.hrvRmssd == null || !Number.isFinite(hrv.hrvRmssd)) {
-    return base;
+  let rec: ReadinessRecommendation = base;
+
+  if (!opts?.hrvSkipped && opts?.hrvRmssd != null && Number.isFinite(opts.hrvRmssd)) {
+    const hrvScore = clamp(((opts.hrvRmssd - 20) / 50) * 100, 0, 100);
+    if (rec.mode !== 'skip') {
+      if (rec.mode === 'standard' && hrvScore < 30) {
+        rec = {
+          mode: 'light',
+          reason: 'Morning HRV reads low — favor a light day unless warm-ups feel surprisingly good.',
+        };
+      } else if (rec.mode === 'light' && hrvScore < 18 && sleepHours < 7) {
+        rec = {
+          mode: 'skip',
+          reason: 'Short sleep plus crushed HRV — take the recovery day.',
+        };
+      }
+    }
   }
-  const hrvScore = clamp(((hrv.hrvRmssd - 20) / 50) * 100, 0, 100);
-  if (base.mode === 'skip') return base;
-  if (base.mode === 'standard' && hrvScore < 30) {
-    return {
-      mode: 'light',
-      reason: 'Morning HRV reads low — favor a light day unless warm-ups feel surprisingly good.',
-    };
+
+  // Heavy school load reduces recommended session scope.
+  // Heavy (3) → suggest abbreviated if otherwise standard.
+  // Moderate (2) → note to prioritize main lifts.
+  if (opts?.schoolLoad === 3 && rec.mode === 'standard') {
+    rec.note =
+      (rec.note ? rec.note + ' · ' : '') +
+      'Heavy school day — consider prioritizing main lifts only.';
   }
-  if (base.mode === 'light' && hrvScore < 18 && sleepHours < 7) {
-    return {
-      mode: 'skip',
-      reason: 'Short sleep plus crushed HRV — take the recovery day.',
-    };
+  if (opts?.schoolLoad === 2) {
+    rec.note =
+      (rec.note ? rec.note + ' · ' : '') +
+      'Moderate study load today — keep accessory work brief.';
   }
-  return base;
+
+  return rec;
 }

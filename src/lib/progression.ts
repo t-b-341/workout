@@ -80,7 +80,8 @@ export type ProgressionDecision = {
 /**
  * Double-progression rule:
  * - Sets are FIXED (never auto-add).
- * - Advance weight only when ALL completed-status sets hit `repMax`.
+ * - Advance weight when all completed sets hit `repMax`, except the last set
+ *   may miss `repMax` by exactly 1 rep (accumulated fatigue).
  * - Light, skip, and deload sessions never advance.
  * - Any non-completed set (reduced/skipped/substituted) blocks advance.
  */
@@ -127,11 +128,15 @@ export function decideProgression(
       if (s.status !== 'completed') {
         return { ...base, held: true, reason: `Set ${s.setIndex + 1} not completed (${s.status})` };
       }
-      if (s.reps < prescription.repMax) {
+      // Strict on all sets except the last setIndex — the last set may miss
+      // repMax by exactly 1 due to accumulated fatigue.
+      const isLastSetIndex = s.setIndex === prescription.sets - 1;
+      const allowedShortfall = isLastSetIndex ? 1 : 0;
+      if (s.reps < prescription.repMax - allowedShortfall) {
         return {
           ...base,
           held: true,
-          reason: `Set ${s.setIndex + 1}: ${s.reps} reps < top of range (${prescription.repMax})`,
+          reason: `Set ${s.setIndex + 1}: ${s.reps} reps — need ${prescription.repMax - allowedShortfall}+ to advance (last set may miss by 1)`,
         };
       }
     }
@@ -198,7 +203,7 @@ export function decideProgression(
     ...base,
     nextWeight: snapWorkingWeight(rawNext, liftMeta),
     advanced: true,
-    reason: `All sets hit ${prescription.repMax} reps — +${step}`,
+    reason: `All sets hit ${prescription.repMax} reps (or near-miss on last) — +${step} lb next session`,
   };
 }
 

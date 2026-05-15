@@ -1,4 +1,9 @@
-import type { Lift, Prescription } from './types';
+import {
+  catalogLiftIncrementLb,
+  liftForSnap,
+  snapWorkingWeight,
+} from './progression';
+import type { Lift, Prescription, SetLog } from './types';
 
 const DELOAD_INTENSITY = 0.85;
 
@@ -97,4 +102,71 @@ export function applyStandardDeload(
 
   sets = halfAccessorySets(p.sets);
   return { ...p, weight, sets, repMin, repMax };
+}
+
+/**
+ * Compute the recommended Meso 2 starting weight for a lift.
+ * If the lift was ready to progress (all recent working sets
+ * hit repMax before deload), advance by one increment.
+ * Otherwise hold at current weight.
+ */
+export function mesoTransitionWeight(
+  prescription: Prescription,
+  lift: Lift,
+  recentWorkingSets: SetLog[],
+): { weight: number; advanced: boolean; reason: string } {
+  if (lift.lockedWeight) {
+    return {
+      weight: prescription.weight,
+      advanced: false,
+      reason: 'Weight locked',
+    };
+  }
+
+  const dated = recentWorkingSets as Array<SetLog & { date?: string }>;
+
+  // Get the last N sets for this prescription (N = sets in rx)
+  const lastSets = dated
+    .filter(
+      (s) =>
+        s.prescriptionId === prescription.id &&
+        s.status === 'completed' &&
+        (s.intent ?? 'working') === 'working',
+    )
+    .sort((a, b) => ((a.date ?? '') < (b.date ?? '') ? 1 : -1))
+    .slice(0, prescription.sets);
+
+  if (lastSets.length < prescription.sets) {
+    return {
+      weight: prescription.weight,
+      advanced: false,
+      reason: 'Insufficient data — hold weight',
+    };
+  }
+
+  // Near-miss rule: last set may be repMax-1, all others repMax
+  const allReady = lastSets.every((s, i) => {
+    const isLast = i === lastSets.length - 1;
+    return s.reps >= prescription.repMax - (isLast ? 1 : 0);
+  });
+
+  if (!allReady) {
+    return {
+      weight: prescription.weight,
+      advanced: false,
+      reason: 'Not all sets hit ceiling — hold weight',
+    };
+  }
+
+  const step = prescription.increment ?? catalogLiftIncrementLb(prescription.liftId);
+  const nextWeight = snapWorkingWeight(
+    prescription.weight + step,
+    liftForSnap(prescription.liftId),
+  );
+
+  return {
+    weight: nextWeight,
+    advanced: true,
+    reason: `Ceiling hit last meso — advancing +${step} lb`,
+  };
 }

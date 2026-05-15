@@ -183,7 +183,7 @@ export type SessionLog = {
   sessionStatus?: SessionStatus;
 };
 
-export type CardioType = 'liss' | 'intervals';
+export type CardioType = 'liss' | 'intervals' | 'occupational';
 
 export type CardioLog = {
   id: string;
@@ -204,6 +204,8 @@ export type CardioLog = {
   avgHr?: number;
   peakHr?: number;
   notes?: string;
+  /** Occupational: shift duration in hours (source of the activity). */
+  shiftHours?: number;
 };
 
 export type BodyweightLog = {
@@ -269,6 +271,9 @@ export type ReadinessLog = {
   hrvSkipped?: boolean;
   /** Optional bodyweight logged alongside readiness. */
   bodyweight?: number;
+  /** Subjective school/study workload today (0 = none, 1 = light,
+   *  2 = moderate, 3 = heavy). Influences session length rec. */
+  schoolLoad?: 0 | 1 | 2 | 3;
   /**
    * Legacy: mindfulness is now `mindfulness_logs` (multiple entries per day).
    * Kept for deserializing old rows / server payloads.
@@ -376,6 +381,8 @@ export type StressLog = {
   comment?: string;
   /** Heavy parenting / kids-load day. */
   kidsDay?: boolean;
+  /** Work shift logged on this check-in. */
+  workDay?: boolean;
 };
 
 export type RecoveryBand = 'push' | 'normal' | 'conservative' | 'recovery';

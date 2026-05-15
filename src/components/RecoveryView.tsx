@@ -419,6 +419,7 @@ export function RecoveryView() {
   const todayPlanTemplateId = useTodayPlanTemplateId();
   const session = useTodaySession(todayPlanTemplateId);
   const readiness = useReadinessForSession(session?.id);
+  const yesterdayReadiness = useReadinessForDate(yesterday);
 
   const score = useMemo(
     () =>
@@ -430,8 +431,9 @@ export function RecoveryView() {
         readiness,
         stress: stress ?? [],
         mindfulness: mindfulness ?? [],
+        yesterdayReadiness,
       }),
-    [date, sleep, hydrationLagged, nutritionLagged, readiness, stress, mindfulness],
+    [date, sleep, hydrationLagged, nutritionLagged, readiness, stress, mindfulness, yesterdayReadiness],
   );
   const plan = useMemo(() => recoveryPlan(score.band), [score.band]);
   const performanceRecommendations = useMemo(
@@ -483,7 +485,14 @@ export function RecoveryView() {
           Band: <span className="text-zinc-200 capitalize">{score.band}</span>
         </div>
         <div className="mt-3 grid grid-cols-2 gap-2 text-sm">
-          <Stat label="Sleep" value={score.sleepScore} />
+          <Stat
+            label={
+              yesterdayReadiness?.napDurationMin != null && yesterdayReadiness.napDurationMin > 0
+                ? "Sleep (+ yesterday's nap)"
+                : 'Sleep'
+            }
+            value={score.sleepScore}
+          />
           <Stat label="Hydration (yesterday)" value={score.hydrationScore} />
           <Stat label="Nutrition (yesterday)" value={score.nutritionScore} />
           <Stat label="Readiness" value={score.readinessScore} />
@@ -715,6 +724,7 @@ function StressSection({
   const [rating, setRating] = useState<1 | 2 | 3 | 4 | 5>(3);
   const [commentDraft, setCommentDraft] = useState('');
   const [kidsDay, setKidsDay] = useState(false);
+  const [workDay, setWorkDay] = useState(false);
   const dayAvg = averageStressRating(entries);
   const highStress =
     entries.some((e) => e.rating >= 4) || (dayAvg != null && dayAvg >= 4);
@@ -732,10 +742,12 @@ function StressSection({
       rating,
       ...(trimmed ? { comment: trimmed } : {}),
       ...(kidsDay ? { kidsDay: true } : {}),
+      ...(workDay ? { workDay: true } : {}),
     });
     await flushDirty().catch(() => {});
     setCommentDraft('');
     setKidsDay(false);
+    setWorkDay(false);
   }
 
   async function removeEntry(id: string) {
@@ -775,6 +787,11 @@ function StressSection({
                   {e.kidsDay && (
                     <span className="ml-2 text-[10px] uppercase tracking-wide text-sky-400/90">
                       Kids day
+                    </span>
+                  )}
+                  {e.workDay && (
+                    <span className="ml-2 text-[10px] uppercase tracking-wide text-orange-400/90">
+                      Work day
                     </span>
                   )}
                 </div>
@@ -821,6 +838,15 @@ function StressSection({
           className="rounded border-zinc-600 bg-zinc-950 accent-amber-500"
         />
         Kids day?
+      </label>
+      <label className="flex items-center gap-2 text-xs text-zinc-400 cursor-pointer w-fit">
+        <input
+          type="checkbox"
+          checked={workDay}
+          onChange={(ev) => setWorkDay(ev.target.checked)}
+          className="rounded border-zinc-600 bg-zinc-950 accent-amber-500"
+        />
+        Work day?
       </label>
       <label className="block text-xs text-zinc-500">
         Comment (optional)

@@ -3,6 +3,7 @@
 import { format } from 'date-fns';
 import { useState } from 'react';
 import { CardioBanner } from './CardioBanner';
+import { CardioLogEditSheet } from './CardioLogEditSheet';
 import { MindfulnessWeeklyBanner } from './MindfulnessWeeklyBanner';
 import { DecimalStepper, LooseIntField } from './WeightStepper';
 import { PageShell } from './PageShell';
@@ -30,6 +31,28 @@ function isoForLocalDateTime(dateIso: string, hm: string): string {
   return new Date(`${dateIso}T${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}:00`).toISOString();
 }
 
+const SHIFT_HOUR_OPTIONS = [6, 8.5, 10.5] as const;
+
+/** Estimated active minutes from on-feet shift length (~20 min per clock hour). */
+function activeMinutesFromShiftHours(shiftHours: number): number {
+  return Math.round(shiftHours * 20);
+}
+
+function cardioEntryTitle(c: CardioLog): string {
+  if (c.type === 'occupational') {
+    const shift =
+      c.shiftHours != null ? ` (${c.shiftHours} hr shift)` : '';
+    return `On feet · ${c.durationMin} min${shift}`;
+  }
+  if (c.type === 'liss') return `LISS · ${c.durationMin} min`;
+  return `Intervals · ${c.durationMin} min`;
+}
+
+function cardioDeleteLabel(c: CardioLog): string {
+  if (c.type === 'occupational') return `On feet · ${c.durationMin} min`;
+  return `${c.type === 'liss' ? 'LISS' : 'Intervals'} · ${c.durationMin} min`;
+}
+
 export function CardioView() {
   const wk = useThisWeekCardio();
   const [type, setType] = useState<CardioType>('liss');
@@ -40,10 +63,25 @@ export function CardioView() {
   const [avgHr, setAvgHr] = useState<number | ''>('');
   const [peakHr, setPeakHr] = useState<number | ''>('');
   const [notes, setNotes] = useState('');
+  const [editing, setEditing] = useState<CardioLog | null>(null);
+  const [selectedShiftHours, setSelectedShiftHours] = useState<number>(8.5);
 
   async function add() {
     const id = `cardio-${Date.now()}`;
     const date = todayIso();
+    if (type === 'occupational') {
+      const row: CardioLog = {
+        id,
+        date,
+        type: 'occupational',
+        durationMin: duration,
+        shiftHours: selectedShiftHours,
+        notes: notes || undefined,
+      };
+      await localUpsert('cardio_logs', row);
+      setNotes('');
+      return;
+    }
     const endedAt = type === 'liss' ? isoForLocalDateTime(date, lissTimeHm) : new Date().toISOString();
     const { startedAt, endedAt: endIso } = resolveCardioTimestamps(endedAt, duration, undefined);
     const row: CardioLog = {
@@ -59,6 +97,11 @@ export function CardioView() {
     };
     await localUpsert('cardio_logs', row);
     setNotes('');
+  }
+
+  function selectShiftHours(hours: number) {
+    setSelectedShiftHours(hours);
+    setDuration(activeMinutesFromShiftHours(hours));
   }
 
   return (
@@ -80,9 +123,40 @@ export function CardioView() {
             onClick={() => setType('intervals')}
             className={`flex-1 h-11 rounded-xl ${type === 'intervals' ? 'bg-amber-500 text-zinc-950 font-medium' : 'bg-zinc-800'}`}
           >Intervals</button>
+          <button
+            type="button"
+            onClick={() => {
+              setType('occupational');
+              setDuration(activeMinutesFromShiftHours(selectedShiftHours));
+            }}
+            className={`flex-1 h-11 rounded-xl text-sm ${type === 'occupational' ? 'bg-amber-500 text-zinc-950 font-medium' : 'bg-zinc-800'}`}
+          >
+            On feet
+          </button>
         </div>
 
         <div className="space-y-3">
+          {type === 'occupational' && (
+            <div>
+              <div className="text-xs text-zinc-500 mb-2">Shift duration</div>
+              <div className="flex gap-2">
+                {SHIFT_HOUR_OPTIONS.map((h) => (
+                  <button
+                    key={h}
+                    type="button"
+                    onClick={() => selectShiftHours(h)}
+                    className={`flex-1 h-10 rounded-xl text-sm ${
+                      selectedShiftHours === h
+                        ? 'bg-amber-500/20 border border-amber-500/50 text-amber-100 font-medium'
+                        : 'bg-zinc-950 border border-zinc-800 text-zinc-400'
+                    }`}
+                  >
+                    {h}h
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
           <label className="flex flex-col gap-1">
             <span className="text-xs text-zinc-500">Duration (min)</span>
             <LooseIntField
@@ -130,7 +204,7 @@ export function CardioView() {
                 />
               </label>
             </div>
-          ) : (
+          ) : type === 'intervals' ? (
             <div className="grid grid-cols-2 gap-3">
               <label className="flex flex-col gap-1">
                 <span className="text-xs text-zinc-500">Avg HR (optional)</span>
@@ -159,7 +233,7 @@ export function CardioView() {
                 />
               </label>
             </div>
-          )}
+          ) : null}
         </div>
         <input
           placeholder="Notes (optional)"
@@ -168,7 +242,8 @@ export function CardioView() {
           className="w-full h-11 px-3 rounded-xl bg-zinc-950 border border-zinc-800"
         />
         <button onClick={add} className="w-full h-12 rounded-xl bg-emerald-600 font-medium">
-          Log {type === 'liss' ? 'LISS' : 'Intervals'}
+          Log{' '}
+          {type === 'liss' ? 'LISS' : type === 'intervals' ? 'Intervals' : 'on feet'}
         </button>
       </div>
 
@@ -178,7 +253,7 @@ export function CardioView() {
         {(wk?.items ?? []).slice().sort((a, b) => (a.date < b.date ? 1 : -1)).map((c) => (
           <div key={c.id} className="rounded-xl border border-zinc-800 bg-zinc-900 p-3 flex items-center justify-between">
             <div>
-              <div className="text-sm font-medium">{c.type === 'liss' ? 'LISS' : 'Intervals'} · {c.durationMin} min</div>
+              <div className="text-sm font-medium">{cardioEntryTitle(c)}</div>
               <div className="text-xs text-zinc-500 mt-0.5">
                 {fmtDate(c.date)}
                 {c.startedAt && c.endedAt && (
@@ -193,20 +268,35 @@ export function CardioView() {
               </div>
               {c.notes && <div className="text-xs text-zinc-500 mt-0.5">{c.notes}</div>}
             </div>
-            <button
-              type="button"
-              onClick={() => {
-                void (async () => {
-                  await localDelete('cardio_logs', c.id, {
-                    undoLabel: `${c.type === 'liss' ? 'LISS' : 'Intervals'} · ${c.durationMin} min`,
-                  });
-                })();
-              }}
-              className="text-xs text-zinc-500 px-2 py-1 rounded hover:text-rose-400"
-            >Delete</button>
+            <div className="flex items-center gap-1 shrink-0">
+              <button
+                type="button"
+                onClick={() => setEditing(c)}
+                className="text-xs text-zinc-500 px-2 py-1 rounded hover:text-amber-400"
+              >
+                Edit
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  void (async () => {
+                    await localDelete('cardio_logs', c.id, {
+                      undoLabel: cardioDeleteLabel(c),
+                    });
+                  })();
+                }}
+                className="text-xs text-zinc-500 px-2 py-1 rounded hover:text-rose-400"
+              >
+                Delete
+              </button>
+            </div>
           </div>
         ))}
       </div>
+
+      {editing && (
+        <CardioLogEditSheet log={editing} onClose={() => setEditing(null)} />
+      )}
     </PageShell>
   );
 }

@@ -46,7 +46,6 @@ import {
   writeSundayMondayEarlyUnlocked,
 } from '@/lib/sundayMondayEarly';
 import { applyStandardDeload } from '@/lib/deload';
-import { applyEffortScale, effortLabel } from '@/lib/effort';
 import { BodyweightQuickLog } from './BodyweightQuickLog';
 import { BodyMeasurementsQuickLog } from './BodyMeasurementsQuickLog';
 import { SessionRecapSheet } from './SessionRecapSheet';
@@ -55,21 +54,13 @@ import { WeekActivityStrip } from './WeekActivityStrip';
 import { SessionContextDock } from './SessionContextDock';
 import { PageShell } from './PageShell';
 import { StartWorkoutButton, WorkoutStopwatchBar } from './WorkoutSessionTimer';
-import { TrainingMindsetCard } from './TrainingMindsetCard';
 import { MesoBoundaryPromptCard } from './MesoBoundaryPromptCard';
 import { MacroTrendCallout } from './MacroTrendCallout';
 import { GhostSessionPromptCard } from './GhostSessionPromptCard';
 import { MindfulnessTodayCard } from './MindfulnessTodayCard';
-import { SessionStrategyTagsCard } from './SessionStrategyTagsCard';
 import { DayNotesCard } from './DayNotesCard';
 import { WorkdayCard } from './WorkdayCard';
 import { SupplementsCard } from './SupplementsCard';
-import {
-  setGoalCheckedForSession,
-  useFitnessGoals,
-  useGoalChecksForSession,
-  useGoalSessionPrefs,
-} from '@/lib/goals';
 import { sortPrescriptionsWithFavoritesFirst, useFavoriteLiftIds } from '@/lib/favoriteLifts';
 import { sortTemplatesProgramOrder } from '@/lib/seed';
 import { QuickSessionView } from './QuickSessionView';
@@ -284,8 +275,6 @@ export function TodayView() {
           writeTodayPlanPreference({ date: todayIso(), templateId: t.id });
         }}
       />
-      {!sundayGateActive && <SessionGoalsCard sessionId={session.id} />}
-      {!needsReadiness && session.mode !== 'skip' && <SessionStrategyTagsCard session={session} />}
       <MindfulnessTodayCard session={session} />
       <WorkdayCard date={todayIso()} />
       <SupplementsCard date={todayIso()} />
@@ -403,19 +392,15 @@ export function TodayView() {
             <>
               {!session.startedAt && <StartWorkoutButton session={session} />}
               {session.startedAt && <WorkoutStopwatchBar session={session} />}
-              <TrainingMindsetCard />
             </>
           )}
           {(displayPrescriptions ?? []).map((p) => {
             const lift = lifts.find((l) => l.id === p.liftId);
             if (!lift) return null;
-            const adjusted = applyEffortScale(
-              applySessionMode(p, session, lift, allSets, allSessions),
-              session,
-            );
+            const modeAdjusted = applySessionMode(p, session, lift, allSets, allSessions);
             const snapped = {
-              ...adjusted,
-              weight: snapWorkingWeight(adjusted.weight, liftForSnap(p.liftId)),
+              ...modeAdjusted,
+              weight: snapWorkingWeight(modeAdjusted.weight, liftForSnap(p.liftId)),
             };
             return (
               <LiftCard
@@ -432,11 +417,6 @@ export function TodayView() {
 
       {!needsReadiness && session.mode !== 'skip' && !sundayGateActive && (
         <>
-          {(session.effortScale ?? 0) !== 0 && (
-            <div className="text-xs text-zinc-500 text-center">
-              Effort mode active: {effortLabel(session.effortScale ?? 0)}
-            </div>
-          )}
           <FinishSessionButton
             session={session}
             prescriptions={displayPrescriptions ?? []}
@@ -506,44 +486,6 @@ function WeeklyTrackingReminder({
   );
 }
 
-function SessionGoalsCard({ sessionId }: { sessionId: string }) {
-  const goals = useFitnessGoals();
-  const checks = useGoalChecksForSession(sessionId);
-  const prefs = useGoalSessionPrefs();
-
-  if (!goals || goals.length === 0 || !checks || !prefs) return null;
-  const visibleGoals = prefs.useTopThreeOnly ? goals.slice(0, 3) : goals;
-  return (
-    <div className="rounded-2xl bg-zinc-900 border border-zinc-800 p-4 space-y-2">
-      <div className="flex items-center justify-between gap-2">
-        <div className="text-sm font-medium">Session goals</div>
-        {prefs.useTopThreeOnly && (
-          <span className="text-[10px] uppercase tracking-wider px-2 py-0.5 rounded-full bg-zinc-800 text-zinc-400">
-            top 3 pinned
-          </span>
-        )}
-      </div>
-      <div className="space-y-1.5">
-        {visibleGoals.map((goal) => {
-          const checked = Boolean(checks[goal.id]);
-          return (
-            <label key={goal.id} className="flex items-start gap-2 text-sm text-zinc-300">
-              <input
-                type="checkbox"
-                checked={checked}
-                onChange={(e) => {
-                  void setGoalCheckedForSession(sessionId, goal.id, e.target.checked);
-                }}
-                className="mt-0.5"
-              />
-              <span className={checked ? 'line-through text-zinc-500' : ''}>{goal.text}</span>
-            </label>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
 
 const MACRO_TREND_DISMISS_PREFIX = 'workout:macroTrendDismiss:';
 

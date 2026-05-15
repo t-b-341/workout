@@ -223,18 +223,33 @@ export function compositeWeightsForRecovery(
   return { sleep: 0.4, hydration: 0.2, nutrition: 0.25, readiness: 0.15 };
 }
 
+/** Yesterday's nap affects tonight's sleep architecture — lagged sleep modifier. */
+function laggedNapModifier(log?: ReadinessLog): number {
+  if (!log?.napDurationMin || log.napDurationMin <= 0) return 0;
+  let mod = 0;
+  if (log.napDurationMin <= 30) mod = 3;
+  else if (log.napDurationMin <= 60) mod = 6;
+  else mod = 8;
+  if (log.napTiming === 'late') mod -= 5;
+  return Math.max(-4, mod);
+}
+
 export function buildRecoveryScore(input: {
   date: string;
   sleep?: SleepLog;
   hydration?: HydrationLog;
   nutrition?: NutritionLog;
   readiness?: ReadinessLog;
+  /** Yesterday's readiness (nap lagged into today's sleep pillar). */
+  yesterdayReadiness?: ReadinessLog;
   /** All stress check-ins for this calendar day (any count). */
   stress?: StressLog[];
   /** All mindfulness entries for this calendar day (any count). */
   mindfulness?: MindfulnessLog[];
 }): RecoveryScore {
   const s = sleepScore(input.sleep);
+  const napLag = laggedNapModifier(input.yesterdayReadiness);
+  const sAdjusted = clamp(s + napLag, 0, 100);
   const h = hydrationScore(input.hydration);
   const n = nutritionScore(input.nutrition);
   const r = readinessScore(input.readiness);
@@ -253,7 +268,7 @@ export function buildRecoveryScore(input: {
 
   const w = compositeWeightsForRecovery(hasStress, hasMindfulness);
   const compositeScore = Math.round(
-    s * w.sleep
+    sAdjusted * w.sleep
       + h * w.hydration
       + n * w.nutrition
       + r * w.readiness
@@ -263,7 +278,7 @@ export function buildRecoveryScore(input: {
 
   return {
     date: input.date,
-    sleepScore: s,
+    sleepScore: sAdjusted,
     hydrationScore: h,
     nutritionScore: n,
     readinessScore: r,

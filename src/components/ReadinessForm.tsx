@@ -23,6 +23,7 @@ export function ReadinessForm({
   const [sleepInterruptions, setSleepInterruptions] = useState<number>(0);
   const [napDuration, setNapDuration] = useState<number>(0);
   const [napTiming, setNapTiming] = useState<'early' | 'late'>('early');
+  const [schoolLoad, setSchoolLoad] = useState<0 | 1 | 2 | 3>(0);
   const [soreness, setSoreness] = useState<number>(2);
   const [motivation, setMotivation] = useState<number>(3);
   const existingBw = useThisWeekBodyweight();
@@ -40,6 +41,7 @@ export function ReadinessForm({
       const rec = recommendMode(sleep, soreness, motivation, {
         hrvRmssd: hrvSkipped ? undefined : hrvRmssd,
         hrvSkipped,
+        schoolLoad,
       });
       const row: ReadinessLog = {
         id: `readiness-${session.id}`,
@@ -49,6 +51,7 @@ export function ReadinessForm({
         sleepInterruptions,
         napDurationMin: napDuration > 0 ? napDuration : undefined,
         napTiming: napDuration > 0 ? napTiming : undefined,
+        schoolLoad: schoolLoad > 0 ? schoolLoad : undefined,
         soreness,
         motivation,
         hrvSkipped,
@@ -153,6 +156,30 @@ export function ReadinessForm({
           </div>
         )}
       </div>
+      <div className="space-y-2">
+        <div className="text-sm text-zinc-300">School load today?</div>
+        <div className="flex gap-2">
+          {([
+            [0, 'None'],
+            [1, 'Light'],
+            [2, 'Moderate'],
+            [3, 'Heavy'],
+          ] as const).map(([val, label]) => (
+            <button
+              key={val}
+              type="button"
+              onClick={() => setSchoolLoad(val)}
+              className={`flex-1 h-9 rounded-lg text-xs font-medium border transition-colors ${
+                schoolLoad === val
+                  ? 'bg-amber-600 border-amber-500 text-zinc-950'
+                  : 'bg-zinc-800 border-zinc-700 text-zinc-300'
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      </div>
       <ReadinessScale label="Soreness" value={soreness} onChange={setSoreness} lowLabel="None" highLabel="Severe" />
       <ReadinessScale label="Motivation" value={motivation} onChange={setMotivation} lowLabel="Dead" highLabel="Fired up" />
       <div className="rounded-xl border border-zinc-800 bg-zinc-950 p-3 space-y-2">
@@ -231,6 +258,7 @@ export function ReadinessForm({
                 recommendMode(sleep, soreness, motivation, {
                   hrvRmssd: hrvSkipped ? undefined : hrvRmssd,
                   hrvSkipped,
+                  schoolLoad,
                 }),
               )}
             className="flex-1 h-12 rounded-xl bg-zinc-800 font-medium"
@@ -248,6 +276,9 @@ export function ReadinessForm({
               : 'text-rose-400'
             }`}>{recommended.mode === 'standard' ? 'Standard' : recommended.mode === 'light' ? 'Light day' : 'Skip — recover'}</div>
             <div className="text-xs text-zinc-500 mt-1">{recommended.reason}</div>
+            {recommended.note && (
+              <div className="text-xs text-sky-400/90 mt-1">{recommended.note}</div>
+            )}
           </div>
           <div className="flex gap-2">
             <button
@@ -308,6 +339,7 @@ export function ReadinessEditForm({
   const [sleepInterruptions, setSleepInterruptions] = useState(readiness.sleepInterruptions ?? 0);
   const [napDuration, setNapDuration] = useState(readiness.napDurationMin ?? 0);
   const [napTiming, setNapTiming] = useState<'early' | 'late'>(readiness.napTiming ?? 'early');
+  const [schoolLoad, setSchoolLoad] = useState<0 | 1 | 2 | 3>(readiness.schoolLoad ?? 0);
   const [soreness, setSoreness] = useState(readiness.soreness);
   const [motivation, setMotivation] = useState(readiness.motivation);
   const hadBw = readiness.bodyweight != null;
@@ -322,6 +354,7 @@ export function ReadinessEditForm({
       const rec = recommendMode(sleep, soreness, motivation, {
         hrvRmssd: hrvSkipped ? undefined : hrvRmssd,
         hrvSkipped,
+        schoolLoad,
       });
       const row: ReadinessLog = {
         ...readiness,
@@ -329,6 +362,7 @@ export function ReadinessEditForm({
         sleepInterruptions,
         napDurationMin: napDuration > 0 ? napDuration : undefined,
         napTiming: napDuration > 0 ? napTiming : undefined,
+        schoolLoad: schoolLoad > 0 ? schoolLoad : undefined,
         soreness,
         motivation,
         hrvSkipped,
@@ -366,6 +400,7 @@ export function ReadinessEditForm({
   const preview = recommendMode(sleep, soreness, motivation, {
     hrvRmssd: hrvSkipped ? undefined : hrvRmssd,
     hrvSkipped,
+    schoolLoad,
   });
 
   return (
@@ -442,6 +477,30 @@ export function ReadinessEditForm({
           </div>
         )}
       </div>
+      <div className="space-y-2">
+        <div className="text-sm text-zinc-300">School load today?</div>
+        <div className="flex gap-2">
+          {([
+            [0, 'None'],
+            [1, 'Light'],
+            [2, 'Moderate'],
+            [3, 'Heavy'],
+          ] as const).map(([val, label]) => (
+            <button
+              key={val}
+              type="button"
+              onClick={() => setSchoolLoad(val)}
+              className={`flex-1 h-9 rounded-lg text-xs font-medium border transition-colors ${
+                schoolLoad === val
+                  ? 'bg-amber-600 border-amber-500 text-zinc-950'
+                  : 'bg-zinc-800 border-zinc-700 text-zinc-300'
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      </div>
       <ReadinessScale label="Soreness" value={soreness} onChange={setSoreness} lowLabel="None" highLabel="Severe" />
       <ReadinessScale label="Motivation" value={motivation} onChange={setMotivation} lowLabel="Dead" highLabel="Fired up" />
       <div className="rounded-xl border border-zinc-800 bg-zinc-950 p-3 space-y-2">
@@ -512,6 +571,7 @@ export function ReadinessEditForm({
           {preview.mode === 'standard' ? 'Standard' : preview.mode === 'light' ? 'Light day' : 'Skip — recover'}
         </div>
         <div className="text-xs text-zinc-500">{preview.reason}</div>
+        {preview.note && <div className="text-xs text-sky-400/90 mt-1">{preview.note}</div>}
       </div>
 
       <div className="flex flex-col gap-2 sm:flex-row">

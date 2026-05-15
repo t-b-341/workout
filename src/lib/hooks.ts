@@ -317,6 +317,10 @@ export function useAllNutrition(): NutritionLog[] | undefined {
   }, []);
 }
 
+export function useAllHydration(): HydrationLog[] | undefined {
+  return useLiveQuery(() => getDb().hydration_logs.orderBy('date').reverse().toArray());
+}
+
 export function useHydrationForDate(date: string): HydrationLog | undefined {
   return useLiveQuery(async () => {
     const matches = await getDb().hydration_logs.where('date').equals(date).toArray();
