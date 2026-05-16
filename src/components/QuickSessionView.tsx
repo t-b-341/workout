@@ -7,7 +7,12 @@ import {
   useLifts,
   usePrescriptions,
 } from '@/lib/hooks';
-import { buildQuickPrescriptions, QUICK_DEFAULT_LIFT_IDS } from '@/lib/quickSession';
+import {
+  buildQuickPrescriptions,
+  QUICK_DEFAULT_LIFT_IDS,
+  QUICK_MAX_LIFTS,
+  QUICK_MIN_LIFTS,
+} from '@/lib/quickSession';
 import { liftForSnap, snapWorkingWeight } from '@/lib/progression';
 import { localUpsert, flushDirty } from '@/lib/sync';
 import {
@@ -53,6 +58,7 @@ export function QuickSessionView({ onBack }: Props) {
 
   const [liftIds, setLiftIds] = useState<string[]>(() => [...QUICK_DEFAULT_LIFT_IDS]);
   const [swapIndex, setSwapIndex] = useState<number | null>(null);
+  const [addingSlot, setAddingSlot] = useState(false);
   const [sessionStarted, setSessionStarted] = useState(false);
   const [session, setSession] = useState<SessionLog | null>(null);
   const [finishBusy, setFinishBusy] = useState(false);
@@ -191,6 +197,9 @@ export function QuickSessionView({ onBack }: Props) {
           <p className="text-sm text-zinc-500 mt-1">
             Singles or doubles on five compounds — off-program, no progression.
           </p>
+          <p className="text-xs text-zinc-600 mt-0.5">
+            {liftIds.length} movement{liftIds.length !== 1 ? 's' : ''} · max {QUICK_MAX_LIFTS}
+          </p>
         </div>
 
         <div className="space-y-3">
@@ -200,7 +209,7 @@ export function QuickSessionView({ onBack }: Props) {
             const snapped = snapWorkingWeight(p.weight, liftForSnap(p.liftId));
             return (
               <div
-                key={p.id}
+                key={`quick-prestart-${i}`}
                 className="rounded-2xl border border-zinc-800 bg-zinc-900 p-4 flex items-center justify-between gap-3"
               >
                 <div>
@@ -210,17 +219,47 @@ export function QuickSessionView({ onBack }: Props) {
                     {lift.loadUnit === 'lb' ? ' lb' : ''}
                   </div>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => setSwapIndex(i)}
-                  className="shrink-0 h-9 px-3 rounded-lg bg-zinc-800 border border-zinc-700 text-sm text-zinc-300"
-                >
-                  Swap
-                </button>
+                <div className="flex items-center gap-2 shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setLiftIds((prev) => prev.filter((_, idx) => idx !== i));
+                      setSwapIndex((si) => {
+                        if (si === null) return null;
+                        if (si === i) return null;
+                        if (si > i) return si - 1;
+                        return si;
+                      });
+                    }}
+                    disabled={liftIds.length <= QUICK_MIN_LIFTS}
+                    aria-label={`Remove ${lift.name}`}
+                    className="shrink-0 h-9 w-9 rounded-lg bg-zinc-800 border border-zinc-700 text-zinc-400 flex items-center justify-center text-lg disabled:opacity-30 hover:text-rose-400 transition-colors"
+                  >
+                    −
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSwapIndex(i)}
+                    className="shrink-0 h-9 px-3 rounded-lg bg-zinc-800 border border-zinc-700 text-sm text-zinc-300"
+                  >
+                    Swap
+                  </button>
+                </div>
               </div>
             );
           })}
         </div>
+
+        {liftIds.length < QUICK_MAX_LIFTS && (
+          <button
+            type="button"
+            onClick={() => setAddingSlot(true)}
+            className="w-full h-11 rounded-2xl border border-dashed border-zinc-700 text-sm text-zinc-400 hover:text-zinc-200 hover:border-zinc-500 transition-colors flex items-center justify-center gap-2"
+          >
+            <span className="text-lg leading-none">+</span>
+            Add movement
+          </button>
+        )}
 
         <button
           type="button"
@@ -255,6 +294,38 @@ export function QuickSessionView({ onBack }: Props) {
                         return next;
                       });
                       setSwapIndex(null);
+                    }}
+                    className="w-full text-left px-3 py-3 text-sm text-zinc-200 hover:bg-zinc-900 rounded-lg"
+                  >
+                    {lift.name}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {addingSlot && (
+          <div className="fixed inset-0 z-50 flex items-end justify-center p-0 sm:p-4">
+            <button
+              type="button"
+              aria-label="Close"
+              className="absolute inset-0 bg-black/70"
+              onClick={() => setAddingSlot(false)}
+            />
+            <div className="relative w-full max-w-lg rounded-t-3xl sm:rounded-3xl border border-zinc-800 bg-zinc-950 max-h-[70dvh] flex flex-col">
+              <div className="p-4 border-b border-zinc-800 shrink-0">
+                <h3 className="text-lg font-semibold text-zinc-100">Add movement</h3>
+                <p className="text-xs text-zinc-500 mt-1">Appended to the end of your quick session.</p>
+              </div>
+              <div className="overflow-y-auto p-2 divide-y divide-zinc-800">
+                {swapOptions.map((lift) => (
+                  <button
+                    key={lift.id}
+                    type="button"
+                    onClick={() => {
+                      setLiftIds((prev) => [...prev, lift.id]);
+                      setAddingSlot(false);
                     }}
                     className="w-full text-left px-3 py-3 text-sm text-zinc-200 hover:bg-zinc-900 rounded-lg"
                   >
