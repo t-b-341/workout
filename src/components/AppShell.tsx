@@ -34,11 +34,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
   const { mode, toggleMode } = useLayoutMode();
-  const onImportError = useCallback((msg: string) => setError(msg), []);
   const shell = shellMaxClass(mode);
   const [ready, setReady] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const onImportError = useCallback((msg: string) => setError(msg), []);
   const [userId, setUserId] = useState<string | null>(null);
 
   useEffect(() => {
