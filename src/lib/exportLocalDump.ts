@@ -46,8 +46,15 @@ import {
   SET_INTENTS,
 } from './types';
 import { TRAINING_PLAN_GOALS, type TrainingPlanGoalRow } from './trainingPlanGoals';
+import {
+  bestBarbellRowWeightAt5Plus,
+  bestWeightAtMinReps,
+  bestWorkingSetWeight,
+  currentBest1RmFromSets,
+  maxBwPullupReps,
+  setsForLift,
+} from './liftingGoals';
 import { deriveSessionStatus } from './sessionStatus';
-import { est1RM } from './stats';
 import { todayIso } from './time';
 
 /** Keys this app uses in `localStorage` (UI prefs only; not secrets). */
@@ -131,83 +138,15 @@ function intentOf(s: SetLog, overrides?: Record<string, SetIntent>): SetIntent {
   return 'working';
 }
 
-function setsForLiftSnapshot(sets: SetLog[], liftId: string): SetLog[] {
-  return sets.filter((s) => s.liftId === liftId);
-}
-
-/** Same logic as HistoryView `currentBest1RmFromSets` / goal cards. */
-function currentBest1RmFromSetsSnapshot(sets: SetLog[]): number {
-  const completed = sets.filter((s) => s.status === 'completed');
-  let maxTest = -Infinity;
-  for (const s of completed) {
-    if (s.intent === 'max_test' && Number.isFinite(s.weight)) {
-      maxTest = Math.max(maxTest, s.weight);
-    }
-  }
-  if (maxTest > -Infinity) return maxTest;
-  let bestEst = -Infinity;
-  for (const s of completed) {
-    const intent = s.intent ?? 'working';
-    if (intent !== 'working' && intent !== 'backoff') continue;
-    if (!Number.isFinite(s.weight) || s.weight <= 0) continue;
-    if (s.reps < 1 || s.reps > 20) continue;
-    const e = est1RM(s.weight, s.reps);
-    if (Number.isFinite(e)) bestEst = Math.max(bestEst, e);
-  }
-  return bestEst > -Infinity ? bestEst : 0;
-}
-
-function bestBarbellRowWeightAt5PlusSnapshot(sets: SetLog[]): number {
-  const completed = sets.filter((s) => s.status === 'completed');
-  let best = -Infinity;
-  for (const s of completed) {
-    if (!Number.isFinite(s.weight) || s.reps < 5) continue;
-    best = Math.max(best, s.weight);
-  }
-  return best > -Infinity ? best : 0;
-}
-
-function maxBwPullupRepsSnapshot(sets: SetLog[]): number {
-  let best = -Infinity;
-  for (const s of sets) {
-    if (s.status !== 'completed' || s.weight !== 0) continue;
-    if (Number.isFinite(s.reps)) best = Math.max(best, s.reps);
-  }
-  return best > -Infinity ? best : 0;
-}
-
-function bestWeightAtMinRepsSnapshot(sets: SetLog[], minReps: number): number {
-  let best = 0;
-  for (const s of sets) {
-    if (s.status !== 'completed') continue;
-    if (s.reps < minReps) continue;
-    if (!Number.isFinite(s.weight)) continue;
-    best = Math.max(best, s.weight);
-  }
-  return best;
-}
-
-function bestWorkingSetWeightSnapshot(sets: SetLog[]): number {
-  let best = 0;
-  for (const s of sets) {
-    if (s.status !== 'completed') continue;
-    const intent = s.intent ?? 'working';
-    if (intent !== 'working' && intent !== 'backoff') continue;
-    if (!Number.isFinite(s.weight)) continue;
-    best = Math.max(best, s.weight);
-  }
-  return best;
-}
-
 /** Exported for tests — same derivation as Goals 2026 / Accessories UI. */
 export function buildLiftingGoalSnapshots(set_logs: SetLog[]): LiftingGoalSnapshot[] {
-  const dl = currentBest1RmFromSetsSnapshot(setsForLiftSnapshot(set_logs, 'dl'));
-  const squat = currentBest1RmFromSetsSnapshot(setsForLiftSnapshot(set_logs, 'back_squat'));
-  const bench = currentBest1RmFromSetsSnapshot(setsForLiftSnapshot(set_logs, 'bp'));
-  const row5 = bestBarbellRowWeightAt5PlusSnapshot(setsForLiftSnapshot(set_logs, 'bbr'));
-  const pullBw = maxBwPullupRepsSnapshot(setsForLiftSnapshot(set_logs, 'p1_bw'));
-  const ohp = currentBest1RmFromSetsSnapshot(setsForLiftSnapshot(set_logs, 'ohp'));
-  const pp = currentBest1RmFromSetsSnapshot(setsForLiftSnapshot(set_logs, 'pp'));
+  const dl = currentBest1RmFromSets(setsForLift(set_logs, 'dl'));
+  const squat = currentBest1RmFromSets(setsForLift(set_logs, 'back_squat'));
+  const bench = currentBest1RmFromSets(setsForLift(set_logs, 'bp'));
+  const row5 = bestBarbellRowWeightAt5Plus(setsForLift(set_logs, 'bbr'));
+  const pullBw = maxBwPullupReps(setsForLift(set_logs, 'p1_bw'));
+  const ohp = currentBest1RmFromSets(setsForLift(set_logs, 'ohp'));
+  const pp = currentBest1RmFromSets(setsForLift(set_logs, 'pp'));
 
   const main: LiftingGoalSnapshot[] = [
     {
@@ -316,15 +255,15 @@ export function buildLiftingGoalSnapshots(set_logs: SetLog[]): LiftingGoalSnapsh
     },
   ];
 
-  const accBpPaused = bestWorkingSetWeightSnapshot(setsForLiftSnapshot(set_logs, 'bp_paused'));
-  const accP1Ecc = bestWorkingSetWeightSnapshot(setsForLiftSnapshot(set_logs, 'p1_eccentric'));
-  const accOhpVol = bestWeightAtMinRepsSnapshot(setsForLiftSnapshot(set_logs, 'ohp'), 10);
-  const accPendlay = bestWeightAtMinRepsSnapshot(setsForLiftSnapshot(set_logs, 'pendlay_row'), 5);
-  const accBsPause = bestWeightAtMinRepsSnapshot(setsForLiftSnapshot(set_logs, 'back_squat_paused'), 6);
-  const accFs = bestWeightAtMinRepsSnapshot(setsForLiftSnapshot(set_logs, 'front_squat'), 3);
-  const accBss = bestWeightAtMinRepsSnapshot(setsForLiftSnapshot(set_logs, 'bss'), 10);
-  const accDdl = bestWeightAtMinRepsSnapshot(setsForLiftSnapshot(set_logs, 'ddl'), 6);
-  const accRdl = bestWeightAtMinRepsSnapshot(setsForLiftSnapshot(set_logs, 'rdl'), 10);
+  const accBpPaused = bestWorkingSetWeight(setsForLift(set_logs, 'bp_paused'));
+  const accP1Ecc = bestWorkingSetWeight(setsForLift(set_logs, 'p1_eccentric'));
+  const accOhpVol = bestWeightAtMinReps(setsForLift(set_logs, 'ohp'), 10);
+  const accPendlay = bestWeightAtMinReps(setsForLift(set_logs, 'pendlay_row'), 5);
+  const accBsPause = bestWeightAtMinReps(setsForLift(set_logs, 'back_squat_paused'), 6);
+  const accFs = bestWeightAtMinReps(setsForLift(set_logs, 'front_squat'), 3);
+  const accBss = bestWeightAtMinReps(setsForLift(set_logs, 'bss'), 10);
+  const accDdl = bestWeightAtMinReps(setsForLift(set_logs, 'ddl'), 6);
+  const accRdl = bestWeightAtMinReps(setsForLift(set_logs, 'rdl'), 10);
 
   const accessory: LiftingGoalSnapshot[] = [
     {

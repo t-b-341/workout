@@ -5,7 +5,7 @@ import type { Prescription, SessionLog, SetLog } from './types';
 export const QUICK_MIN_LIFTS = 1;
 export const QUICK_MAX_LIFTS = 8;
 
-const QUICK_SETS = 3;
+const QUICK_SETS = 1;
 const QUICK_REP_MIN = 1;
 const QUICK_REP_MAX = 2;
 

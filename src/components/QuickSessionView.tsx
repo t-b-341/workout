@@ -23,7 +23,7 @@ import {
   sessionRecapPRs,
 } from '@/lib/stats';
 import { todayIso } from '@/lib/time';
-import type { Lift, SessionLog } from '@/lib/types';
+import type { Lift, Prescription, SessionLog } from '@/lib/types';
 import { LiftCard } from './LiftCard';
 import { PageShell } from './PageShell';
 import { WorkoutStopwatchBar } from './WorkoutSessionTimer';
@@ -50,6 +50,50 @@ type Props = {
   onBack: () => void;
 };
 
+function shiftSetsOverrideDown(
+  prev: Record<number, number>,
+  removedIndex: number,
+): Record<number, number> {
+  const next: Record<number, number> = {};
+  for (const [key, val] of Object.entries(prev)) {
+    const idx = Number(key);
+    if (idx < removedIndex) next[idx] = val;
+    else if (idx > removedIndex) next[idx - 1] = val;
+  }
+  return next;
+}
+
+function QuickLiftBlock({
+  prescription,
+  lift,
+  session,
+  onAddSet,
+  extraSets,
+}: {
+  prescription: Prescription;
+  lift: Lift;
+  session: SessionLog;
+  onAddSet: () => void;
+  extraSets: number;
+}) {
+  const effectivePrescription = {
+    ...prescription,
+    sets: prescription.sets + extraSets,
+  };
+  return (
+    <div className="space-y-1">
+      <LiftCard prescription={effectivePrescription} lift={lift} session={session} />
+      <button
+        type="button"
+        onClick={onAddSet}
+        className="w-full h-9 rounded-xl border border-dashed border-zinc-700 text-xs text-zinc-500 hover:text-zinc-300 hover:border-zinc-500 transition-colors"
+      >
+        + Add set
+      </button>
+    </div>
+  );
+}
+
 export function QuickSessionView({ onBack }: Props) {
   const lifts = useLifts();
   const allSets = useAllSets();
@@ -67,6 +111,8 @@ export function QuickSessionView({ onBack }: Props) {
     completedSets: number;
     durationMs: number | null;
   } | null>(null);
+  const [setsOverride, setSetsOverride] = useState<Record<number, number>>({});
+  const [extraSets, setExtraSets] = useState<Record<string, number>>({});
 
   const prescriptionFallback = useMemo(() => {
     const m = new Map<string, number>();
@@ -84,11 +130,12 @@ export function QuickSessionView({ onBack }: Props) {
   const liftById = useMemo(() => new Map((lifts ?? []).map((l) => [l.id, l])), [lifts]);
 
   const displayPrescriptions = useMemo(() => {
-    return syntheticPrescriptions.map((p) => ({
+    return syntheticPrescriptions.map((p, i) => ({
       ...p,
+      sets: setsOverride[i] ?? p.sets,
       weight: snapWorkingWeight(p.weight, liftForSnap(p.liftId)),
     }));
-  }, [syntheticPrescriptions]);
+  }, [syntheticPrescriptions, setsOverride]);
 
   const swapOptions = useMemo(() => {
     const out: Lift[] = [];
@@ -203,10 +250,11 @@ export function QuickSessionView({ onBack }: Props) {
         </div>
 
         <div className="space-y-3">
-          {syntheticPrescriptions.map((p, i) => {
+          {displayPrescriptions.map((p, i) => {
             const lift = liftById.get(p.liftId);
             if (!lift) return null;
             const snapped = snapWorkingWeight(p.weight, liftForSnap(p.liftId));
+            const slotSets = p.sets;
             return (
               <div
                 key={`quick-prestart-${i}`}
@@ -215,7 +263,7 @@ export function QuickSessionView({ onBack }: Props) {
                 <div>
                   <div className="font-medium text-zinc-100">{lift.name}</div>
                   <div className="text-sm text-zinc-500 mt-0.5">
-                    {p.sets}×{p.repMin}–{p.repMax} @ {snapped}
+                    {slotSets}×{p.repMin}–{p.repMax} @ {snapped}
                     {lift.loadUnit === 'lb' ? ' lb' : ''}
                   </div>
                 </div>
@@ -224,6 +272,7 @@ export function QuickSessionView({ onBack }: Props) {
                     type="button"
                     onClick={() => {
                       setLiftIds((prev) => prev.filter((_, idx) => idx !== i));
+                      setSetsOverride((prev) => shiftSetsOverrideDown(prev, i));
                       setSwapIndex((si) => {
                         if (si === null) return null;
                         if (si === i) return null;
@@ -237,6 +286,35 @@ export function QuickSessionView({ onBack }: Props) {
                   >
                     −
                   </button>
+                  <div className="flex items-center gap-1 shrink-0">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setSetsOverride((prev) => ({
+                          ...prev,
+                          [i]: Math.max(1, (prev[i] ?? p.sets) - 1),
+                        }))
+                      }
+                      disabled={slotSets <= 1}
+                      className="h-8 w-8 rounded-lg bg-zinc-800 border border-zinc-700 text-zinc-300 text-base flex items-center justify-center disabled:opacity-30"
+                    >
+                      −
+                    </button>
+                    <span className="font-mono text-sm text-zinc-200 w-4 text-center">{slotSets}</span>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setSetsOverride((prev) => ({
+                          ...prev,
+                          [i]: Math.min(5, (prev[i] ?? p.sets) + 1),
+                        }))
+                      }
+                      disabled={slotSets >= 5}
+                      className="h-8 w-8 rounded-lg bg-zinc-800 border border-zinc-700 text-zinc-300 text-base flex items-center justify-center disabled:opacity-30"
+                    >
+                      +
+                    </button>
+                  </div>
                   <button
                     type="button"
                     onClick={() => setSwapIndex(i)}
@@ -291,6 +369,11 @@ export function QuickSessionView({ onBack }: Props) {
                       setLiftIds((prev) => {
                         const next = [...prev];
                         next[swapIndex] = lift.id;
+                        return next;
+                      });
+                      setSetsOverride((prev) => {
+                        const next = { ...prev };
+                        delete next[swapIndex];
                         return next;
                       });
                       setSwapIndex(null);
@@ -359,8 +442,21 @@ export function QuickSessionView({ onBack }: Props) {
         {displayPrescriptions.map((p) => {
           const lift = liftById.get(p.liftId);
           if (!lift) return null;
+          const extra = extraSets[p.liftId] ?? 0;
           return (
-            <LiftCard key={p.id} prescription={p} lift={lift} session={session} />
+            <QuickLiftBlock
+              key={p.id}
+              prescription={p}
+              lift={lift}
+              session={session}
+              extraSets={extra}
+              onAddSet={() =>
+                setExtraSets((prev) => ({
+                  ...prev,
+                  [p.liftId]: (prev[p.liftId] ?? 0) + 1,
+                }))
+              }
+            />
           );
         })}
       </div>

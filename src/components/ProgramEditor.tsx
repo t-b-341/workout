@@ -125,7 +125,7 @@ export function ProgramEditor() {
   );
   const persistedTodayTemplateId = useMemo((): TemplateId | null => {
     const p = readTodayPlanPreference();
-    if (!todayPlanPreferenceIsForToday(p)) return null;
+    if (!todayPlanPreferenceIsForToday(p) || p.templateId === 'QUICK') return null;
     return templates?.some((t) => t.id === p.templateId) ? p.templateId : null;
   }, [templates]);
   const effectiveProgramTemplateId = persistedTodayTemplateId ?? defaultTemplateId;
@@ -145,7 +145,10 @@ export function ProgramEditor() {
   const [setIntentReviewRows, setSetIntentReviewRows] = useState<SetIntentReviewRow[]>([]);
 
   const templatesProgramOrder = useMemo(
-    () => (templates?.length ? sortTemplatesProgramOrder(templates) : []),
+    () =>
+      templates?.length
+        ? sortTemplatesProgramOrder(templates.filter((t) => t.id !== 'QUICK'))
+        : [],
     [templates],
   );
 
@@ -1149,9 +1152,14 @@ function Schedule({
   const [open, setOpen] = useState(true);
   const [previewRow, setPreviewRow] = useState<ScheduleRow | null>(null);
 
+  const schedulableTemplates = useMemo(
+    () => templates.filter((t) => t.id !== 'QUICK'),
+    [templates],
+  );
+
   const weeks = useMemo(
-    () => buildSchedule(templates, sessions ?? [], sets ?? [], weeksToShow, meso),
-    [templates, sessions, sets, weeksToShow, meso],
+    () => buildSchedule(schedulableTemplates, sessions ?? [], sets ?? [], weeksToShow, meso),
+    [schedulableTemplates, sessions, sets, weeksToShow, meso],
   );
 
   return (
@@ -1168,7 +1176,7 @@ function Schedule({
             Schedule
           </div>
           <div className="text-xs text-zinc-500 ml-4">
-            Next {weeksToShow} weeks · {templates.length}-day split · tap a workout for an estimated preview (no hypothetical progression).
+            Next {weeksToShow} weeks · {schedulableTemplates.length}-day split · tap a workout for an estimated preview (no hypothetical progression).
           </div>
         </button>
         <div className="flex items-center gap-1 rounded-lg bg-zinc-950 border border-zinc-800 p-1">
@@ -1313,7 +1321,9 @@ function buildSchedule(
     setCountBySession.set(x.sessionLogId, (setCountBySession.get(x.sessionLogId) ?? 0) + 1);
   }
 
-  const sortedTemplates = [...templates].sort((a, b) => a.dayOfWeek - b.dayOfWeek);
+  const sortedTemplates = templates
+    .filter((t) => t.id !== 'QUICK')
+    .sort((a, b) => a.dayOfWeek - b.dayOfWeek);
   const out: ScheduleWeek[] = [];
 
   for (let i = 0; i < weeksToShow; i++) {

@@ -85,7 +85,7 @@ export function useTodayPlanTemplateId(): TemplateId {
   });
 
   const validatedChosenTemplateId = useMemo((): TemplateId | null => {
-    if (!chosenTemplateId || !templates?.length) return null;
+    if (!chosenTemplateId || chosenTemplateId === 'QUICK' || !templates?.length) return null;
     return templates.some((t) => t.id === chosenTemplateId) ? chosenTemplateId : null;
   }, [templates, chosenTemplateId]);
 

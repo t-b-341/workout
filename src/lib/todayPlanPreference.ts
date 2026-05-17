@@ -24,7 +24,9 @@ export function readTodayPlanPreference(): TodayPlanPreference | null {
     ) {
       return null;
     }
-    return v as TodayPlanPreference;
+    const p = v as TodayPlanPreference;
+    if (p.templateId === 'QUICK') return null;
+    return p;
   } catch {
     return null;
   }
@@ -42,5 +44,5 @@ export function writeTodayPlanPreference(pref: TodayPlanPreference): void {
 
 /** Calendar day the stored preference applies to (must match for reads). */
 export function todayPlanPreferenceIsForToday(pref: TodayPlanPreference | null): pref is TodayPlanPreference {
-  return pref != null && pref.date === todayIso();
+  return pref != null && pref.date === todayIso() && pref.templateId !== 'QUICK';
 }

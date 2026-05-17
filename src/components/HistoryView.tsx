@@ -20,6 +20,14 @@ import {
   useTemplates,
 } from '@/lib/hooks';
 import { getDb } from '@/lib/db';
+import {
+  bestBarbellRowWeightAt5Plus,
+  bestWeightAtMinReps,
+  bestWorkingSetWeight,
+  currentBest1RmFromSets,
+  maxBwPullupReps,
+  setsForLift,
+} from '@/lib/liftingGoals';
 import { sortSetLogsForSession } from '@/lib/sessionFilters';
 import { cancelPendingDirtyDelete, localDelete, localUpsert } from '@/lib/sync';
 import { offerDeleteUndo } from '@/lib/deleteUndoCoordinator';
@@ -37,7 +45,6 @@ import {
   fmtDurationShort,
   isoWeekOf,
   prFeed,
-  est1RM,
   rollingStrengthTrainingWindow,
   sessionTotalRestBetweenSetsMs,
   type TemplateSessionProgressPoint,
@@ -1458,33 +1465,6 @@ function DietList({ logs }: { logs: NutritionLog[] }) {
   );
 }
 
-function setsForLift(sets: SetLog[], liftId: string): SetLog[] {
-  return sets.filter((s) => s.liftId === liftId);
-}
-
-function bestWeightAtMinReps(sets: SetLog[], minReps: number): number {
-  let best = 0;
-  for (const s of sets) {
-    if (s.status !== 'completed') continue;
-    if (s.reps < minReps) continue;
-    if (!Number.isFinite(s.weight)) continue;
-    best = Math.max(best, s.weight);
-  }
-  return best;
-}
-
-function bestWorkingSetWeight(sets: SetLog[]): number {
-  let best = 0;
-  for (const s of sets) {
-    if (s.status !== 'completed') continue;
-    const intent = s.intent ?? 'working';
-    if (intent !== 'working' && intent !== 'backoff') continue;
-    if (!Number.isFinite(s.weight)) continue;
-    best = Math.max(best, s.weight);
-  }
-  return best;
-}
-
 function liftingGoalProgressDetail(
   done: boolean,
   pct: number,
@@ -1499,47 +1479,6 @@ function liftingGoalProgressDetail(
   }
   const toGo = Math.max(0, Math.round(mode.target - mode.current));
   return { pctLabel, remaining: `${toGo} reps to go` };
-}
-
-/** Max-test weight, else best Epley e1RM from completed working/backoff sets. */
-function currentBest1RmFromSets(sets: SetLog[]): number {
-  const completed = sets.filter((s) => s.status === 'completed');
-  let maxTest = -Infinity;
-  for (const s of completed) {
-    if (s.intent === 'max_test' && Number.isFinite(s.weight)) {
-      maxTest = Math.max(maxTest, s.weight);
-    }
-  }
-  if (maxTest > -Infinity) return maxTest;
-  let bestEst = -Infinity;
-  for (const s of completed) {
-    const intent = s.intent ?? 'working';
-    if (intent !== 'working' && intent !== 'backoff') continue;
-    if (!Number.isFinite(s.weight) || s.weight <= 0) continue;
-    if (s.reps < 1 || s.reps > 20) continue;
-    const e = est1RM(s.weight, s.reps);
-    if (Number.isFinite(e)) bestEst = Math.max(bestEst, e);
-  }
-  return bestEst > -Infinity ? bestEst : 0;
-}
-
-function bestBarbellRowWeightAt5Plus(sets: SetLog[]): number {
-  const completed = sets.filter((s) => s.status === 'completed');
-  let best = -Infinity;
-  for (const s of completed) {
-    if (!Number.isFinite(s.weight) || s.reps < 5) continue;
-    best = Math.max(best, s.weight);
-  }
-  return best > -Infinity ? best : 0;
-}
-
-function maxBwPullupReps(sets: SetLog[]): number {
-  let best = -Infinity;
-  for (const s of sets) {
-    if (s.status !== 'completed' || s.weight !== 0) continue;
-    if (Number.isFinite(s.reps)) best = Math.max(best, s.reps);
-  }
-  return best > -Infinity ? best : 0;
 }
 
 function LiftingGoalCard({
