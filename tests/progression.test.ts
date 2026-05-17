@@ -123,14 +123,23 @@ describe('decideProgression — standard mode', () => {
     expect(dec.nextWeight).toBe(180);
   });
 
-  it('holds when one set is below repMax', () => {
-    const sets = [...makeSets(2, 8), ...makeSets(1, 7)];
-    sets[2].setIndex = 2;
+  it('holds when a non-last set is below repMax', () => {
+    const sets = makeSets(3, 8);
+    sets[1].reps = 7;
     const dec = decideProgression(makePrescription(), sets, makeSession());
     expect(dec.held).toBe(true);
     expect(dec.advanced).toBe(false);
     expect(dec.nextWeight).toBe(175);
-    expect(dec.reason).toMatch(/7 reps < top of range/);
+    expect(dec.reason).toMatch(/Set 2: 7 reps/);
+  });
+
+  it('advances when only the last set misses repMax by 1', () => {
+    const sets = makeSets(3, 8);
+    sets[2].reps = 7;
+    const dec = decideProgression(makePrescription(), sets, makeSession());
+    expect(dec.held).toBe(false);
+    expect(dec.advanced).toBe(true);
+    expect(dec.nextWeight).toBe(180);
   });
 
   it('holds when fewer sets are logged than expected', () => {
@@ -224,11 +233,19 @@ describe('decideProgression — per-side lifts', () => {
     expect(dec.nextWeight).toBe(25);
   });
 
-  it('holds when one side is short of repMax', () => {
+  it('holds when one side is short of repMax on a non-final set', () => {
+    const sets = makePerSideSets(8, ['L', 'R', 'L', 'R']);
+    sets[1].reps = 7;
+    const dec = decideProgression(presc, sets, makeSession());
+    expect(dec.held).toBe(true);
+  });
+
+  it('advances when only the final set side misses repMax by 1', () => {
     const sets = makePerSideSets(8, ['L', 'R', 'L', 'R']);
     sets[3].reps = 7;
     const dec = decideProgression(presc, sets, makeSession());
-    expect(dec.held).toBe(true);
+    expect(dec.held).toBe(false);
+    expect(dec.advanced).toBe(true);
   });
 
   it('holds when only one side is logged for a setIndex', () => {
