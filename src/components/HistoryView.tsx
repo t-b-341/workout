@@ -14,6 +14,7 @@ import {
   useAllHydration,
   useAllInjuryEpisodes,
   useAllMindfulness,
+  useAllSessions,
   useSessionsAfterReadiness,
   useAllSets,
   useLifts,
@@ -57,7 +58,7 @@ import { HydrationLogEditSheet } from './HydrationLogEditSheet';
 import { BodyweightLogEditSheet } from './BodyweightLogEditSheet';
 import { BodyMeasurementLogEditSheet } from './BodyMeasurementLogEditSheet';
 import { PageShell } from './PageShell';
-import { MUSCLE_GROUPS, PATTERNS, sortTemplatesProgramOrder } from '@/lib/seed';
+import { LIFTS, MUSCLE_GROUPS, PATTERNS, sortTemplatesProgramOrder } from '@/lib/seed';
 import { applyOpeningPrBaseline, OPENING_PR_BASELINE_META_KEY } from '@/lib/openingPrBaseline';
 import { defaultWellnessTargets, useWellnessTargets, type WellnessTargets } from '@/lib/wellnessTargets';
 import {
@@ -66,6 +67,10 @@ import {
   measuredHrvAsc,
 } from '@/lib/hrvAnalytics';
 import { labelForSiteKey, type InjurySiteKey } from '@/lib/injurySites';
+import {
+  computeStrengthBalance,
+  type RatioResult,
+} from '@/lib/strengthBalance';
 
 import type {
   BodyMeasurementLog,
@@ -98,6 +103,7 @@ type Tab =
   | 'hrv'
   | 'lifting-goals'
   | 'accessory-goals'
+  | 'balance'
   | 'types';
 
 const TABS: Array<{ id: Tab; label: string }> = [
@@ -115,6 +121,7 @@ const TABS: Array<{ id: Tab; label: string }> = [
   { id: 'hrv', label: 'HRV' },
   { id: 'lifting-goals', label: 'Goals 2026' },
   { id: 'accessory-goals', label: 'Accessories' },
+  { id: 'balance', label: 'Strength Balance' },
 ];
 
 export function HistoryView() {
@@ -122,6 +129,7 @@ export function HistoryView() {
   const [tab, setTab] = useState<Tab>('sessions');
   const lifts = useLifts();
   const sessions = useSessionsAfterReadiness();
+  const allSessions = useAllSessions();
   const allSets = useAllSets();
   const cardio = useAllCardio();
   const bodyweights = useAllBodyweight();
@@ -208,6 +216,12 @@ export function HistoryView() {
         <LiftGoalsList sessions={sessions} sets={allSets} lifts={lifts} />
       )}
       {tab === 'accessory-goals' && <AccessoryGoalsList sets={allSets} />}
+      {tab === 'balance' && (
+        <StrengthBalanceView
+          sets={allSets}
+          sessions={allSessions ?? []}
+        />
+      )}
     </PageShell>
   );
 }
@@ -1738,6 +1752,165 @@ function AccessoryGoalsList({ sets }: { sets: SetLog[] }) {
         done={rdl >= 275}
         {...liftingGoalProgressDetail(rdl >= 275, (rdl / 275) * 100, { kind: 'lb', target: 275, current: rdl })}
       />
+    </div>
+  );
+}
+
+function liftLabel(liftId: string): string {
+  return LIFTS.find((l) => l.id === liftId)?.name ?? liftId;
+}
+
+function StrengthBalanceStatusBadge({ result }: { result: RatioResult }) {
+  if (result.status === 'above') {
+    return (
+      <span className="rounded-full bg-emerald-500/15 px-2 py-0.5 text-[10px] font-medium text-emerald-400">
+        Above range
+      </span>
+    );
+  }
+  if (result.status === 'within') {
+    return (
+      <span className="rounded-full bg-emerald-500/15 px-2 py-0.5 text-[10px] font-medium text-emerald-400">
+        On target
+      </span>
+    );
+  }
+  if (result.gapPct >= 15) {
+    return (
+      <span className="rounded-full bg-rose-500/15 px-2 py-0.5 text-[10px] font-medium text-rose-400">
+        Gap
+      </span>
+    );
+  }
+  return (
+    <span className="rounded-full bg-amber-500/15 px-2 py-0.5 text-[10px] font-medium text-amber-400">
+      Below target
+    </span>
+  );
+}
+
+function StrengthBalanceRatioBar({ result }: { result: RatioResult }) {
+  const { standard, ratio, status, gapPct } = result;
+  const visualMin = Math.min(standard.targetMin * 0.85, ratio);
+  const visualMax = Math.max(standard.targetMax * 1.15, ratio);
+  const span = visualMax - visualMin || 1;
+  const posPct = Math.min(100, Math.max(0, ((ratio - visualMin) / span) * 100));
+  const rangeLeft = ((standard.targetMin - visualMin) / span) * 100;
+  const rangeWidth = ((standard.targetMax - standard.targetMin) / span) * 100;
+
+  const markerColor =
+    status === 'below'
+      ? gapPct >= 15
+        ? 'bg-rose-400'
+        : 'bg-amber-400'
+      : 'bg-emerald-400';
+
+  return (
+    <div className="space-y-1.5">
+      <div className="relative h-2 rounded-full bg-zinc-800">
+        <div
+          className="absolute inset-y-0 rounded-full bg-amber-500/20"
+          style={{ left: `${rangeLeft}%`, width: `${rangeWidth}%` }}
+        />
+        <div
+          className={`absolute top-1/2 h-2.5 w-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full ${markerColor}`}
+          style={{ left: `${posPct}%` }}
+        />
+      </div>
+      <div className="text-xs font-mono text-zinc-400">
+        Current: {ratio.toFixed(2)} | Target: {standard.targetMin.toFixed(2)}–{standard.targetMax.toFixed(2)}
+      </div>
+    </div>
+  );
+}
+
+function StrengthBalanceView({
+  sets,
+  sessions,
+}: {
+  sets: SetLog[];
+  sessions: SessionLog[];
+}) {
+  const results = useMemo(
+    () => computeStrengthBalance(sets, sessions),
+    [sets, sessions],
+  );
+
+  const topResult = results.length > 0 ? results[0] : null;
+  const allOnTarget =
+    results.length > 0
+    && results.every((r) => r.status === 'within' || r.status === 'above');
+
+  const fmtLb = (n: number) => `${Math.round(n)}`;
+
+  if (results.length === 0) {
+    return (
+      <div className="text-sm text-zinc-500">
+        Log working sets or max tests for the main lifts to see strength balance ratios.
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-3">
+      {allOnTarget ? (
+        <div className="rounded-2xl border border-emerald-500/30 bg-emerald-950/20 p-4 text-sm text-zinc-300">
+          All ratios within normal range — maintain current training balance.
+        </div>
+      ) : topResult && topResult.roiScore > 0 ? (
+        <div className="rounded-2xl border border-amber-500/30 bg-amber-950/20 p-4 space-y-1">
+          <div className="text-xs uppercase tracking-wide text-amber-400">Highest ROI focus</div>
+          <div className="text-base font-semibold text-zinc-100">{topResult.standard.label}</div>
+          <div className="text-xs text-zinc-400">
+            {topResult.gapPct.toFixed(1)}% below target range · benefits{' '}
+            {topResult.standard.downstreamBenefit} connected lifts
+          </div>
+          <div className="text-xs text-zinc-500 mt-1">{topResult.standard.description}</div>
+        </div>
+      ) : null}
+
+      {results.map((result) => {
+        const isTopRoi =
+          topResult != null
+          && result.standard.id === topResult.standard.id
+          && topResult.roiScore > 0;
+
+        return (
+          <div
+            key={result.standard.id}
+            className="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-4 space-y-3"
+          >
+            <div className="flex items-center justify-between gap-2">
+              <span className="font-medium text-zinc-100">{result.standard.label}</span>
+              <StrengthBalanceStatusBadge result={result} />
+            </div>
+
+            <StrengthBalanceRatioBar result={result} />
+
+            <div className="text-xs text-zinc-500">
+              {liftLabel(result.standard.numeratorLiftId)}: {fmtLb(result.numeratorValue)} lb /{' '}
+              {liftLabel(result.standard.denominatorLiftId)}: {fmtLb(result.denominatorValue)} lb
+            </div>
+
+            <p className="text-xs text-zinc-500 leading-snug">{result.standard.description}</p>
+
+            {result.gapPct > 5 && (
+              <div className="space-y-1 pt-1 border-t border-zinc-800/80">
+                {isTopRoi && (
+                  <div className="text-[10px] font-medium text-amber-400">
+                    ↑ Highest training ROI
+                  </div>
+                )}
+                <div className="text-xs text-zinc-500">
+                  Improving {liftLabel(result.standard.numeratorLiftId)} benefits{' '}
+                  {result.standard.downstreamBenefit} other lift
+                  {result.standard.downstreamBenefit === 1 ? '' : 's'}.
+                </div>
+              </div>
+            )}
+          </div>
+        );
+      })}
     </div>
   );
 }

@@ -80,12 +80,12 @@ export const LIFTS: Lift[] = [
 ];
 
 export const TEMPLATES: SessionTemplate[] = [
-  { id: 'L1', name: 'Tuesday — Lower (Heavy)',     dayOfWeek: 2, group: 'lower', intensity: 'heavy' },
-  { id: 'L2', name: 'Thursday — Lower (Light)',    dayOfWeek: 4, group: 'lower', intensity: 'light' },
-  { id: 'L3', name: 'Saturday — Lower (volume/medium)', dayOfWeek: 6, group: 'lower', intensity: 'moderate' },
-  { id: 'U1', name: 'Monday — Upper (Heavy)',      dayOfWeek: 1, group: 'upper', intensity: 'heavy' },
-  { id: 'U2', name: 'Wednesday — Upper (Light)',   dayOfWeek: 3, group: 'upper', intensity: 'light' },
-  { id: 'U3', name: 'Friday — Upper (volume/medium)', dayOfWeek: 5, group: 'upper', intensity: 'moderate' },
+  { id: 'L1', name: 'Tuesday — Lower (Full)',      dayOfWeek: 2, group: 'lower', intensity: 'heavy' },
+  { id: 'L2', name: 'Thursday — Lower (Mini)',     dayOfWeek: 4, group: 'lower', intensity: 'light' },
+  { id: 'L3', name: 'Saturday — Lower (Mini)',     dayOfWeek: 6, group: 'lower', intensity: 'moderate' },
+  { id: 'U1', name: 'Monday — Upper (Full)',       dayOfWeek: 1, group: 'upper', intensity: 'heavy' },
+  { id: 'U2', name: 'Wednesday — Upper (Full)',    dayOfWeek: 3, group: 'upper', intensity: 'light' },
+  { id: 'U3', name: 'Friday — Upper (Mini)',       dayOfWeek: 5, group: 'upper', intensity: 'moderate' },
   {
     id: 'QUICK',
     name: 'Quick Session',
@@ -137,7 +137,7 @@ export function defaultTemplateForLocalDate(
   if (templates.length === 0) {
     return {
       id: 'U1',
-      name: 'Monday — Upper (Heavy)',
+      name: 'Monday — Upper (Full)',
       dayOfWeek: 1,
       group: 'upper',
       intensity: 'heavy',
@@ -177,54 +177,42 @@ const p = (
 });
 
 export const PRESCRIPTIONS: Prescription[] = [
-  // Monday — U1 (Heavy)
-  p('U1', 'pp',           10, 135, 2, 4, 8, { notes: "BRACE YOUR GODDAMN CORE, or you'll hurt your back again" }),
-  p('U1', 'ohp',          20, 105, 2, 4, 8),
-  p('U1', 'p1_eccentric', 30,   5, 4, 1, 1, { tempo: '5 sec eccentric', notes: 'Start 5–10# added' }),
+  // Monday — U1 (Full Upper, ~12 sets)
+  p('U1', 'pp',           10, 145, 2, 3, 6),
+  p('U1', 'ohp',          20, 125, 2, 3, 6),
+  p('U1', 'p1_eccentric', 30,  20, 5, 1, 1, { tempo: '5 sec eccentric', notes: '5 sec eccentric' }),
   p('U1', 'bp',           40, 175, 3, 4, 8),
-  p('U1', 'pec_flyes',    50,  17.5, 3, 12, 15),
-  p('U1', 'pendlay_row',  60, 170, 3, 4, 8),
-  p('U1', 'rdf',          70,  10, 4, 15, 15, { notes: '10# plates/side' }),
+  p('U1', 'pendlay_row',  50, 175, 5, 3, 6),
+  p('U1', 'rdf',          60,  10, 2, 15, 15, { notes: 'locked weight' }),
 
-  // Wednesday — U2 (Light)
-  p('U2', 'seated_db_press', 10, 40,  3, 8, 12, { notes: 'Shoot for 3×10' }),
-  p('U2', 'p1_assisted',     20, 50,  8, 2, 4, { notes: 'Assistance (#) in 5 lb steps → 0 unassisted' }),
-  p('U2', 'wgbp',            30, 125, 3, 8, 12, { notes: 'Shoot for 3×12' }),
-  p('U2', 'deficit_bbr',     40, 140, 3, 4, 8),
-  p('U2', 'jm_press',        50, 45,  3, 10, 12),
-  p('U2', 'supinated_barbell_curls', 60, 45, 4, 10, 12),
-  p('U2', 'rdf',             70, 10,  4, 15, 15, { notes: '10# plates/side' }),
-  p('U2', 'liss',            80, 0,   1, 30, 30, { notes: '30 min @ 2.0 mph / 3.0% grade' }),
+  // Tuesday — L1 (Full Lower, ~12 sets)
+  p('L1', 'back_squat', 10, 290, 3, 4, 8),
+  p('L1', 'dl',         20, 380, 3, 3, 6),
+  p('L1', 'bss',        30,  45, 3, 8, 12),
+  p('L1', 'rdl',        40, 225, 3, 8, 12),
 
-  // Friday — U3 (volume/medium)
-  p('U3', 'pp',           10, 115, 2, 4, 8, { notes: "BRACE YOUR GODDAMN CORE, or you'll hurt your back again" }),
-  p('U3', 'ohp',          20,  85, 3, 8, 12),
-  p('U3', 'p1_bw',        30,   0, 3, 2, 2, { notes: '3×2 → 4×2 (elbows need to adjust); BW 245#' }),
-  p('U3', 'bp_paused',    40, 155, 3, 4, 8),
-  p('U3', 'pec_flyes',    50,  17.5, 3, 12, 15),
-  p('U3', 'bbr',          60, 150, 3, 4, 8),
-  p('U3', 'rdf',          70,  10, 4, 15, 15, { notes: 'Shoulder insurance · 10# plates/side' }),
+  // Wednesday — U2 (Full Upper, ~11 sets)
+  p('U2', 'bp_paused',   10, 165, 3, 4, 8),
+  p('U2', 'bp',          20, 155, 2, 6, 8),
+  p('U2', 'wgbp',        30, 135, 3, 8, 12),
+  p('U2', 'cgbp',        40, 115, 4, 8, 12),
+  p('U2', 'deficit_bbr', 50, 150, 3, 4, 8),
+  p('U2', 'rdf',         60,  10, 2, 15, 15, { notes: 'locked weight' }),
 
-  // Tuesday — L1 (Heavy)
-  p('L1', 'back_squat',          10, 240, 3, 6, 8, { notes: 'Shoot for 3×8' }),
-  p('L1', 'dl',                  20, 325, 3, 3, 6),
-  p('L1', 'bss',                 30, 45, 2, 6, 8, { notes: 'Barbell; shoot for 8; learning' }),
-  p('L1', 'breathing_back_squat',40, 165, 1, 15, 20, { notes: 'Bar on back; breathe between reps' }),
-  p('L1', 'liss',                50,   0, 1, 30, 30, { notes: '30 min @ 2.0 mph / 3.0% grade' }),
+  // Thursday — L2 (Mini Lower, ~5 sets)
+  p('L2', 'dl',         10, 380, 2, 1, 2),
+  p('L2', 'back_squat', 20, 290, 2, 1, 2),
+  p('L2', 'rdl',        30, 225, 1, 6, 8),
 
-  // Thursday — L2 (Light)
-  p('L2', 'rdl',             10, 205, 3, 8, 12, { notes: 'Hinge movement' }),
-  p('L2', 'bss',             20, 45, 3, 10, 10, { notes: 'Barbell; light-day squat stim' }),
-  p('L2', 'planks',          30,   0, 3, 30, 30, { notes: '+5 sec/wk per set' }),
-  p('L2', 'ab_rollouts',     40,   0, 4, 3, 3, { notes: 'Full ROM; progress reps' }),
-  p('L2', 'echo_intervals',  50,   0, 1, 16, 16, { notes: '8 × (30s sprint / 90s slow); HR target 170 sprints' }),
-  p('L2', 'liss',            60,   0, 1, 20, 20, { notes: '20 min @ 2.0 mph / 3.0% grade' }),
+  // Friday — U3 (Mini Upper, ~6 sets)
+  p('U3', 'bp',          10, 175, 2, 1, 2),
+  p('U3', 'ohp',         20, 125, 2, 1, 2),
+  p('U3', 'pendlay_row', 30, 175, 2, 1, 2),
 
-  // Saturday — L3 (volume/medium)
-  p('L3', 'back_squat_paused', 10, 205, 3, 3, 6),
-  p('L3', 'ddl',               20, 300, 3, 3, 6),
-  p('L3', 'bss',               30, 45, 2, 6, 8, { notes: 'Barbell; shoot for 8; learning' }),
-  p('L3', 'liss',              40,   0, 1, 60, 60, { notes: '60 min @ 2.0 mph / 3.0% grade' }),
+  // Saturday — L3 (Mini Lower, ~5 sets)
+  p('L3', 'back_squat', 10, 290, 2, 1, 2),
+  p('L3', 'dl',         20, 380, 2, 1, 2),
+  p('L3', 'bss',        30,  45, 1, 6, 8),
 ];
 
 export const DB_INCREMENTS: number[] = (() => {

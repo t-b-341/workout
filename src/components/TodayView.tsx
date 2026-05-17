@@ -65,6 +65,8 @@ import { sortPrescriptionsWithFavoritesFirst, useFavoriteLiftIds } from '@/lib/f
 import { sortTemplatesProgramOrder } from '@/lib/seed';
 import { QuickSessionView } from './QuickSessionView';
 
+const MINI_TEMPLATE_IDS = new Set(['L2', 'U3', 'L3']);
+
 export function TodayView() {
   const templates = useTemplates();
   const lifts = useLifts();
@@ -184,6 +186,10 @@ export function TodayView() {
     return <div className="p-6 text-zinc-500">Loading…</div>;
   }
   if (!session) return <div className="p-6 text-zinc-500">Creating session…</div>;
+
+  const isMiniSession = session
+    ? MINI_TEMPLATE_IDS.has(session.templateId)
+    : false;
 
   const needsReadiness =
     !readiness && !readinessSkipped && !session.startedAt && !session.completedAt;
@@ -393,6 +399,25 @@ export function TodayView() {
               {!session.startedAt && <StartWorkoutButton session={session} />}
               {session.startedAt && <WorkoutStopwatchBar session={session} />}
             </>
+          )}
+          {isMiniSession && (
+            <div className="rounded-xl border border-zinc-700/60
+              bg-zinc-900/70 px-4 py-3 space-y-0.5">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-medium text-amber-400
+                  uppercase tracking-wide">
+                  Mini session
+                </span>
+                <span className="text-xs text-zinc-500 font-mono">
+                  Target: 15–30 min
+                </span>
+              </div>
+              <p className="text-xs text-zinc-500 leading-snug">
+                1–2 top sets per movement. Weights below are your
+                current working loads — use prior session data on
+                each lift card to orient. No progression today.
+              </p>
+            </div>
           )}
           {(displayPrescriptions ?? []).map((p) => {
             const lift = lifts.find((l) => l.id === p.liftId);

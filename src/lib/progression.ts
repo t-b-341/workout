@@ -4,6 +4,8 @@ import type { Lift, Prescription, SessionLog, SetLog } from './types';
 /** P1 pull-up variants with added load (or eccentric negatives): snap in 2.5 lb steps. */
 export const LIFT_IDS_PULLUP_ADDED_LOAD = new Set<string>(['p1_eccentric', 'p1_assisted', 'p1_bw']);
 
+const MINI_TEMPLATE_IDS: ReadonlySet<string> = new Set(['L2', 'U3', 'L3']);
+
 export type SnapLiftRef = Pick<Lift, 'id' | 'equipment' | 'loadUnit'>;
 
 export function liftForSnap(liftId: string): SnapLiftRef {
@@ -110,6 +112,29 @@ export function decideProgression(
     return { ...base, skipped: true, reason: 'No sets logged' };
   }
 
+  const catalogLift = liftById?.get(prescription.liftId) ?? LIFTS.find((l) => l.id === prescription.liftId);
+  if (catalogLift?.lockedWeight) {
+    return {
+      ...base,
+      nextWeight: prescription.weight,
+      advanced: false,
+      held: false,
+      skipped: false,
+      reason: 'Weight locked for this lift',
+    };
+  }
+
+  // Mini sessions (Thu/Fri/Sat) are orientation only.
+  // Progression is driven exclusively by full sessions
+  // (Mon/Tue/Wed). Never advance load from a mini session.
+  if (MINI_TEMPLATE_IDS.has(sessionLog.templateId)) {
+    return {
+      ...base,
+      held: true,
+      reason: 'Mini session — progression driven by full sessions only',
+    };
+  }
+
   // Per-side lifts log 2 entries per set; we group by setIndex.
   const byIndex = new Map<number, SetLog[]>();
   for (const s of setsForLift) {
@@ -160,17 +185,6 @@ export function decideProgression(
   }
 
   const liftMeta = liftForSnap(prescription.liftId);
-  const catalogLift = liftById?.get(prescription.liftId) ?? LIFTS.find((l) => l.id === prescription.liftId);
-  if (catalogLift?.lockedWeight) {
-    return {
-      ...base,
-      nextWeight: prescription.weight,
-      advanced: false,
-      held: false,
-      skipped: false,
-      reason: 'Weight locked for this lift',
-    };
-  }
 
   const step =
     prescription.increment ?? liftIncrementOverride ?? catalogLiftIncrementLb(prescription.liftId);
