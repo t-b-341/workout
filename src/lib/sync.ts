@@ -13,17 +13,41 @@ import type {
   CardioLog,
   HydrationLog,
   InjuryEpisode,
+  Lift,
   MindfulnessLog,
   NutritionLog,
   Prescription,
   ReadinessLog,
   SessionLog,
+  SessionTemplate,
   SetLog,
   SleepLog,
   StressLog,
 } from './types';
 
 export type RemoteTable = DirtyRow['table'];
+
+/** Optional remote catalog tables (when present in Postgres). */
+type CatalogPullTable = 'templates' | 'lifts';
+
+/** Tables included in watermark pull; dirty flush uses RemoteTable only. */
+type SyncPullTable = RemoteTable | CatalogPullTable;
+
+const CATALOG_PULL_TABLES = new Set<CatalogPullTable>(['templates', 'lifts']);
+
+function isCatalogPullTable(table: SyncPullTable): table is CatalogPullTable {
+  return CATALOG_PULL_TABLES.has(table as CatalogPullTable);
+}
+
+function isMissingRelationError(error: { code?: string; message?: string }): boolean {
+  const msg = error.message ?? '';
+  return (
+    error.code === '42P01'
+    || error.code === 'PGRST205'
+    || /could not find the table/i.test(msg)
+    || /schema cache/i.test(msg)
+  );
+}
 
 function cloneRowForUndo(row: Record<string, unknown>): Record<string, unknown> {
   try {
@@ -66,8 +90,10 @@ export function sortDirtyQueueForFlush(items: DirtyRow[]): DirtyRow[] {
   });
 }
 
-const TABLE_TO_LOCAL: Record<RemoteTable, keyof ReturnType<typeof getDb> & string> = {
+const TABLE_TO_LOCAL: Record<SyncPullTable, keyof ReturnType<typeof getDb> & string> = {
+  templates: 'templates',
   prescriptions: 'prescriptions',
+  lifts: 'lifts',
   session_logs: 'session_logs',
   set_logs: 'set_logs',
   cardio_logs: 'cardio_logs',
@@ -83,32 +109,38 @@ const TABLE_TO_LOCAL: Record<RemoteTable, keyof ReturnType<typeof getDb> & strin
   body_readiness_logs: 'body_readiness_logs',
 };
 
-const ALL_TABLES: RemoteTable[] = [
+/**
+ * Tables synced via watermark pull and realtime subscription.
+ * hrv_logs → readiness_logs; workday_logs / supplement_logs → Dexie meta only.
+ */
+const ALL_TABLES: SyncPullTable[] = [
+  'templates',
   'prescriptions',
+  'lifts',
   'session_logs',
   'set_logs',
-  'cardio_logs',
-  'bodyweight_logs',
-  'body_measurement_logs',
   'readiness_logs',
-  'nutrition_logs',
-  'hydration_logs',
   'sleep_logs',
   'stress_logs',
-  'mindfulness_logs',
-  'injury_episodes',
+  'nutrition_logs',
+  'hydration_logs',
+  'bodyweight_logs',
+  'body_measurement_logs',
   'body_readiness_logs',
+  'mindfulness_logs',
+  'cardio_logs',
+  'injury_episodes',
 ];
 
 const WATERMARK_PREFIX = 'sync:watermark:';
 
-async function getWatermark(table: RemoteTable): Promise<string | null> {
+async function getWatermark(table: SyncPullTable): Promise<string | null> {
   const db = getDb();
   const row = await db.meta.get(`${WATERMARK_PREFIX}${table}`);
   return (row?.value as string | undefined) ?? null;
 }
 
-async function setWatermark(table: RemoteTable, isoTs: string) {
+async function setWatermark(table: SyncPullTable, isoTs: string) {
   const db = getDb();
   await db.meta.put({ key: `${WATERMARK_PREFIX}${table}`, value: isoTs });
 }
@@ -141,9 +173,22 @@ export async function seedRemotePrescriptionsIfEmpty(userId: string) {
 
 type RowPayload = Record<string, unknown>;
 
-async function persistRows(table: RemoteTable, rows: RowPayload[]) {
+async function mirrorDelete(table: SyncPullTable, id: string) {
+  const db = getDb();
+  const localTable = db[TABLE_TO_LOCAL[table]];
+  // @ts-expect-error dynamic table access
+  await localTable.delete(id);
+}
+
+async function persistRows(table: SyncPullTable, rows: RowPayload[]) {
   const db = getDb();
   switch (table) {
+    case 'templates':
+      await db.templates.bulkPut(rows.map((r) => fromRemote<SessionTemplate>(r)));
+      return;
+    case 'lifts':
+      await db.lifts.bulkPut(rows.map((r) => fromRemote<Lift>(r)));
+      return;
     case 'prescriptions':
       await db.prescriptions.bulkPut(rows.map((r) => fromRemote<Prescription>(r)));
       return;
@@ -203,7 +248,10 @@ export async function pullAll(opts: { full?: boolean } = {}) {
     let q = supabase.from(table).select('*');
     if (watermark) q = q.gt('updated_at', watermark);
     const { data, error } = await q;
-    if (error) throw error;
+    if (error) {
+      if (isCatalogPullTable(table) && isMissingRelationError(error)) continue;
+      throw error;
+    }
 
     if (opts.full && !watermark) {
       // First-ever pull (or forced full refresh): clear before rewrite so
@@ -374,7 +422,7 @@ export function subscribeRealtime(userId: string): () => void {
 
   const onVisible = () => {
     if (document.visibilityState === 'visible') {
-      void pullAll().catch(() => {});
+      void pullAll().catch(console.error);
     }
   };
   if (typeof window !== 'undefined') {
@@ -395,7 +443,7 @@ export function subscribeRealtime(userId: string): () => void {
           try {
             if (payload.eventType === 'DELETE') {
               const id = (payload.old.id as string | undefined) ?? '';
-              if (id) await localDelete(table, id, { skipDirty: true });
+              if (id) await mirrorDelete(table, id);
               return;
             }
             await persistRows(table, [payload.new]);
