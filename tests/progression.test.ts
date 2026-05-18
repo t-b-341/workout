@@ -331,12 +331,12 @@ describe('decideProgression — p1 assisted', () => {
 });
 
 describe('decideProgression — p1 bodyweight weighted', () => {
-  const PRESC_ID = 'U3-p1_bw';
+  const PRESC_ID = 'U1-p1_bw';
 
   it('advances added load by catalog 2.5 lb (snap keeps quarter plates)', () => {
     const presc = makePrescription({
       id: PRESC_ID,
-      templateId: 'U3' as TemplateId,
+      templateId: 'U1' as TemplateId,
       liftId: 'p1_bw',
       weight: 10,
       sets: 3,
@@ -356,7 +356,7 @@ describe('decideProgression — p1 bodyweight weighted', () => {
     const dec = decideProgression(
       presc,
       sets,
-      makeSession({ templateId: 'U3' as TemplateId }),
+      makeSession({ templateId: 'U1' as TemplateId }),
     );
     expect(dec.advanced).toBe(true);
     expect(dec.nextWeight).toBe(12.5);
