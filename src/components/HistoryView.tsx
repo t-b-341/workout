@@ -1495,6 +1495,46 @@ function liftingGoalProgressDetail(
   return { pctLabel, remaining: `${toGo} reps to go` };
 }
 
+function lastMaxTestDate(
+  sets: SetLog[],
+  liftId: string,
+  sessionDateById: Map<string, string>,
+): string | null {
+  const dates = setsForLift(sets, liftId)
+    .filter((s) => s.status === 'completed' && s.intent === 'max_test')
+    .map((s) => sessionDateById.get(s.sessionLogId))
+    .filter((d): d is string => Boolean(d));
+  if (dates.length === 0) return null;
+  return [...dates].sort((a, b) => (a < b ? 1 : -1))[0]!;
+}
+
+function lastQualifyingRowDate(
+  sets: SetLog[],
+  sessionDateById: Map<string, string>,
+): string | null {
+  const dates = setsForLift(sets, 'bbr')
+    .filter(
+      (s) =>
+        s.status === 'completed'
+        && (s.intent === 'working' || s.intent === 'backoff' || s.intent === 'max_test')
+        && s.reps >= 5
+        && s.weight > 0,
+    )
+    .map((s) => sessionDateById.get(s.sessionLogId))
+    .filter((d): d is string => Boolean(d));
+  if (dates.length === 0) return null;
+  return [...dates].sort((a, b) => (a < b ? 1 : -1))[0]!;
+}
+
+function goalLastPrSubtitle(date: string | null): ReactNode {
+  if (!date) return undefined;
+  return (
+    <div className="text-[10px] text-zinc-600 mt-0.5">
+      Last max test: {fmtDate(date, 'MMM d')}
+    </div>
+  );
+}
+
 function LiftingGoalCard({
   title,
   subtitle,
@@ -1551,7 +1591,7 @@ function LiftingGoalCard({
 }
 
 function LiftGoalsList({
-  sessions: _sessions,
+  sessions,
   sets,
   lifts: _lifts,
 }: {
@@ -1559,9 +1599,9 @@ function LiftGoalsList({
   sets: SetLog[];
   lifts: Lift[];
 }) {
-  void _sessions;
   void _lifts;
   const fmtLb = (n: number) => `${Math.round(n * 10) / 10} lb`;
+  const sessionDateById = new Map(sessions.map((s) => [s.id, s.date]));
 
   const dl = currentBest1RmFromSets(setsForLift(sets, 'dl'));
   const squat = currentBest1RmFromSets(setsForLift(sets, 'back_squat'));
@@ -1571,6 +1611,13 @@ function LiftGoalsList({
   const ohp = currentBest1RmFromSets(setsForLift(sets, 'ohp'));
   const pp = currentBest1RmFromSets(setsForLift(sets, 'pp'));
 
+  const dlDate = lastMaxTestDate(sets, 'dl', sessionDateById);
+  const squatDate = lastMaxTestDate(sets, 'back_squat', sessionDateById);
+  const benchDate = lastMaxTestDate(sets, 'bp', sessionDateById);
+  const rowDate = lastQualifyingRowDate(sets, sessionDateById);
+  const ohpDate = lastMaxTestDate(sets, 'ohp', sessionDateById);
+  const ppDate = lastMaxTestDate(sets, 'pp', sessionDateById);
+
   return (
     <div className="space-y-3">
       <p className="text-xs text-zinc-500">
@@ -1579,6 +1626,7 @@ function LiftGoalsList({
 
       <LiftingGoalCard
         title="Deadlift 1RM"
+        subtitle={goalLastPrSubtitle(dlDate)}
         currentLabel={fmtLb(dl)}
         targetLabel="475 lb"
         pct={(dl / 475) * 100}
@@ -1588,6 +1636,7 @@ function LiftGoalsList({
 
       <LiftingGoalCard
         title="Back Squat 1RM"
+        subtitle={goalLastPrSubtitle(squatDate)}
         currentLabel={fmtLb(squat)}
         targetLabel="365 lb"
         pct={(squat / 365) * 100}
@@ -1597,7 +1646,12 @@ function LiftGoalsList({
 
       <LiftingGoalCard
         title="Bench Press 1RM"
-        subtitle={<div className="text-xs text-zinc-500 mt-0.5">Life PR: 235 lb</div>}
+        subtitle={(
+          <>
+            <div className="text-xs text-zinc-500 mt-0.5">Life PR: 235 lb</div>
+            {goalLastPrSubtitle(benchDate)}
+          </>
+        )}
         currentLabel={fmtLb(bench)}
         targetLabel="265 lb"
         pct={(bench / 265) * 100}
@@ -1607,6 +1661,7 @@ function LiftGoalsList({
 
       <LiftingGoalCard
         title="Barbell Row 5RM"
+        subtitle={goalLastPrSubtitle(rowDate)}
         currentLabel={row5 > 0 ? `${Math.round(row5)} × 5` : '—'}
         targetLabel="235 × 5"
         pct={(row5 / 235) * 100}
@@ -1625,15 +1680,22 @@ function LiftGoalsList({
 
       <LiftingGoalCard
         title="OHP 1RM"
+        subtitle={(
+          <>
+            <div className="text-xs text-zinc-500 mt-0.5">PR: 165 lb ✓</div>
+            {goalLastPrSubtitle(ohpDate)}
+          </>
+        )}
         currentLabel={fmtLb(ohp)}
-        targetLabel="165 lb"
-        pct={(ohp / 165) * 100}
-        done={ohp >= 165}
-        {...liftingGoalProgressDetail(ohp >= 165, (ohp / 165) * 100, { kind: 'lb', target: 165, current: ohp })}
+        targetLabel="175 lb"
+        pct={(ohp / 175) * 100}
+        done={ohp >= 175}
+        {...liftingGoalProgressDetail(ohp >= 175, (ohp / 175) * 100, { kind: 'lb', target: 175, current: ohp })}
       />
 
       <LiftingGoalCard
         title="Push Press 1RM"
+        subtitle={goalLastPrSubtitle(ppDate)}
         currentLabel={fmtLb(pp)}
         targetLabel="200 lb"
         pct={(pp / 200) * 100}
