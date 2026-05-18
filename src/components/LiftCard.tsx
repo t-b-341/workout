@@ -39,6 +39,9 @@ type Props = {
   session: SessionLog;
   /** Emphasize when this lift is pinned on Program / lift detail. */
   pinned?: boolean;
+  effectiveSets?: number;
+  onAddSet?: () => void;
+  onRemoveLastSet?: () => void;
 };
 
 export type CardioSetMeta = {
@@ -88,7 +91,15 @@ function getPriorBestE1rm(
   return best;
 }
 
-export function LiftCard({ prescription, lift, session, pinned }: Props) {
+export function LiftCard({
+  prescription,
+  lift,
+  session,
+  pinned,
+  effectiveSets,
+  onAddSet,
+  onRemoveLastSet,
+}: Props) {
   const sets = useSetsForSession(session.id);
   const history = useLastSessionsForLift(prescription.liftId, 3);
   const lifts = useLifts();
@@ -110,7 +121,8 @@ export function LiftCard({ prescription, lift, session, pinned }: Props) {
   const [pendingIntentByKey, setPendingIntentByKey] = useState<Record<string, SetIntent>>({});
 
   const liftSets = (sets ?? []).filter((s) => s.prescriptionId === prescription.id);
-  const indexes = Array.from({ length: prescription.sets }, (_, i) => i);
+  const setCount = effectiveSets ?? prescription.sets;
+  const indexes = Array.from({ length: setCount }, (_, i) => i);
   const sides: Array<'L' | 'R' | undefined> = prescription.perSide ? ['L', 'R'] : [undefined];
 
   const lastSession = history?.[0];
@@ -516,6 +528,30 @@ export function LiftCard({ prescription, lift, session, pinned }: Props) {
           }),
         )}
       </div>
+
+      {(onAddSet || onRemoveLastSet) && (
+        <div className="flex items-center gap-2 pt-2 mt-2 border-t border-zinc-800">
+          <span className="text-xs text-zinc-500 flex-1">Sets: {setCount}</span>
+          {onRemoveLastSet && setCount > 1 && (
+            <button
+              type="button"
+              onClick={onRemoveLastSet}
+              className="h-8 px-3 rounded-lg bg-zinc-800 border border-zinc-700 text-xs text-zinc-400 hover:text-rose-400 transition-colors"
+            >
+              − Remove last set
+            </button>
+          )}
+          {onAddSet && setCount < 8 && (
+            <button
+              type="button"
+              onClick={onAddSet}
+              className="h-8 px-3 rounded-lg bg-zinc-800 border border-zinc-700 text-xs text-zinc-400 hover:text-amber-400 transition-colors"
+            >
+              + Add set
+            </button>
+          )}
+        </div>
+      )}
     </div>
   );
 }

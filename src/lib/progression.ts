@@ -103,6 +103,10 @@ export function decideProgression(
     skipped: false,
   };
 
+  if (prescription.notes === '__session_scoped__') {
+    return { ...base, held: true, reason: 'Session-scoped exercise' };
+  }
+
   if (sessionLog.mode !== 'standard' || sessionLog.deload) {
     return { ...base, skipped: true, reason: 'Light / skip / deload — no progression' };
   }
