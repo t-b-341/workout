@@ -11,10 +11,12 @@ import {
 import { AppShellImportTrigger } from '@/components/AppShellImportTrigger';
 import { shellMaxClass, useLayoutMode } from '@/lib/layoutMode';
 import {
+  clearCachedUserId,
   ensureLocalSeed,
   flushDirty,
   pullAll,
   seedRemotePrescriptionsIfEmpty,
+  setCachedUserId,
   subscribeRealtime,
 } from '@/lib/sync';
 import { backfillCardioFromSets } from '@/lib/backfill';
@@ -48,9 +50,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         const supabase = createClient();
         const { data: { user } } = await supabase.auth.getUser();
         if (!user) {
+          clearCachedUserId();
           router.replace('/login');
           return;
         }
+        setCachedUserId(user.id);
         await ensureLocalSeed();
         await seedRemotePrescriptionsIfEmpty(user.id);
         setSyncing(true);

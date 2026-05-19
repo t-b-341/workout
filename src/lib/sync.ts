@@ -57,12 +57,26 @@ function cloneRowForUndo(row: Record<string, unknown>): Record<string, unknown> 
   }
 }
 
+let _cachedUserId: string | null = null;
+
 async function getAuthUserId(): Promise<string | null> {
+  if (_cachedUserId) return _cachedUserId;
   const supabase = createClient();
   const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  return user?.id ?? null;
+    data: { session },
+  } = await supabase.auth.getSession();
+  _cachedUserId = session?.user?.id ?? null;
+  return _cachedUserId;
+}
+
+/** Prime from a server-verified user before child components write rows. */
+export function setCachedUserId(id: string | null) {
+  _cachedUserId = id;
+}
+
+/** Call on sign-out to clear the cached user. */
+export function clearCachedUserId() {
+  _cachedUserId = null;
 }
 
 /** Local rows use camelCase `userId`; `toRemote` maps it to Postgres `user_id`. */
