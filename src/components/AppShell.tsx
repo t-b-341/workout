@@ -48,6 +48,15 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     (async () => {
       try {
         const supabase = createClient();
+        // Step 1: restore session from cookie/storage immediately so the
+        // client attaches a Bearer token to all subsequent requests.
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session) {
+          clearCachedUserId();
+          router.replace('/login');
+          return;
+        }
+        // Step 2: verify the token server-side (expired / revoked).
         const { data: { user } } = await supabase.auth.getUser();
         if (!user) {
           clearCachedUserId();
