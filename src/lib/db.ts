@@ -63,8 +63,8 @@ export class WorkoutDB extends Dexie {
   dirty!: Table<DirtyRow, string>;
   meta!: Table<{ key: string; value: unknown }, string>;
 
-  constructor() {
-    super('workout');
+  constructor(name = 'workout') {
+    super(name);
 
     // v1 — original schema. NEVER edit a previously released version block.
     this.version(1).stores({
@@ -501,7 +501,22 @@ export class WorkoutDB extends Dexie {
 export const SCHEMA_VERSION = 15;
 
 let _db: WorkoutDB | null = null;
+let _dbUserId: string | null = null;
+
+export function initDb(userId: string): WorkoutDB {
+  if (_db && _dbUserId === userId) return _db;
+  if (_db && _dbUserId !== userId) {
+    void _db.close();
+    _db = null;
+  }
+  _db = new WorkoutDB(`workout-${userId}`);
+  _dbUserId = userId;
+  return _db;
+}
+
 export function getDb(): WorkoutDB {
-  if (!_db) _db = new WorkoutDB();
+  if (!_db) {
+    throw new Error('DB not initialized — call initDb(userId) first');
+  }
   return _db;
 }

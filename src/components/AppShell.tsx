@@ -8,6 +8,7 @@ import {
   importCompletedSession,
   PP_OHP_WORKOUT_MAY_15,
 } from '@/lib/importCompletedSession';
+import { initDb } from '@/lib/db';
 import { AppShellImportTrigger } from '@/components/AppShellImportTrigger';
 import { shellMaxClass, useLayoutMode } from '@/lib/layoutMode';
 import {
@@ -64,6 +65,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           router.replace('/login');
           return;
         }
+        initDb(user.id);
         setCachedUserId(user.id);
         // Allow the browser client to register the session on its headers.
         await new Promise((resolve) => setTimeout(resolve, 100));
