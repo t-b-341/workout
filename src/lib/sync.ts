@@ -23,6 +23,7 @@ import type {
   SetLog,
   SleepLog,
   StressLog,
+  SupplementLog,
 } from './types';
 
 export type RemoteTable = DirtyRow['table'];
@@ -102,6 +103,7 @@ const FLUSH_TABLE_TIER: Record<RemoteTable, number> = {
   mindfulness_logs: 3,
   injury_episodes: 3,
   body_readiness_logs: 3,
+  supplement_logs: 3,
 };
 
 /** Order dirty rows so FKs succeed (parents before children on upsert; upserts before deletes). */
@@ -138,11 +140,12 @@ const TABLE_TO_LOCAL: Record<SyncPullTable, keyof ReturnType<typeof getDb> & str
   mindfulness_logs: 'mindfulness_logs',
   injury_episodes: 'injury_episodes',
   body_readiness_logs: 'body_readiness_logs',
+  supplement_logs: 'supplement_logs',
 };
 
 /**
  * Tables synced via watermark pull and realtime subscription.
- * hrv_logs → readiness_logs; workday_logs / supplement_logs → Dexie meta only.
+ * hrv_logs → readiness_logs; workday_logs → Dexie meta only.
  */
 const ALL_TABLES: SyncPullTable[] = [
   'templates',
@@ -161,6 +164,7 @@ const ALL_TABLES: SyncPullTable[] = [
   'mindfulness_logs',
   'cardio_logs',
   'injury_episodes',
+  'supplement_logs',
 ];
 
 const WATERMARK_PREFIX = 'sync:watermark:';
@@ -266,6 +270,9 @@ async function persistRows(table: SyncPullTable, rows: RowPayload[]) {
       return;
     case 'body_readiness_logs':
       await db.body_readiness_logs.bulkPut(rows.map((r) => fromRemote<BodyReadinessLog>(r)));
+      return;
+    case 'supplement_logs':
+      await db.supplement_logs.bulkPut(rows.map((r) => fromRemote<SupplementLog>(r)));
       return;
   }
 }

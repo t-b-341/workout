@@ -2,6 +2,8 @@
 
 import { useLiveQuery } from 'dexie-react-hooks';
 import { getDb } from './db';
+import { localUpsert } from './sync';
+import type { SupplementLog } from './types';
 
 export const SUPPLEMENTS_META_PREFIX = 'workout:supplements:v1:' as const;
 
@@ -39,25 +41,30 @@ export function normalizeSupplementsValue(v: unknown): SupplementPayload {
   return { taken, updatedAt };
 }
 
-export async function saveSupplements(date: string, payload: Omit<SupplementPayload, 'updatedAt'>): Promise<void> {
-  const key = supplementsMetaKey(date);
-  const hasAny = SUPPLEMENT_ITEMS.some(({ id }) => payload.taken[id]);
-  if (!hasAny) {
-    await getDb().meta.delete(key);
-    return;
-  }
-  await getDb().meta.put({
-    key,
-    value: {
-      taken: { ...payload.taken },
-      updatedAt: new Date().toISOString(),
-    } satisfies SupplementPayload,
-  });
+export async function saveSupplements(
+  date: string,
+  payload: { taken: Record<string, boolean> },
+): Promise<void> {
+  const zma = Boolean(payload.taken.zma);
+  const d3k2 = Boolean(payload.taken.d3k2);
+  const multi = Boolean(payload.taken.multi);
+  const creatine = Boolean(payload.taken.creatine);
+  await localUpsert('supplement_logs', {
+    id: `${date}-supplements`,
+    date,
+    zma,
+    d3k2,
+    multi,
+    creatine,
+    allTaken: zma && d3k2 && multi && creatine,
+  } satisfies Omit<SupplementLog, 'userId' | 'updatedAt'>);
 }
 
 export function useSupplementsForDate(date: string) {
-  const metaKey = supplementsMetaKey(date);
-  return useLiveQuery(() => getDb().meta.where('key').equals(metaKey).first(), [metaKey]);
+  return useLiveQuery(
+    () => getDb().supplement_logs.where('date').equals(date).first(),
+    [date],
+  );
 }
 
 export type SupplementLogExport = {

@@ -18,6 +18,7 @@ import type {
   SetLog,
   SleepLog,
   StressLog,
+  SupplementLog,
 } from './types';
 
 export type DirtyRow = {
@@ -36,7 +37,8 @@ export type DirtyRow = {
     | 'stress_logs'
     | 'mindfulness_logs'
     | 'injury_episodes'
-    | 'body_readiness_logs';
+    | 'body_readiness_logs'
+    | 'supplement_logs';
   rowId: string;
   op: 'upsert' | 'delete';
   /** Server time when last enqueued (for ordering). */
@@ -60,6 +62,7 @@ export class WorkoutDB extends Dexie {
   mindfulness_logs!: Table<MindfulnessLog, string>;
   injury_episodes!: Table<InjuryEpisode, string>;
   body_readiness_logs!: Table<BodyReadinessLog, string>;
+  supplement_logs!: Table<SupplementLog, string>;
   dirty!: Table<DirtyRow, string>;
   meta!: Table<{ key: string; value: unknown }, string>;
 
@@ -495,10 +498,59 @@ export class WorkoutDB extends Dexie {
       dirty: 'id, table, rowId, enqueuedAt',
       meta: 'key',
     });
+    // v16 — supplement_logs Dexie table + migrate legacy meta rows.
+    this.version(16).stores({
+      lifts: 'id, name',
+      templates: 'id, dayOfWeek',
+      prescriptions: 'id, templateId, liftId, [templateId+order]',
+      session_logs: 'id, date, templateId',
+      set_logs: 'id, sessionLogId, liftId, [sessionLogId+liftId+setIndex]',
+      cardio_logs: 'id, date, sessionLogId',
+      bodyweight_logs: 'id, date, isoWeek',
+      body_measurement_logs: 'id, date',
+      readiness_logs: 'id, sessionLogId, date',
+      nutrition_logs: 'id, date',
+      hydration_logs: 'id, date',
+      sleep_logs: 'id, date',
+      stress_logs: 'id, date, loggedAt',
+      mindfulness_logs: 'id, date, loggedAt',
+      injury_episodes: 'id, siteKey, startedAt',
+      body_readiness_logs: 'id, date',
+      supplement_logs: 'id, userId, date, updatedAt',
+      dirty: 'id, table, rowId, enqueuedAt',
+      meta: 'key',
+    }).upgrade(async (tx) => {
+      const { normalizeSupplementsValue, SUPPLEMENTS_META_PREFIX } = await import('./supplements');
+      const meta = tx.table('meta');
+      const rows = await meta.toArray();
+      const suppRows = rows.filter((r: { key: string }) =>
+        r.key.startsWith(SUPPLEMENTS_META_PREFIX),
+      );
+      const target = tx.table('supplement_logs');
+      for (const row of suppRows) {
+        const date = (row.key as string).slice(SUPPLEMENTS_META_PREFIX.length);
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) continue;
+        const payload = normalizeSupplementsValue(row.value);
+        const zma = Boolean(payload.taken.zma);
+        const d3k2 = Boolean(payload.taken.d3k2);
+        const multi = Boolean(payload.taken.multi);
+        const creatine = Boolean(payload.taken.creatine);
+        await target.put({
+          id: `${date}-supplements`,
+          date,
+          zma,
+          d3k2,
+          multi,
+          creatine,
+          allTaken: zma && d3k2 && multi && creatine,
+          updatedAt: payload.updatedAt || new Date(0).toISOString(),
+        });
+      }
+    });
   }
 }
 
-export const SCHEMA_VERSION = 15;
+export const SCHEMA_VERSION = 16;
 
 let _db: WorkoutDB | null = null;
 let _dbUserId: string | null = null;

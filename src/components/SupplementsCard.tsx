@@ -3,7 +3,6 @@
 import { useEffect, useState } from 'react';
 import {
   SUPPLEMENT_ITEMS,
-  normalizeSupplementsValue,
   saveSupplements,
   type SupplementId,
   useSupplementsForDate,
@@ -12,25 +11,24 @@ import {
 type Props = { date: string };
 
 export function SupplementsCard({ date }: Props) {
-  const metaRow = useSupplementsForDate(date);
-  const stored = normalizeSupplementsValue(metaRow?.value);
+  const stored = useSupplementsForDate(date);
   const [taken, setTaken] = useState<Record<SupplementId, boolean>>(() => ({
-    zma: stored.taken.zma ?? false,
-    d3k2: stored.taken.d3k2 ?? false,
-    multi: stored.taken.multi ?? false,
-    creatine: stored.taken.creatine ?? false,
+    zma: stored?.zma ?? false,
+    d3k2: stored?.d3k2 ?? false,
+    multi: stored?.multi ?? false,
+    creatine: stored?.creatine ?? false,
   }));
 
   useEffect(() => {
     // Dexie live query hydrates async — sync local checkbox state when the row loads or edits land.
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- hydrate from IndexedDB meta
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- hydrate from IndexedDB
     setTaken({
-      zma: stored.taken.zma ?? false,
-      d3k2: stored.taken.d3k2 ?? false,
-      multi: stored.taken.multi ?? false,
-      creatine: stored.taken.creatine ?? false,
+      zma: stored?.zma ?? false,
+      d3k2: stored?.d3k2 ?? false,
+      multi: stored?.multi ?? false,
+      creatine: stored?.creatine ?? false,
     });
-  }, [date, stored.taken.zma, stored.taken.d3k2, stored.taken.multi, stored.taken.creatine]);
+  }, [date, stored?.zma, stored?.d3k2, stored?.multi, stored?.creatine]);
 
   useEffect(() => {
     const t = window.setTimeout(() => {

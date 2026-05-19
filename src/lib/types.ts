@@ -368,6 +368,19 @@ export type BodyReadinessLog = {
   score: 1 | 2 | 3 | 4 | 5;
 };
 
+export type SupplementLog = {
+  id: string;
+  userId: string;
+  /** ISO date YYYY-MM-DD. */
+  date: string;
+  zma: boolean;
+  d3k2: boolean;
+  multi: boolean;
+  creatine: boolean;
+  allTaken: boolean;
+  updatedAt: string;
+};
+
 /** Momentary stress check-in: timestamp + 1–5 (higher = more stressed). Multiple per day allowed. */
 export type StressLog = {
   id: string;

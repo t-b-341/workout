@@ -91,7 +91,7 @@ describe('buildLiftingGoalSnapshots', () => {
 
 describe('EXPORT_SCHEMA_VERSION', () => {
   it('is bumped for lifting_goal_snapshots export shape', () => {
-    expect(EXPORT_SCHEMA_VERSION).toBe(17);
+    expect(EXPORT_SCHEMA_VERSION).toBe(18);
   });
 });
 

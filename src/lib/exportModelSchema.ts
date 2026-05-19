@@ -4,7 +4,7 @@ import type { DirtyRow } from './db';
  * JSON export top-level `schemaVersion` — bump when new top-level export fields or shapes ship
  * (independent of Dexie `SCHEMA_VERSION`).
  */
-export const EXPORT_SCHEMA_VERSION = 17;
+export const EXPORT_SCHEMA_VERSION = 18;
 import {
   NUTRITION_DAY_TYPES,
   SESSION_LABEL_TYPES,
@@ -489,6 +489,7 @@ function supplementLogsExportFields(): SchemaEntry {
       zma: 'boolean',
       d3k2: 'boolean',
       multi: 'boolean',
+      creatine: 'boolean',
       allTaken: 'boolean',
       updatedAt: 'ISO-8601',
     },

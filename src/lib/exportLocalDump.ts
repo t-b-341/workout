@@ -2,7 +2,7 @@
 
 import type { DirtyRow } from './db';
 import { getDb } from './db';
-import { buildSupplementLogsExport } from './supplements';
+import type { SupplementLogExport } from './supplements';
 import { buildWorkdayLogsExport } from './workday';
 import {
   buildExportSchemaDocumentation,
@@ -459,8 +459,8 @@ export type FullLocalExport = {
   lifting_goal_snapshots: LiftingGoalSnapshot[];
   /** Work shift checklist entries from Dexie meta (`workout:workday:v1:*`). */
   workday_logs: ReturnType<typeof buildWorkdayLogsExport>;
-  /** Supplement checklist rows from Dexie meta (`workout:supplements:v1:*`). */
-  supplement_logs: ReturnType<typeof buildSupplementLogsExport>;
+  /** Supplement checklist rows from synced `supplement_logs` Dexie table. */
+  supplement_logs: SupplementLogExport[];
   /** Current mesocycle block mirror (aligned with Program tab / meso week stats). */
   mesocycle: ReturnType<typeof buildExportMesocycleBlock>;
   dirty: DirtyRow[];
@@ -653,7 +653,16 @@ export async function buildFullLocalExport(opts?: FullLocalExportOptions): Promi
 
   const hrv_logs = buildHrvLogsExport(readiness_logs);
   const workday_logs = buildWorkdayLogsExport(meta);
-  const supplement_logs = buildSupplementLogsExport(meta);
+  const supplementRows = await db.supplement_logs.orderBy('date').toArray();
+  const supplement_logs: SupplementLogExport[] = supplementRows.map((r) => ({
+    date: r.date,
+    zma: r.zma,
+    d3k2: r.d3k2,
+    multi: r.multi,
+    creatine: r.creatine,
+    allTaken: r.allTaken,
+    updatedAt: r.updatedAt,
+  }));
   const mesocycle = buildExportMesocycleBlock({
     cfg: mesoConfig,
     today: todayIso(),
