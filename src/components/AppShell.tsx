@@ -48,15 +48,16 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     (async () => {
       try {
         const supabase = createClient();
-        // Step 1: restore session from cookie/storage immediately so the
-        // client attaches a Bearer token to all subsequent requests.
-        const { data: { session } } = await supabase.auth.getSession();
-        if (!session) {
+        // Explicitly restore session from cookie so the browser client attaches
+        // a Bearer token to all subsequent requests. Without this, OAuth
+        // redirects can result in an unauthenticated client on first render.
+        const { data: { session: initialSession } } = await supabase.auth.getSession();
+        if (!initialSession) {
           clearCachedUserId();
           router.replace('/login');
           return;
         }
-        // Step 2: verify the token server-side (expired / revoked).
+        // Verify server-side (detects expired / revoked tokens).
         const { data: { user } } = await supabase.auth.getUser();
         if (!user) {
           clearCachedUserId();
@@ -64,10 +65,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           return;
         }
         setCachedUserId(user.id);
+        // Allow the browser client to register the session on its headers.
+        await new Promise((resolve) => setTimeout(resolve, 100));
         await ensureLocalSeed();
         await seedRemotePrescriptionsIfEmpty(user.id);
         setSyncing(true);
-        await pullAll();
+        await pullAll({ full: true });
         await repairOpeningPrBaselineSession();
         await backfillCardioFromSets();
         await flushDirty();
