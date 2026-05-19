@@ -164,10 +164,15 @@ export async function seedRemotePrescriptionsIfEmpty(userId: string) {
   if ((count ?? 0) > 0) return;
 
   const rows = PRESCRIPTIONS.map((p) => ({
-    ...toRemote(p),
+    ...toRemote({
+      ...p,
+      id: `${userId}-${p.templateId}-${p.liftId}-${p.order}`,
+    }),
     user_id: userId,
   }));
-  const { error: insertErr } = await supabase.from('prescriptions').insert(rows);
+  const { error: insertErr } = await supabase
+    .from('prescriptions')
+    .upsert(rows, { onConflict: 'id', ignoreDuplicates: true });
   if (insertErr) throw insertErr;
 }
 
