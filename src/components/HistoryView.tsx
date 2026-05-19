@@ -17,6 +17,7 @@ import {
   useAllSessions,
   useSessionsAfterReadiness,
   useAllSets,
+  useHistoryGoalSets,
   useLifts,
   useTemplates,
 } from '@/lib/hooks';
@@ -25,7 +26,6 @@ import {
   bestBarbellRowWeightAt5Plus,
   bestWeightAtMinReps,
   bestWorkingSetWeight,
-  currentBest1RmFromSets,
   maxBwPullupReps,
   setsForLift,
 } from '@/lib/liftingGoals';
@@ -43,6 +43,7 @@ import {
   buildWeeklySummaries,
   buildTemplateSessionProgressSeries,
   DEFAULT_ROLLING_STRENGTH_WINDOW_DAYS,
+  est1RM,
   fmtDurationShort,
   isoWeekOf,
   prFeed,
@@ -131,6 +132,7 @@ export function HistoryView() {
   const sessions = useSessionsAfterReadiness();
   const allSessions = useAllSessions();
   const allSets = useAllSets();
+  const goalSets = useHistoryGoalSets();
   const cardio = useAllCardio();
   const bodyweights = useAllBodyweight();
   const bodyMeasurements = useAllBodyMeasurements();
@@ -148,6 +150,7 @@ export function HistoryView() {
     !templates ||
     !sessions ||
     !allSets ||
+    !goalSets ||
     !cardio ||
     !bodyweights ||
     !bodyMeasurements ||
@@ -213,12 +216,12 @@ export function HistoryView() {
       {tab === 'injuries' && <InjuriesList episodes={episodes} />}
       {tab === 'hrv' && <HrvList readiness={readiness} />}
       {tab === 'lifting-goals' && (
-        <LiftGoalsList sessions={sessions} sets={allSets} lifts={lifts} />
+        <LiftGoalsList sessions={allSessions ?? sessions} sets={goalSets} lifts={lifts} />
       )}
-      {tab === 'accessory-goals' && <AccessoryGoalsList sets={allSets} />}
+      {tab === 'accessory-goals' && <AccessoryGoalsList sets={goalSets} />}
       {tab === 'balance' && (
         <StrengthBalanceView
-          sets={allSets}
+          sets={goalSets}
           sessions={allSessions ?? []}
         />
       )}
@@ -1495,6 +1498,31 @@ function liftingGoalProgressDetail(
   return { pctLabel, remaining: `${toGo} reps to go` };
 }
 
+/** Max-test weight, else best 1RM from working/backoff (singles count as load, not Epley). */
+function currentBest1RmFromSets(sets: SetLog[]): number {
+  let maxTestBest = -Infinity;
+  for (const s of sets) {
+    if (s.status !== 'completed') continue;
+    if (s.intent !== 'max_test') continue;
+    if (!Number.isFinite(s.weight) || s.weight <= 0) continue;
+    maxTestBest = Math.max(maxTestBest, s.weight);
+  }
+
+  let workingBest = -Infinity;
+  for (const s of sets) {
+    if (s.status !== 'completed') continue;
+    const intent = s.intent ?? 'working';
+    if (intent !== 'working' && intent !== 'backoff') continue;
+    if (!Number.isFinite(s.weight) || s.weight <= 0) continue;
+    if (s.reps < 1 || s.reps > 20) continue;
+    const candidate = s.reps === 1 ? s.weight : est1RM(s.weight, s.reps);
+    if (Number.isFinite(candidate)) workingBest = Math.max(workingBest, candidate);
+  }
+
+  if (maxTestBest > -Infinity) return maxTestBest;
+  return workingBest > -Infinity ? workingBest : 0;
+}
+
 function lastMaxTestDate(
   sets: SetLog[],
   liftId: string,
@@ -1544,6 +1572,7 @@ function LiftingGoalCard({
   done,
   pctLabel,
   remaining,
+  milestoneNote,
 }: {
   title: string;
   subtitle?: ReactNode;
@@ -1553,6 +1582,7 @@ function LiftingGoalCard({
   done: boolean;
   pctLabel?: string;
   remaining?: string;
+  milestoneNote?: ReactNode;
 }) {
   const clamped = Math.min(100, Math.max(0, pct));
   return (
@@ -1575,6 +1605,7 @@ function LiftingGoalCard({
       <div className="h-2 rounded-full bg-zinc-800 overflow-hidden">
         <div className="h-full rounded-full bg-amber-500" style={{ width: `${clamped}%` }} />
       </div>
+      {milestoneNote}
       <div className="font-mono text-xs text-zinc-400">
         {currentLabel} / {targetLabel}
       </div>
@@ -1680,16 +1711,18 @@ function LiftGoalsList({
 
       <LiftingGoalCard
         title="OHP 1RM"
-        subtitle={(
-          <>
-            <div className="text-xs text-zinc-500 mt-0.5">PR: 165 lb ✓</div>
-            {goalLastPrSubtitle(ohpDate)}
-          </>
-        )}
+        subtitle={goalLastPrSubtitle(ohpDate)}
         currentLabel={fmtLb(ohp)}
         targetLabel="175 lb"
         pct={(ohp / 175) * 100}
         done={ohp >= 175}
+        milestoneNote={
+          ohp >= 165 ? (
+            <div className="text-[10px] text-emerald-400 mt-0.5">
+              ✓ Previous target (165 lb) complete
+            </div>
+          ) : undefined
+        }
         {...liftingGoalProgressDetail(ohp >= 175, (ohp / 175) * 100, { kind: 'lb', target: 175, current: ohp })}
       />
 

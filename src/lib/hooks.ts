@@ -245,6 +245,14 @@ export function useAllSets(): SetLog[] | undefined {
   return useLiveQuery(() => getDb().set_logs.toArray(), []);
 }
 
+/** Completed sets for History goals / strength balance (all session types, including Quick / opportunistic). */
+export function useHistoryGoalSets(): SetLog[] | undefined {
+  return useLiveQuery(async () => {
+    const sets = await getDb().set_logs.toArray();
+    return sets.filter((s) => s.status === 'completed');
+  }, []);
+}
+
 export function useAllSessions(): SessionLog[] | undefined {
   return useLiveQuery(async () => {
     const all = await getDb().session_logs.toArray();
