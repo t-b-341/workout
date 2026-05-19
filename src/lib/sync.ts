@@ -56,6 +56,23 @@ function cloneRowForUndo(row: Record<string, unknown>): Record<string, unknown> 
     return { ...row };
   }
 }
+
+async function getAuthUserId(): Promise<string | null> {
+  const supabase = createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  return user?.id ?? null;
+}
+
+/** Local rows use camelCase `userId`; `toRemote` maps it to Postgres `user_id`. */
+function withUserIdLocal<T extends { id: string }>(row: T, userId: string | null): T {
+  return userId ? { ...row, userId } : row;
+}
+
+function withUserIdRemote(payload: Record<string, unknown>, userId: string | null): Record<string, unknown> {
+  return userId ? { ...payload, user_id: userId } : payload;
+}
 const FLUSH_TABLE_TIER: Record<RemoteTable, number> = {
   prescriptions: 0,
   session_logs: 1,
@@ -304,12 +321,13 @@ export async function flushDirty() {
   const dirty = sortDirtyQueueForFlush(await db.dirty.toArray());
   if (dirty.length === 0) return;
 
+  const authUserId = await getAuthUserId();
   let refreshed = false;
   for (const item of dirty) {
     let attempt = 0;
     while (true) {
       attempt++;
-      const err = await pushOne(item);
+      const err = await pushOne(item, authUserId);
       if (!err) break;
 
       const status = (err as { status?: number; code?: string }).status;
@@ -343,7 +361,7 @@ function readinessPushPayload(row: ReadinessLog): Record<string, unknown> {
   return base;
 }
 
-async function pushOne(item: DirtyRow): Promise<Error | null> {
+async function pushOne(item: DirtyRow, authUserId: string | null): Promise<Error | null> {
   const supabase = createClient();
   const db = getDb();
   if (item.op === 'delete') {
@@ -358,10 +376,12 @@ async function pushOne(item: DirtyRow): Promise<Error | null> {
   // its trigger so we don't fight the canonical value.
   const { updatedAt: _ignore, ...rest } = row as Record<string, unknown>;
   void _ignore;
-  const payload =
+  const payload = withUserIdRemote(
     item.table === 'readiness_logs'
       ? readinessPushPayload(rest as ReadinessLog)
-      : (toRemote(rest) as Record<string, unknown>);
+      : (toRemote(rest) as Record<string, unknown>),
+    authUserId,
+  );
   const { error } = await supabase.from(item.table).upsert(payload);
   return error ?? null;
 }
@@ -391,11 +411,13 @@ export async function localUpsert<T extends { id: string }>(
   row: T,
   opts: LocalWriteOpts = {},
 ) {
+  const authUserId = await getAuthUserId();
+  const rowWithUser = withUserIdLocal(row, authUserId);
   const db = getDb();
   const localTable = db[TABLE_TO_LOCAL[table]];
   // @ts-expect-error dynamic table access
-  await localTable.put(row);
-  if (!opts.skipDirty) await enqueueDirty(table, row.id, 'upsert');
+  await localTable.put(rowWithUser);
+  if (!opts.skipDirty) await enqueueDirty(table, rowWithUser.id, 'upsert');
 }
 
 export async function localDelete(table: RemoteTable, id: string, opts: LocalWriteOpts = {}) {
