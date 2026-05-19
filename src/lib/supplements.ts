@@ -9,6 +9,7 @@ export const SUPPLEMENT_ITEMS = [
   { id: 'zma', label: 'ZMA' },
   { id: 'd3k2', label: 'D3 + K2' },
   { id: 'multi', label: 'Multivitamin' },
+  { id: 'creatine', label: 'Creatine' },
 ] as const;
 
 export type SupplementId = (typeof SUPPLEMENT_ITEMS)[number]['id'];
@@ -64,6 +65,7 @@ export type SupplementLogExport = {
   zma: boolean;
   d3k2: boolean;
   multi: boolean;
+  creatine: boolean;
   allTaken: boolean;
   updatedAt: string;
 };
@@ -80,13 +82,15 @@ export function buildSupplementLogsExport(
     const zma = Boolean(payload.taken.zma);
     const d3k2 = Boolean(payload.taken.d3k2);
     const multi = Boolean(payload.taken.multi);
-    if (!zma && !d3k2 && !multi) continue;
+    const creatine = Boolean(payload.taken.creatine);
+    if (!zma && !d3k2 && !multi && !creatine) continue;
     out.push({
       date,
       zma,
       d3k2,
       multi,
-      allTaken: zma && d3k2 && multi,
+      creatine,
+      allTaken: zma && d3k2 && multi && creatine,
       updatedAt: payload.updatedAt || new Date(0).toISOString(),
     });
   }

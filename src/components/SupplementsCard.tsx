@@ -18,6 +18,7 @@ export function SupplementsCard({ date }: Props) {
     zma: stored.taken.zma ?? false,
     d3k2: stored.taken.d3k2 ?? false,
     multi: stored.taken.multi ?? false,
+    creatine: stored.taken.creatine ?? false,
   }));
 
   useEffect(() => {
@@ -27,8 +28,9 @@ export function SupplementsCard({ date }: Props) {
       zma: stored.taken.zma ?? false,
       d3k2: stored.taken.d3k2 ?? false,
       multi: stored.taken.multi ?? false,
+      creatine: stored.taken.creatine ?? false,
     });
-  }, [date, stored.taken.zma, stored.taken.d3k2, stored.taken.multi]);
+  }, [date, stored.taken.zma, stored.taken.d3k2, stored.taken.multi, stored.taken.creatine]);
 
   useEffect(() => {
     const t = window.setTimeout(() => {
@@ -37,7 +39,7 @@ export function SupplementsCard({ date }: Props) {
     return () => window.clearTimeout(t);
   }, [date, taken]);
 
-  const allDone = taken.zma && taken.d3k2 && taken.multi;
+  const allDone = taken.zma && taken.d3k2 && taken.multi && taken.creatine;
 
   return (
     <div className="rounded-2xl bg-zinc-900 border border-zinc-800 p-4 space-y-3">

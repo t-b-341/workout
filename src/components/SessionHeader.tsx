@@ -3,7 +3,6 @@
 import { useState } from 'react';
 import { localUpsert } from '@/lib/sync';
 import { fmtDate } from '@/lib/time';
-import { effortLabel } from '@/lib/effort';
 import type {
   SessionLabelType,
   SessionLog,
@@ -71,10 +70,6 @@ export function SessionHeader({
       : [...session.watchFlags, f];
     await localUpsert('session_logs', { ...session, watchFlags: next });
   }
-  async function setEffortScale(effortScale: -1 | 0 | 1) {
-    await localUpsert('session_logs', { ...session, effortScale });
-  }
-
   async function setSessionType(sessionType: SessionLabelType) {
     await localUpsert('session_logs', { ...session, sessionType });
   }
@@ -119,9 +114,6 @@ export function SessionHeader({
           onClick={toggleDeload}
           className={`h-9 px-3 rounded-lg text-sm ${session.deload ? 'bg-indigo-700' : 'bg-zinc-800'}`}
         >Deload: {session.deload ? 'On' : 'Off'}</button>
-        <span className="h-9 px-3 rounded-lg text-sm bg-zinc-800 inline-flex items-center">
-          Effort: {effortLabel(session.effortScale ?? 0)}
-        </span>
         {FLAGS.map((f) => {
           const on = session.watchFlags.includes(f.id);
           return (
@@ -181,34 +173,6 @@ export function SessionHeader({
           className="mt-1 w-full rounded-lg bg-zinc-950 border border-zinc-800 px-3 py-2 text-sm text-zinc-200 placeholder:text-zinc-600 resize-y min-h-[2.5rem]"
         />
       </label>
-      <div className="rounded-xl border border-zinc-800 bg-zinc-900 p-3 space-y-2">
-        <div className="text-xs text-zinc-400">
-          Effort scaling (no RPE needed): choose how hard today should feel.
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <button
-            type="button"
-            onClick={() => setEffortScale(-1)}
-            className={`h-9 px-3 rounded-lg text-sm ${(session.effortScale ?? 0) === -1 ? 'bg-amber-700' : 'bg-zinc-800'}`}
-          >
-            Easier (−10% load, −1 set)
-          </button>
-          <button
-            type="button"
-            onClick={() => setEffortScale(0)}
-            className={`h-9 px-3 rounded-lg text-sm ${(session.effortScale ?? 0) === 0 ? 'bg-emerald-700' : 'bg-zinc-800'}`}
-          >
-            Normal
-          </button>
-          <button
-            type="button"
-            onClick={() => setEffortScale(1)}
-            className={`h-9 px-3 rounded-lg text-sm ${(session.effortScale ?? 0) === 1 ? 'bg-indigo-700' : 'bg-zinc-800'}`}
-          >
-            Harder (+5% load, +1 set)
-          </button>
-        </div>
-      </div>
       {session.deload && (
         <div className="text-xs text-indigo-400">
           Deload active — mains ~60% load; accessories ~half volume (sets, cardio time, or interval rounds).
