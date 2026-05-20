@@ -381,7 +381,7 @@ export type SupplementLog = {
   updatedAt: string;
 };
 
-export type GoalMetric = '1rm' | 'working_set' | 'reps';
+export type GoalMetric = '1rm' | 'working_set' | 'reps' | 'bodyweight';
 
 export type UserGoal = {
   /** e.g. 'goal-dl-1rm-1716000000000' */

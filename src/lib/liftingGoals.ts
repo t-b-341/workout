@@ -1,5 +1,5 @@
 import { est1RM } from './stats';
-import type { SetIntent, SetLog, UserGoal } from './types';
+import type { BodyweightLog, SetIntent, SetLog, UserGoal } from './types';
 
 const GOAL_COUNT_INTENTS: SetIntent[] = ['max_test', 'working', 'backoff'];
 
@@ -85,7 +85,16 @@ export function bestWorkingSetWeight(sets: SetLog[]): number {
   return best;
 }
 
-export function currentValueForGoal(goal: UserGoal, sets: SetLog[]): number {
+export function currentValueForGoal(
+  goal: UserGoal,
+  sets: SetLog[],
+  bodyweightLogs?: BodyweightLog[],
+): number {
+  if (goal.metric === 'bodyweight') {
+    if (!bodyweightLogs || bodyweightLogs.length === 0) return 0;
+    const sorted = [...bodyweightLogs].sort((a, b) => (a.date < b.date ? 1 : -1));
+    return sorted[0].bodyweight;
+  }
   const liftSets = setsForLift(sets, goal.liftId);
   switch (goal.metric) {
     case '1rm':
@@ -103,5 +112,8 @@ export function currentValueForGoal(goal: UserGoal, sets: SetLog[]): number {
 }
 
 export function isGoalAchieved(goal: UserGoal, currentValue: number): boolean {
+  if (goal.metric === 'bodyweight') {
+    return currentValue > 0 && currentValue <= goal.targetValue;
+  }
   return currentValue >= goal.targetValue;
 }

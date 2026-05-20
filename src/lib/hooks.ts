@@ -275,12 +275,13 @@ export function useAllUserGoals(): UserGoal[] | undefined {
 export function useGoalAchievementDetector(
   goals: UserGoal[] | undefined,
   sets: SetLog[] | undefined,
+  bodyweightLogs?: BodyweightLog[],
 ): void {
   useEffect(() => {
     if (!goals || !sets) return;
     for (const goal of goals) {
       if (!goal.active || goal.achievedAt) continue;
-      const current = currentValueForGoal(goal, sets);
+      const current = currentValueForGoal(goal, sets, bodyweightLogs);
       if (isGoalAchieved(goal, current)) {
         void localUpsert('user_goals', {
           ...goal,
@@ -288,7 +289,7 @@ export function useGoalAchievementDetector(
         });
       }
     }
-  }, [goals, sets]);
+  }, [goals, sets, bodyweightLogs]);
 }
 
 export function useAllSessions(): SessionLog[] | undefined {

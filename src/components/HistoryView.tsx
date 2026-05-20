@@ -141,7 +141,7 @@ export function HistoryView() {
   const mindfulness = useAllMindfulness();
   const wellnessTargets = useWellnessTargets();
   const wkTargets = wellnessTargets ?? defaultWellnessTargets();
-  useGoalAchievementDetector(userGoals, allSets);
+  useGoalAchievementDetector(userGoals, allSets, bodyweights);
 
   if (
     !lifts ||
@@ -219,6 +219,7 @@ export function HistoryView() {
           goals={userGoals}
           sets={allSets}
           lifts={lifts}
+          bodyweightLogs={bodyweights}
           onNew={() => setShowNewGoal(true)}
         />
       )}
@@ -226,6 +227,7 @@ export function HistoryView() {
         <GoalWriterSheet
           sets={allSets}
           lifts={lifts}
+          bodyweightLogs={bodyweights}
           onClose={() => setShowNewGoal(false)}
         />
       )}
@@ -1551,15 +1553,33 @@ function LiftingGoalCard({
 }
 
 
+function goalProgress(goal: UserGoal, current: number): { pct: number; lbsToGo: number } {
+  if (goal.metric === 'bodyweight') {
+    const range = goal.baselineValue - goal.targetValue;
+    const pct =
+      range <= 0
+        ? 0
+        : Math.min(100, Math.max(0, ((goal.baselineValue - current) / range) * 100));
+    const lbsToGo = Math.max(0, current - goal.targetValue);
+    return { pct, lbsToGo };
+  }
+  const pct =
+    goal.targetValue > 0 ? Math.min(100, (current / goal.targetValue) * 100) : 0;
+  const lbsToGo = Math.max(0, goal.targetValue - current);
+  return { pct, lbsToGo };
+}
+
 function GoalsView({
   goals,
   sets,
   lifts,
+  bodyweightLogs,
   onNew,
 }: {
   goals: UserGoal[];
   sets: SetLog[];
   lifts: Lift[];
+  bodyweightLogs: BodyweightLog[];
   onNew: () => void;
 }) {
   const liftMap = useMemo(
@@ -1589,12 +1609,9 @@ function GoalsView({
       {active.length > 0 && (
         <div className="space-y-3">
           {active.map((goal) => {
-            const lift = liftMap.get(goal.liftId);
-            const current = currentValueForGoal(goal, sets);
-            const pct = goal.targetValue > 0
-              ? Math.min(100, (current / goal.targetValue) * 100)
-              : 0;
-            const lbsToGo = Math.max(0, goal.targetValue - current);
+            const lift = goal.metric === 'bodyweight' ? undefined : liftMap.get(goal.liftId);
+            const current = currentValueForGoal(goal, sets, bodyweightLogs);
+            const { pct, lbsToGo } = goalProgress(goal, current);
             const daysLeft = goal.deadline
               ? daysBetweenIso(today, goal.deadline)
               : null;
@@ -1608,6 +1625,17 @@ function GoalsView({
                 lbsToGo={lbsToGo}
                 daysLeft={daysLeft}
                 done={false}
+                onDelete={async () => {
+                  const snapshot = { ...goal };
+                  await localDelete('user_goals', goal.id);
+                  offerDeleteUndo({
+                    kind: 'batch',
+                    label: `Delete "${goal.label}"`,
+                    restore: async () => {
+                      await localUpsert('user_goals', snapshot);
+                    },
+                  });
+                }}
               />
             );
           })}
@@ -1619,8 +1647,8 @@ function GoalsView({
           <div className="text-xs uppercase tracking-wide text-zinc-600 pt-2">Achieved</div>
           <div className="space-y-3">
             {achieved.map((goal) => {
-              const lift = liftMap.get(goal.liftId);
-              const current = currentValueForGoal(goal, sets);
+              const lift = goal.metric === 'bodyweight' ? undefined : liftMap.get(goal.liftId);
+              const current = currentValueForGoal(goal, sets, bodyweightLogs);
               return (
                 <GoalCard
                   key={goal.id}
@@ -1631,6 +1659,17 @@ function GoalsView({
                   lbsToGo={0}
                   daysLeft={null}
                   done={true}
+                  onDelete={async () => {
+                    const snapshot = { ...goal };
+                    await localDelete('user_goals', goal.id);
+                    offerDeleteUndo({
+                      kind: 'batch',
+                      label: `Delete "${goal.label}"`,
+                      restore: async () => {
+                        await localUpsert('user_goals', snapshot);
+                      },
+                    });
+                  }}
                 />
               );
             })}
@@ -1649,6 +1688,7 @@ function GoalCard({
   lbsToGo,
   daysLeft,
   done,
+  onDelete,
 }: {
   goal: UserGoal;
   lift: Lift | undefined;
@@ -1657,20 +1697,29 @@ function GoalCard({
   lbsToGo: number;
   daysLeft: number | null;
   done: boolean;
+  onDelete: () => void;
 }) {
   const metricLabel =
     goal.metric === '1rm' ? '1RM' :
     goal.metric === 'reps' ? 'reps' :
+    goal.metric === 'bodyweight' ? 'body weight' :
     goal.targetReps ? `${goal.targetReps}RM` : 'working';
 
-  const currentLabel = goal.metric === 'reps'
-    ? `${current} reps`
-    : `${current} lb`;
-  const targetLabel = goal.metric === 'reps'
-    ? `${goal.targetValue} reps`
-    : goal.metric === 'working_set' && goal.targetReps
-      ? `${goal.targetValue} lb × ${goal.targetReps}`
-      : `${goal.targetValue} lb`;
+  const liftLine =
+    goal.metric === 'bodyweight' ? 'Body weight' : (lift?.name ?? goal.liftId);
+
+  const currentLabel = goal.metric === 'bodyweight'
+    ? `${current} lb`
+    : goal.metric === 'reps'
+      ? `${current} reps`
+      : `${current} lb`;
+  const targetLabel = goal.metric === 'bodyweight'
+    ? `${goal.targetValue} lb`
+    : goal.metric === 'reps'
+      ? `${goal.targetValue} reps`
+      : goal.metric === 'working_set' && goal.targetReps
+        ? `${goal.targetValue} lb × ${goal.targetReps}`
+        : `${goal.targetValue} lb`;
 
   const setDate = new Date(goal.createdAt).toLocaleDateString('en-US', {
     month: 'short',
@@ -1691,49 +1740,67 @@ function GoalCard({
       : `${goal.baselineValue} lb`;
 
   return (
-    <LiftingGoalCard
-      title={goal.label}
-      subtitle={
-        <div className="text-xs text-zinc-500 mt-0.5">
-          {lift?.name ?? goal.liftId} · {metricLabel}
-          {goal.baselineValue > 0 && ` · started at ${baselineSuffix}`}
-        </div>
-      }
-      currentLabel={currentLabel}
-      targetLabel={targetLabel}
-      pct={pct}
-      done={done}
-      pctLabel={`${Math.round(pct)}% complete`}
-      remaining={
-        done
-          ? achievedDate
-            ? `Achieved ${achievedDate}`
-            : undefined
-          : lbsToGo > 0
-            ? `${goal.metric === 'reps' ? `${lbsToGo} reps` : `${lbsToGo} lb`} to go${
-                daysLeft != null
-                  ? ` · ${daysLeft > 0 ? `${daysLeft} days left` : 'deadline passed'}`
-                  : ''
-              }`
-            : undefined
-      }
-      milestoneNote={
-        <div className="text-[10px] text-zinc-600">
-          Set {setDate}
-          {goal.baselineValue > 0 && ` · baseline ${baselineSuffix}`}
-        </div>
-      }
-    />
+    <div className="relative">
+      <button
+        type="button"
+        onClick={() => void onDelete()}
+        aria-label={`Delete goal: ${goal.label}`}
+        className="absolute top-3 right-3 z-10 h-6 w-6 rounded-full bg-zinc-800 border border-zinc-700 text-zinc-500 hover:text-rose-400 text-xs flex items-center justify-center transition-colors"
+      >
+        ×
+      </button>
+      <LiftingGoalCard
+        title={goal.label}
+        subtitle={
+          <div className="text-xs text-zinc-500 mt-0.5">
+            {liftLine} · {metricLabel}
+            {goal.baselineValue > 0 && ` · started at ${baselineSuffix}`}
+          </div>
+        }
+        currentLabel={currentLabel}
+        targetLabel={targetLabel}
+        pct={pct}
+        done={done}
+        pctLabel={`${Math.round(pct)}% complete`}
+        remaining={
+          done
+            ? achievedDate
+              ? `Achieved ${achievedDate}`
+              : undefined
+            : goal.metric === 'bodyweight' && lbsToGo > 0
+              ? `${lbsToGo} lb to lose${
+                  daysLeft != null
+                    ? ` · ${daysLeft > 0 ? `${daysLeft} days left` : 'deadline passed'}`
+                    : ''
+                }`
+              : lbsToGo > 0
+                ? `${goal.metric === 'reps' ? `${lbsToGo} reps` : `${lbsToGo} lb`} to go${
+                    daysLeft != null
+                      ? ` · ${daysLeft > 0 ? `${daysLeft} days left` : 'deadline passed'}`
+                      : ''
+                  }`
+                : undefined
+        }
+        milestoneNote={
+          <div className="text-[10px] text-zinc-600">
+            Set {setDate}
+            {goal.baselineValue > 0 && ` · baseline ${baselineSuffix}`}
+          </div>
+        }
+      />
+    </div>
   );
 }
 
 function GoalWriterSheet({
   sets,
   lifts,
+  bodyweightLogs,
   onClose,
 }: {
   sets: SetLog[];
   lifts: Lift[];
+  bodyweightLogs: BodyweightLog[];
   onClose: () => void;
 }) {
   const strengthLifts = useMemo(
@@ -1769,7 +1836,8 @@ function GoalWriterSheet({
   }, [onClose]);
 
   async function save() {
-    if (!liftId || !label.trim()) return;
+    const effectiveLiftId = metric === 'bodyweight' ? 'bodyweight' : liftId;
+    if (!effectiveLiftId || !label.trim()) return;
     const target = Number(targetValue);
     if (!Number.isFinite(target) || target <= 0) return;
     const reps =
@@ -1781,9 +1849,9 @@ function GoalWriterSheet({
     }
 
     const draft: UserGoal = {
-      id: `goal-${liftId}-${metric}-${Date.now()}`,
+      id: `goal-${effectiveLiftId}-${metric}-${Date.now()}`,
       userId: '',
-      liftId,
+      liftId: effectiveLiftId,
       label: label.trim(),
       metric,
       targetValue: target,
@@ -1795,7 +1863,7 @@ function GoalWriterSheet({
       active: true,
       updatedAt: new Date().toISOString(),
     };
-    draft.baselineValue = currentValueForGoal(draft, sets);
+    draft.baselineValue = currentValueForGoal(draft, sets, bodyweightLogs);
 
     setBusy(true);
     try {
@@ -1820,33 +1888,37 @@ function GoalWriterSheet({
           <button type="button" onClick={onClose} className="text-zinc-500 hover:text-zinc-200 text-xl leading-none px-2" aria-label="Close">×</button>
         </div>
         <div className="p-4 space-y-4 overflow-y-auto flex-1">
-          <label className="block text-xs text-zinc-500">
-            Search lift
-            <input
-              type="search"
-              value={liftQuery}
-              onChange={(e) => setLiftQuery(e.target.value)}
-              placeholder="Filter lifts…"
-              className="mt-1 w-full rounded-lg bg-zinc-900 border border-zinc-800 px-3 py-2 text-sm text-zinc-200"
-            />
-          </label>
-          <label className="block text-xs text-zinc-500">
-            Lift
-            <select
-              value={liftId}
-              onChange={(e) => {
-                const id = e.target.value;
-                setLiftId(id);
-                const lift = strengthLifts.find((l) => l.id === id);
-                if (lift) setLabel(lift.name);
-              }}
-              className="mt-1 w-full rounded-lg bg-zinc-900 border border-zinc-800 px-3 py-2 text-sm text-zinc-200"
-            >
-              {filteredLifts.map((l) => (
-                <option key={l.id} value={l.id}>{l.name}</option>
-              ))}
-            </select>
-          </label>
+          {metric !== 'bodyweight' && (
+            <>
+              <label className="block text-xs text-zinc-500">
+                Search lift
+                <input
+                  type="search"
+                  value={liftQuery}
+                  onChange={(e) => setLiftQuery(e.target.value)}
+                  placeholder="Filter lifts…"
+                  className="mt-1 w-full rounded-lg bg-zinc-900 border border-zinc-800 px-3 py-2 text-sm text-zinc-200"
+                />
+              </label>
+              <label className="block text-xs text-zinc-500">
+                Lift
+                <select
+                  value={liftId}
+                  onChange={(e) => {
+                    const id = e.target.value;
+                    setLiftId(id);
+                    const lift = strengthLifts.find((l) => l.id === id);
+                    if (lift) setLabel(lift.name);
+                  }}
+                  className="mt-1 w-full rounded-lg bg-zinc-900 border border-zinc-800 px-3 py-2 text-sm text-zinc-200"
+                >
+                  {filteredLifts.map((l) => (
+                    <option key={l.id} value={l.id}>{l.name}</option>
+                  ))}
+                </select>
+              </label>
+            </>
+          )}
           <label className="block text-xs text-zinc-500">
             Goal label
             <input
@@ -1860,12 +1932,24 @@ function GoalWriterSheet({
             Metric
             <select
               value={metric}
-              onChange={(e) => setMetric(e.target.value as GoalMetric)}
+              onChange={(e) => {
+                const next = e.target.value as GoalMetric;
+                setMetric(next);
+                if (next === 'bodyweight') {
+                  setLiftId('bodyweight');
+                  if (!label.trim()) setLabel('Body weight');
+                } else if (liftId === 'bodyweight') {
+                  const first = strengthLifts[0];
+                  setLiftId(first?.id ?? '');
+                  setLabel(first?.name ?? '');
+                }
+              }}
               className="mt-1 w-full rounded-lg bg-zinc-900 border border-zinc-800 px-3 py-2 text-sm text-zinc-200"
             >
               <option value="1rm">1RM</option>
               <option value="working_set">Working set</option>
               <option value="reps">Reps (bodyweight)</option>
+              <option value="bodyweight">Body weight</option>
             </select>
           </label>
           <label className="block text-xs text-zinc-500">
@@ -1878,6 +1962,11 @@ function GoalWriterSheet({
               onChange={(e) => setTargetValue(e.target.value)}
               className="mt-1 w-full rounded-lg bg-zinc-900 border border-zinc-800 px-3 py-2 text-sm text-zinc-200"
             />
+            {metric === 'bodyweight' && (
+              <p className="text-[11px] text-zinc-500 mt-1">
+                Goal achieved when bodyweight reaches or drops below this number.
+              </p>
+            )}
           </label>
           {metric === 'working_set' && (
             <label className="block text-xs text-zinc-500">
@@ -1906,7 +1995,12 @@ function GoalWriterSheet({
         <div className="p-4 border-t border-zinc-800 shrink-0">
           <button
             type="button"
-            disabled={busy || !liftId || !label.trim() || !targetValue}
+            disabled={
+              busy ||
+              !label.trim() ||
+              !targetValue ||
+              (metric !== 'bodyweight' && !liftId)
+            }
             onClick={() => void save()}
             className="w-full h-11 rounded-xl bg-amber-500 text-zinc-950 font-medium disabled:opacity-50"
           >
