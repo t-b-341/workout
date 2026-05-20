@@ -14,6 +14,7 @@ export function toRemote<T extends Record<string, unknown>>(row: T): Record<stri
 export function fromRemote<T>(row: Record<string, unknown>): T {
   const out: Record<string, unknown> = {};
   for (const [k, v] of Object.entries(row)) {
+    if (k === 'user_id') continue;
     // Postgres returns absent optional columns as `null`, but local writes
     // store them as `undefined`. Storing `null` here breaks strict-equality
     // checks like `setLog.side === undefined` (where the row was logged
