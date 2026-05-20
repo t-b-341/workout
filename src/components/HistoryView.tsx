@@ -216,7 +216,7 @@ export function HistoryView() {
       {tab === 'injuries' && <InjuriesList episodes={episodes} />}
       {tab === 'hrv' && <HrvList readiness={readiness} />}
       {tab === 'lifting-goals' && (
-        <LiftGoalsList sessions={allSessions ?? sessions} sets={goalSets} lifts={lifts} />
+        <LiftGoalsList sessions={allSessions ?? sessions} sets={allSets} lifts={lifts} />
       )}
       {tab === 'accessory-goals' && <AccessoryGoalsList sets={goalSets} />}
       {tab === 'balance' && (
@@ -1498,7 +1498,7 @@ function liftingGoalProgressDetail(
   return { pctLabel, remaining: `${toGo} reps to go` };
 }
 
-/** Max-test weight, else best 1RM from working/backoff (singles count as load, not Epley). */
+/** Best 1RM from max-test attempts and working/backoff sets (take the higher of both). */
 function currentBest1RmFromSets(sets: SetLog[]): number {
   let maxTestBest = -Infinity;
   for (const s of sets) {
@@ -1515,12 +1515,17 @@ function currentBest1RmFromSets(sets: SetLog[]): number {
     if (intent !== 'working' && intent !== 'backoff') continue;
     if (!Number.isFinite(s.weight) || s.weight <= 0) continue;
     if (s.reps < 1 || s.reps > 20) continue;
-    const candidate = s.reps === 1 ? s.weight : est1RM(s.weight, s.reps);
-    if (Number.isFinite(candidate)) workingBest = Math.max(workingBest, candidate);
+    if (s.reps === 1) {
+      workingBest = Math.max(workingBest, s.weight);
+      continue;
+    }
+    const e = est1RM(s.weight, s.reps);
+    if (Number.isFinite(e)) workingBest = Math.max(workingBest, e);
   }
 
-  if (maxTestBest > -Infinity) return maxTestBest;
-  return workingBest > -Infinity ? workingBest : 0;
+  const fromMaxTest = maxTestBest > -Infinity ? maxTestBest : 0;
+  const fromWorking = workingBest > -Infinity ? workingBest : 0;
+  return Math.max(fromMaxTest, fromWorking);
 }
 
 function lastMaxTestDate(
