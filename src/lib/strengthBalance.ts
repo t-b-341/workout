@@ -137,25 +137,27 @@ export type RatioResult = {
 };
 
 function best1RmFromSets(liftSets: SetLog[]): number | null {
-  let maxTest = -Infinity;
+  let maxTestBest = 0;
   for (const s of liftSets) {
     if (s.status !== 'completed') continue;
     if (s.intent !== 'max_test') continue;
     if (!Number.isFinite(s.weight) || s.weight <= 0) continue;
-    maxTest = Math.max(maxTest, s.weight);
+    const val = s.reps === 1 ? s.weight : est1RM(s.weight, s.reps);
+    maxTestBest = Math.max(maxTestBest, val);
   }
-  if (maxTest > -Infinity) return maxTest;
 
-  let bestEst = 0;
+  let workingBest = 0;
   for (const s of liftSets) {
     if (s.status !== 'completed') continue;
     const intent = s.intent ?? 'working';
     if (intent !== 'working' && intent !== 'backoff') continue;
     if (!Number.isFinite(s.weight) || s.weight <= 0) continue;
     if (s.reps < 1 || s.reps > 20) continue;
-    bestEst = Math.max(bestEst, est1RM(s.weight, s.reps));
+    workingBest = Math.max(workingBest, est1RM(s.weight, s.reps));
   }
-  return bestEst > 0 ? bestEst : null;
+
+  const best = Math.max(maxTestBest, workingBest);
+  return best > 0 ? best : null;
 }
 
 function liftValue(
