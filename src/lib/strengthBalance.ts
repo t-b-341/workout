@@ -20,6 +20,23 @@ export type LiftRatioStandard = {
 
 export const RATIO_STANDARDS: LiftRatioStandard[] = [
   {
+    id: 'bench_squat',
+    label: 'Bench / Squat',
+    numeratorLiftId: 'bp',
+    denominatorLiftId: 'back_squat',
+    numeratorMode: '1rm',
+    denominatorMode: '1rm',
+    targetMin: 0.80,
+    targetMax: 0.85,
+    downstreamBenefit: 2,
+    description:
+      'Bench 1RM should be 80–85% of squat 1RM. '
+      + 'A large gap indicates upper body lagging lower '
+      + 'body — the most common pattern in athletes with '
+      + 'a lower body strength history. Highest priority '
+      + 'ratio to close.',
+  },
+  {
     id: 'ohp_bench',
     label: 'OHP / Bench',
     numeratorLiftId: 'ohp',
@@ -27,48 +44,36 @@ export const RATIO_STANDARDS: LiftRatioStandard[] = [
     numeratorMode: '1rm',
     denominatorMode: '1rm',
     targetMin: 0.67,
-    targetMax: 0.7,
+    targetMax: 0.70,
     downstreamBenefit: 1,
     description:
-      'OHP should be 67–70% of bench 1RM. '
-      + 'Gap indicates bench pec strength relative to '
-      + 'shoulder/tricep development.',
+      'OHP 1RM should be 67–70% of bench 1RM. '
+      + 'A ratio above range means shoulder and tricep '
+      + 'strength is proportionate or high relative to '
+      + 'pec development — the bench is the limiter, '
+      + 'not the overhead press.',
   },
   {
-    id: 'bench_squat',
-    label: 'Bench / Squat',
-    numeratorLiftId: 'bp',
-    denominatorLiftId: 'back_squat',
+    id: 'pp_ohp',
+    label: 'Push Press / OHP',
+    numeratorLiftId: 'pp',
+    denominatorLiftId: 'ohp',
     numeratorMode: '1rm',
     denominatorMode: '1rm',
-    targetMin: 0.8,
-    targetMax: 0.85,
-    downstreamBenefit: 2,
+    targetMin: 1.20,
+    targetMax: 1.30,
+    downstreamBenefit: 1,
     description:
-      'Bench should be 80–85% of squat 1RM. '
-      + 'Large gap indicates upper body lagging lower body '
-      + '— common in athletes with lower body history.',
-  },
-  {
-    id: 'row_dl',
-    label: 'Row / Deadlift',
-    numeratorLiftId: 'pendlay_row',
-    denominatorLiftId: 'dl',
-    numeratorMode: 'working',
-    denominatorMode: 'working',
-    targetMin: 0.6,
-    targetMax: 0.7,
-    downstreamBenefit: 3,
-    description:
-      'Pendlay row working weight should be '
-      + '60–70% of deadlift working weight. Gap indicates '
-      + 'upper back thickness deficit — benefits both '
-      + 'deadlift lat engagement and bench stability.',
+      'Push press 1RM should be 120–130% of strict '
+      + 'OHP 1RM. A ratio below range means leg drive '
+      + 'is not fully contributing to the lift. This '
+      + 'is a technique signal (dip-and-drive timing), '
+      + 'not a strength deficit.',
   },
   {
     id: 'row_bench',
     label: 'Row / Bench',
-    numeratorLiftId: 'pendlay_row',
+    numeratorLiftId: 'bbr',
     denominatorLiftId: 'bp',
     numeratorMode: 'working',
     denominatorMode: '1rm',
@@ -76,10 +81,28 @@ export const RATIO_STANDARDS: LiftRatioStandard[] = [
     targetMax: 0.95,
     downstreamBenefit: 3,
     description:
-      'Row working weight should be 85–95% '
-      + 'of bench 1RM. Gap indicates horizontal pull '
-      + 'lagging horizontal push — shoulder health risk '
-      + 'long-term.',
+      'Barbell row working weight should be 85–95% of '
+      + 'bench 1RM. Gap indicates horizontal pull lagging '
+      + 'horizontal push — long-term shoulder health risk '
+      + 'and a direct limiter of bench stability and '
+      + 'upper back thickness.',
+  },
+  {
+    id: 'row_dl',
+    label: 'Row / Deadlift',
+    numeratorLiftId: 'bbr',
+    denominatorLiftId: 'dl',
+    numeratorMode: 'working',
+    denominatorMode: 'working',
+    targetMin: 0.55,
+    targetMax: 0.65,
+    downstreamBenefit: 3,
+    description:
+      'Barbell row working weight should be 55–65% of '
+      + 'deadlift working weight. Gap indicates upper '
+      + 'back and lat strength deficit — directly limits '
+      + 'deadlift lat engagement, bar path efficiency, '
+      + 'and row progression rate.',
   },
   {
     id: 'dl_squat',
@@ -88,13 +111,17 @@ export const RATIO_STANDARDS: LiftRatioStandard[] = [
     denominatorLiftId: 'back_squat',
     numeratorMode: '1rm',
     denominatorMode: '1rm',
-    targetMin: 1.2,
+    targetMin: 1.20,
     targetMax: 1.35,
     downstreamBenefit: 1,
     description:
-      'Deadlift 1RM should be 120–135% of '
-      + 'squat 1RM. Gap in either direction indicates '
-      + 'hamstring/quad imbalance or technique asymmetry.',
+      'Deadlift 1RM should be 120–135% of squat 1RM. '
+      + 'A ratio near the lower bound is expected for '
+      + 'quad-dominant pullers with favorable squat '
+      + 'mechanics (short femurs, high bar, upright '
+      + 'torso). A ratio well above range may indicate '
+      + 'hamstring dominance or squat expression being '
+      + 'limited by technique rather than strength.',
   },
 ];
 
