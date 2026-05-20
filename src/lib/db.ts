@@ -19,6 +19,7 @@ import type {
   SleepLog,
   StressLog,
   SupplementLog,
+  UserGoal,
 } from './types';
 
 export type DirtyRow = {
@@ -38,7 +39,8 @@ export type DirtyRow = {
     | 'mindfulness_logs'
     | 'injury_episodes'
     | 'body_readiness_logs'
-    | 'supplement_logs';
+    | 'supplement_logs'
+    | 'user_goals';
   rowId: string;
   op: 'upsert' | 'delete';
   /** Server time when last enqueued (for ordering). */
@@ -63,6 +65,7 @@ export class WorkoutDB extends Dexie {
   injury_episodes!: Table<InjuryEpisode, string>;
   body_readiness_logs!: Table<BodyReadinessLog, string>;
   supplement_logs!: Table<SupplementLog, string>;
+  user_goals!: Table<UserGoal, string>;
   dirty!: Table<DirtyRow, string>;
   meta!: Table<{ key: string; value: unknown }, string>;
 
@@ -547,10 +550,33 @@ export class WorkoutDB extends Dexie {
         });
       }
     });
+    // v17 — user_goals table for dynamic History goals.
+    this.version(17).stores({
+      lifts: 'id, name',
+      templates: 'id, dayOfWeek',
+      prescriptions: 'id, templateId, liftId, [templateId+order]',
+      session_logs: 'id, date, templateId',
+      set_logs: 'id, sessionLogId, liftId, [sessionLogId+liftId+setIndex]',
+      cardio_logs: 'id, date, sessionLogId',
+      bodyweight_logs: 'id, date, isoWeek',
+      body_measurement_logs: 'id, date',
+      readiness_logs: 'id, sessionLogId, date',
+      nutrition_logs: 'id, date',
+      hydration_logs: 'id, date',
+      sleep_logs: 'id, date',
+      stress_logs: 'id, date, loggedAt',
+      mindfulness_logs: 'id, date, loggedAt',
+      injury_episodes: 'id, siteKey, startedAt',
+      body_readiness_logs: 'id, date',
+      supplement_logs: 'id, userId, date, updatedAt',
+      user_goals: 'id, userId, liftId, active, updatedAt',
+      dirty: 'id, table, rowId, enqueuedAt',
+      meta: 'key',
+    });
   }
 }
 
-export const SCHEMA_VERSION = 16;
+export const SCHEMA_VERSION = 17;
 
 let _db: WorkoutDB | null = null;
 let _dbUserId: string | null = null;

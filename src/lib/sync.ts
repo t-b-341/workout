@@ -24,6 +24,7 @@ import type {
   SleepLog,
   StressLog,
   SupplementLog,
+  UserGoal,
 } from './types';
 
 export type RemoteTable = DirtyRow['table'];
@@ -90,6 +91,7 @@ function withUserIdRemote(payload: Record<string, unknown>, userId: string | nul
 }
 const FLUSH_TABLE_TIER: Record<RemoteTable, number> = {
   prescriptions: 0,
+  user_goals: 1,
   session_logs: 1,
   set_logs: 2,
   cardio_logs: 2,
@@ -141,6 +143,7 @@ const TABLE_TO_LOCAL: Record<SyncPullTable, keyof ReturnType<typeof getDb> & str
   injury_episodes: 'injury_episodes',
   body_readiness_logs: 'body_readiness_logs',
   supplement_logs: 'supplement_logs',
+  user_goals: 'user_goals',
 };
 
 /**
@@ -165,6 +168,7 @@ const ALL_TABLES: SyncPullTable[] = [
   'cardio_logs',
   'injury_episodes',
   'supplement_logs',
+  'user_goals',
 ];
 
 const WATERMARK_PREFIX = 'sync:watermark:';
@@ -273,6 +277,9 @@ async function persistRows(table: SyncPullTable, rows: RowPayload[]) {
       return;
     case 'supplement_logs':
       await db.supplement_logs.bulkPut(rows.map((r) => fromRemote<SupplementLog>(r)));
+      return;
+    case 'user_goals':
+      await db.user_goals.bulkPut(rows.map((r) => fromRemote<UserGoal>(r)));
       return;
   }
 }

@@ -4,7 +4,7 @@ import type { DirtyRow } from './db';
  * JSON export top-level `schemaVersion` — bump when new top-level export fields or shapes ship
  * (independent of Dexie `SCHEMA_VERSION`).
  */
-export const EXPORT_SCHEMA_VERSION = 18;
+export const EXPORT_SCHEMA_VERSION = 19;
 import {
   NUTRITION_DAY_TYPES,
   SESSION_LABEL_TYPES,
@@ -496,20 +496,21 @@ function supplementLogsExportFields(): SchemaEntry {
   };
 }
 
-function liftingGoalSnapshotsFields(): SchemaEntry {
+function userGoalsFields(): SchemaEntry {
   return {
     fields: {
-      goalId: 'string',
-      label: 'string',
+      id: 'string',
       liftId: 'string',
+      label: 'string',
+      metric: '"1rm" | "working_set" | "reps"',
       targetValue: 'number',
       targetReps: 'number | null',
-      currentValue: 'number',
-      pct: 'number',
-      lbsToGo: 'number | null',
-      repsToGo: 'number | null',
-      done: 'boolean',
-      type: '"main" | "accessory"',
+      deadline: 'YYYY-MM-DD | null',
+      createdAt: 'ISO-8601',
+      achievedAt: 'ISO-8601 | null',
+      baselineValue: 'number',
+      active: 'boolean',
+      updatedAt: 'ISO-8601',
     },
   };
 }
@@ -572,7 +573,7 @@ export function buildExportSchemaDocumentation(): Record<string, SchemaEntry> {
     hrv_logs: hrvLogsExportFields(),
     workday_logs: workdayLogsExportFields(),
     supplement_logs: supplementLogsExportFields(),
-    lifting_goal_snapshots: liftingGoalSnapshotsFields(),
+    user_goals: userGoalsFields(),
     dirty: dirtyRowFields(),
   };
 }

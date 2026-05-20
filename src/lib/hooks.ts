@@ -9,6 +9,8 @@ import { defaultTemplateForLocalDate } from './seed';
 import { readTodayPlanPreference, todayPlanPreferenceIsForToday } from './todayPlanPreference';
 import { isoWeekString, weekRange, todayIso } from './time';
 import { buildMacroTrendAdvice, priorDatesExclusive } from './macroTrend';
+import { currentValueForGoal, isGoalAchieved } from './liftingGoals';
+import { localUpsert } from './sync';
 import { filterSessionsAfterReadiness } from './sessionFilters';
 import type {
   BodyMeasurementLog,
@@ -26,6 +28,7 @@ import type {
   SleepLog,
   StressLog,
   TemplateId,
+  UserGoal,
 } from './types';
 
 export function usePrescriptions(templateId?: TemplateId): Prescription[] | undefined {
@@ -251,6 +254,41 @@ export function useHistoryGoalSets(): SetLog[] | undefined {
     const sets = await getDb().set_logs.toArray();
     return sets.filter((s) => s.status === 'completed');
   }, []);
+}
+
+export function useActiveUserGoals(): UserGoal[] | undefined {
+  return useLiveQuery(async () => {
+    const rows = await getDb().user_goals.toArray();
+    return rows
+      .filter((g) => g.active)
+      .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+  }, []);
+}
+
+export function useAllUserGoals(): UserGoal[] | undefined {
+  return useLiveQuery(
+    () => getDb().user_goals.orderBy('createdAt').toArray(),
+    [],
+  );
+}
+
+export function useGoalAchievementDetector(
+  goals: UserGoal[] | undefined,
+  sets: SetLog[] | undefined,
+): void {
+  useEffect(() => {
+    if (!goals || !sets) return;
+    for (const goal of goals) {
+      if (!goal.active || goal.achievedAt) continue;
+      const current = currentValueForGoal(goal, sets);
+      if (isGoalAchieved(goal, current)) {
+        void localUpsert('user_goals', {
+          ...goal,
+          achievedAt: new Date().toISOString(),
+        });
+      }
+    }
+  }, [goals, sets]);
 }
 
 export function useAllSessions(): SessionLog[] | undefined {

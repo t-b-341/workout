@@ -1,7 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { buildLiftingGoalSnapshots } from '@/lib/exportLocalDump';
-import { currentBest1RmFromSets, setsForLift } from '@/lib/liftingGoals';
-import type { SetLog } from '@/lib/types';
+import {
+  currentBest1RmFromSets,
+  currentValueForGoal,
+  isGoalAchieved,
+  setsForLift,
+} from '@/lib/liftingGoals';
+import type { SetLog, UserGoal } from '@/lib/types';
 
 describe('liftingGoals', () => {
   it('counts quick session sets with synthetic prescriptionId by liftId only', () => {
@@ -32,10 +36,6 @@ describe('liftingGoals', () => {
 
     expect(currentBest1RmFromSets(setsForLift(set_logs, 'ohp'))).toBe(165);
     expect(currentBest1RmFromSets(setsForLift(set_logs, 'pp'))).toBeGreaterThanOrEqual(185);
-
-    const snaps = buildLiftingGoalSnapshots(set_logs);
-    expect(snaps.find((s) => s.goalId === 'ohp_1rm')?.currentValue).toBe(165);
-    expect(snaps.find((s) => s.goalId === 'pp_1rm')?.currentValue).toBeGreaterThanOrEqual(185);
   });
 
   it('ignores warmup and non-completed sets', () => {
@@ -64,5 +64,40 @@ describe('liftingGoals', () => {
       },
     ];
     expect(currentBest1RmFromSets(set_logs)).toBe(0);
+  });
+
+  it('evaluates user goal progress from set_logs', () => {
+    const goal: UserGoal = {
+      id: 'g1',
+      userId: 'u',
+      liftId: 'ohp',
+      label: 'OHP 1RM',
+      metric: '1rm',
+      targetValue: 175,
+      targetReps: null,
+      deadline: null,
+      createdAt: '2026-01-01T00:00:00.000Z',
+      achievedAt: null,
+      baselineValue: 150,
+      active: true,
+      updatedAt: '2026-01-01T00:00:00.000Z',
+    };
+    const sets: SetLog[] = [
+      {
+        id: 'w',
+        sessionLogId: 's',
+        liftId: 'ohp',
+        prescriptionId: 'p',
+        setIndex: 0,
+        intent: 'working',
+        weight: 165,
+        reps: 1,
+        status: 'completed',
+      },
+    ];
+    const current = currentValueForGoal(goal, sets);
+    expect(current).toBeGreaterThanOrEqual(165);
+    expect(isGoalAchieved(goal, current)).toBe(false);
+    expect(isGoalAchieved({ ...goal, targetValue: 160 }, current)).toBe(true);
   });
 });

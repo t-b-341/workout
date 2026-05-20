@@ -381,6 +381,32 @@ export type SupplementLog = {
   updatedAt: string;
 };
 
+export type GoalMetric = '1rm' | 'working_set' | 'reps';
+
+export type UserGoal = {
+  /** e.g. 'goal-dl-1rm-1716000000000' */
+  id: string;
+  userId: string;
+  liftId: string;
+  label: string;
+  metric: GoalMetric;
+  /** lb for weight goals, reps for rep goals */
+  targetValue: number;
+  /** for working_set metric only */
+  targetReps: number | null;
+  /** YYYY-MM-DD, optional */
+  deadline: string | null;
+  /** ISO timestamp when goal was created */
+  createdAt: string;
+  /** ISO timestamp when goal was first achieved, null if not yet */
+  achievedAt: string | null;
+  /** Best value at time of creation (snapshot) */
+  baselineValue: number;
+  /** false = archived */
+  active: boolean;
+  updatedAt: string;
+};
+
 /** Momentary stress check-in: timestamp + 1–5 (higher = more stressed). Multiple per day allowed. */
 export type StressLog = {
   id: string;

@@ -3,8 +3,9 @@
 import Link from 'next/link';
 import { format } from 'date-fns';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import {
+  useActiveUserGoals,
   useAllBodyweight,
   useAllBodyMeasurements,
   useAllCardio,
@@ -17,18 +18,13 @@ import {
   useAllSessions,
   useSessionsAfterReadiness,
   useAllSets,
+  useGoalAchievementDetector,
   useHistoryGoalSets,
   useLifts,
   useTemplates,
 } from '@/lib/hooks';
 import { getDb } from '@/lib/db';
-import {
-  bestBarbellRowWeightAt5Plus,
-  bestWeightAtMinReps,
-  bestWorkingSetWeight,
-  maxBwPullupReps,
-  setsForLift,
-} from '@/lib/liftingGoals';
+import { currentValueForGoal } from '@/lib/liftingGoals';
 import { sortSetLogsForSession } from '@/lib/sessionFilters';
 import { cancelPendingDirtyDelete, localDelete, localUpsert } from '@/lib/sync';
 import { offerDeleteUndo } from '@/lib/deleteUndoCoordinator';
@@ -43,7 +39,6 @@ import {
   buildWeeklySummaries,
   buildTemplateSessionProgressSeries,
   DEFAULT_ROLLING_STRENGTH_WINDOW_DAYS,
-  est1RM,
   fmtDurationShort,
   isoWeekOf,
   prFeed,
@@ -88,6 +83,8 @@ import type {
   StressLog,
   SessionTemplate,
   MindfulnessLog,
+  GoalMetric,
+  UserGoal,
 } from '@/lib/types';
 
 type Tab =
@@ -102,8 +99,7 @@ type Tab =
   | 'hydration'
   | 'injuries'
   | 'hrv'
-  | 'lifting-goals'
-  | 'accessory-goals'
+  | 'goals'
   | 'balance'
   | 'types';
 
@@ -113,6 +109,7 @@ const TABS: Array<{ id: Tab; label: string }> = [
   { id: 'types', label: 'Types' },
   { id: 'weeks', label: 'Weeks' },
   { id: 'prs', label: 'PRs' },
+  { id: 'goals', label: 'Goals' },
   { id: 'muscle', label: 'Muscle' },
   { id: 'bodyweight', label: 'BW' },
   { id: 'measurements', label: 'Measure' },
@@ -120,15 +117,15 @@ const TABS: Array<{ id: Tab; label: string }> = [
   { id: 'hydration', label: 'Hydration' },
   { id: 'injuries', label: 'Injuries' },
   { id: 'hrv', label: 'HRV' },
-  { id: 'lifting-goals', label: 'Goals 2026' },
-  { id: 'accessory-goals', label: 'Accessories' },
   { id: 'balance', label: 'Strength Balance' },
 ];
 
 export function HistoryView() {
   const templates = useTemplates();
   const [tab, setTab] = useState<Tab>('sessions');
+  const [showNewGoal, setShowNewGoal] = useState(false);
   const lifts = useLifts();
+  const userGoals = useActiveUserGoals();
   const sessions = useSessionsAfterReadiness();
   const allSessions = useAllSessions();
   const allSets = useAllSets();
@@ -144,6 +141,7 @@ export function HistoryView() {
   const mindfulness = useAllMindfulness();
   const wellnessTargets = useWellnessTargets();
   const wkTargets = wellnessTargets ?? defaultWellnessTargets();
+  useGoalAchievementDetector(userGoals, allSets);
 
   if (
     !lifts ||
@@ -151,6 +149,7 @@ export function HistoryView() {
     !sessions ||
     !allSets ||
     !goalSets ||
+    userGoals === undefined ||
     !cardio ||
     !bodyweights ||
     !bodyMeasurements ||
@@ -215,10 +214,21 @@ export function HistoryView() {
       {tab === 'hydration' && <HydrationList logs={hydration} />}
       {tab === 'injuries' && <InjuriesList episodes={episodes} />}
       {tab === 'hrv' && <HrvList readiness={readiness} />}
-      {tab === 'lifting-goals' && (
-        <LiftGoalsList sessions={allSessions ?? sessions} sets={allSets} lifts={lifts} />
+      {tab === 'goals' && (
+        <GoalsView
+          goals={userGoals}
+          sets={allSets}
+          lifts={lifts}
+          onNew={() => setShowNewGoal(true)}
+        />
       )}
-      {tab === 'accessory-goals' && <AccessoryGoalsList sets={goalSets} />}
+      {showNewGoal && (
+        <GoalWriterSheet
+          sets={allSets}
+          lifts={lifts}
+          onClose={() => setShowNewGoal(false)}
+        />
+      )}
       {tab === 'balance' && (
         <StrengthBalanceView
           sets={goalSets}
@@ -1482,92 +1492,6 @@ function DietList({ logs }: { logs: NutritionLog[] }) {
   );
 }
 
-function liftingGoalProgressDetail(
-  done: boolean,
-  pct: number,
-  mode: { kind: 'lb'; target: number; current: number } | { kind: 'reps'; target: number; current: number },
-): { pctLabel?: string; remaining?: string } {
-  if (done) return {};
-  const pctRounded = Math.round(Math.min(100, Math.max(0, pct)));
-  const pctLabel = `${pctRounded}% complete`;
-  if (mode.kind === 'lb') {
-    const toGo = Math.max(0, Math.round(mode.target - mode.current));
-    return { pctLabel, remaining: `${toGo} lb to go` };
-  }
-  const toGo = Math.max(0, Math.round(mode.target - mode.current));
-  return { pctLabel, remaining: `${toGo} reps to go` };
-}
-
-/** Best 1RM from max-test attempts and working/backoff sets (take the higher of both). */
-function currentBest1RmFromSets(sets: SetLog[]): number {
-  let maxTestBest = -Infinity;
-  for (const s of sets) {
-    if (s.status !== 'completed') continue;
-    if (s.intent !== 'max_test') continue;
-    if (!Number.isFinite(s.weight) || s.weight <= 0) continue;
-    maxTestBest = Math.max(maxTestBest, s.weight);
-  }
-
-  let workingBest = -Infinity;
-  for (const s of sets) {
-    if (s.status !== 'completed') continue;
-    const intent = s.intent ?? 'working';
-    if (intent !== 'working' && intent !== 'backoff') continue;
-    if (!Number.isFinite(s.weight) || s.weight <= 0) continue;
-    if (s.reps < 1 || s.reps > 20) continue;
-    if (s.reps === 1) {
-      workingBest = Math.max(workingBest, s.weight);
-      continue;
-    }
-    const e = est1RM(s.weight, s.reps);
-    if (Number.isFinite(e)) workingBest = Math.max(workingBest, e);
-  }
-
-  const fromMaxTest = maxTestBest > -Infinity ? maxTestBest : 0;
-  const fromWorking = workingBest > -Infinity ? workingBest : 0;
-  return Math.max(fromMaxTest, fromWorking);
-}
-
-function lastMaxTestDate(
-  sets: SetLog[],
-  liftId: string,
-  sessionDateById: Map<string, string>,
-): string | null {
-  const dates = setsForLift(sets, liftId)
-    .filter((s) => s.status === 'completed' && s.intent === 'max_test')
-    .map((s) => sessionDateById.get(s.sessionLogId))
-    .filter((d): d is string => Boolean(d));
-  if (dates.length === 0) return null;
-  return [...dates].sort((a, b) => (a < b ? 1 : -1))[0]!;
-}
-
-function lastQualifyingRowDate(
-  sets: SetLog[],
-  sessionDateById: Map<string, string>,
-): string | null {
-  const dates = setsForLift(sets, 'bbr')
-    .filter(
-      (s) =>
-        s.status === 'completed'
-        && (s.intent === 'working' || s.intent === 'backoff' || s.intent === 'max_test')
-        && s.reps >= 5
-        && s.weight > 0,
-    )
-    .map((s) => sessionDateById.get(s.sessionLogId))
-    .filter((d): d is string => Boolean(d));
-  if (dates.length === 0) return null;
-  return [...dates].sort((a, b) => (a < b ? 1 : -1))[0]!;
-}
-
-function goalLastPrSubtitle(date: string | null): ReactNode {
-  if (!date) return undefined;
-  return (
-    <div className="text-[10px] text-zinc-600 mt-0.5">
-      Last max test: {fmtDate(date, 'MMM d')}
-    </div>
-  );
-}
-
 function LiftingGoalCard({
   title,
   subtitle,
@@ -1626,232 +1550,371 @@ function LiftingGoalCard({
   );
 }
 
-function LiftGoalsList({
-  sessions,
+
+function GoalsView({
+  goals,
   sets,
-  lifts: _lifts,
+  lifts,
+  onNew,
 }: {
-  sessions: SessionLog[];
+  goals: UserGoal[];
   sets: SetLog[];
   lifts: Lift[];
+  onNew: () => void;
 }) {
-  void _lifts;
-  const fmtLb = (n: number) => `${Math.round(n * 10) / 10} lb`;
-  const sessionDateById = new Map(sessions.map((s) => [s.id, s.date]));
-
-  const dl = currentBest1RmFromSets(setsForLift(sets, 'dl'));
-  const squat = currentBest1RmFromSets(setsForLift(sets, 'back_squat'));
-  const bench = currentBest1RmFromSets(setsForLift(sets, 'bp'));
-  const row5 = bestBarbellRowWeightAt5Plus(setsForLift(sets, 'bbr'));
-  const pullBw = maxBwPullupReps(setsForLift(sets, 'p1_bw'));
-  const ohp = currentBest1RmFromSets(setsForLift(sets, 'ohp'));
-  const pp = currentBest1RmFromSets(setsForLift(sets, 'pp'));
-
-  const dlDate = lastMaxTestDate(sets, 'dl', sessionDateById);
-  const squatDate = lastMaxTestDate(sets, 'back_squat', sessionDateById);
-  const benchDate = lastMaxTestDate(sets, 'bp', sessionDateById);
-  const rowDate = lastQualifyingRowDate(sets, sessionDateById);
-  const ohpDate = lastMaxTestDate(sets, 'ohp', sessionDateById);
-  const ppDate = lastMaxTestDate(sets, 'pp', sessionDateById);
+  const liftMap = useMemo(
+    () => new Map(lifts.map((l) => [l.id, l])),
+    [lifts],
+  );
+  const active = goals.filter((g) => !g.achievedAt);
+  const achieved = goals.filter((g) => g.achievedAt);
 
   return (
-    <div className="space-y-3">
-      <p className="text-xs text-zinc-500">
-        2026 strength targets — progress from completed sets (max-test and estimated 1RM from working sets).
-      </p>
+    <div className="space-y-4 pb-8">
+      <button
+        type="button"
+        onClick={onNew}
+        className="w-full h-11 rounded-2xl border border-dashed border-zinc-700 text-sm text-zinc-400 hover:text-zinc-200 hover:border-zinc-500 transition-colors flex items-center justify-center gap-2"
+      >
+        <span className="text-lg">+</span> New Goal
+      </button>
 
-      <LiftingGoalCard
-        title="Deadlift 1RM"
-        subtitle={goalLastPrSubtitle(dlDate)}
-        currentLabel={fmtLb(dl)}
-        targetLabel="475 lb"
-        pct={(dl / 475) * 100}
-        done={dl >= 475}
-        {...liftingGoalProgressDetail(dl >= 475, (dl / 475) * 100, { kind: 'lb', target: 475, current: dl })}
-      />
+      {active.length === 0 && achieved.length === 0 && (
+        <p className="text-sm text-zinc-600 text-center py-8">
+          No goals yet. Tap + New Goal to set your first target.
+        </p>
+      )}
 
-      <LiftingGoalCard
-        title="Back Squat 1RM"
-        subtitle={goalLastPrSubtitle(squatDate)}
-        currentLabel={fmtLb(squat)}
-        targetLabel="365 lb"
-        pct={(squat / 365) * 100}
-        done={squat >= 365}
-        {...liftingGoalProgressDetail(squat >= 365, (squat / 365) * 100, { kind: 'lb', target: 365, current: squat })}
-      />
+      {active.length > 0 && (
+        <div className="space-y-3">
+          {active.map((goal) => {
+            const lift = liftMap.get(goal.liftId);
+            const current = currentValueForGoal(goal, sets);
+            const pct = goal.targetValue > 0
+              ? Math.min(100, (current / goal.targetValue) * 100)
+              : 0;
+            const lbsToGo = Math.max(0, goal.targetValue - current);
+            const daysLeft = goal.deadline
+              ? Math.ceil(
+                  (new Date(goal.deadline).getTime() - Date.now()) / 86400000,
+                )
+              : null;
+            return (
+              <GoalCard
+                key={goal.id}
+                goal={goal}
+                lift={lift}
+                current={current}
+                pct={pct}
+                lbsToGo={lbsToGo}
+                daysLeft={daysLeft}
+                done={false}
+              />
+            );
+          })}
+        </div>
+      )}
 
-      <LiftingGoalCard
-        title="Bench Press 1RM"
-        subtitle={(
-          <>
-            <div className="text-xs text-zinc-500 mt-0.5">Life PR: 235 lb</div>
-            {goalLastPrSubtitle(benchDate)}
-          </>
-        )}
-        currentLabel={fmtLb(bench)}
-        targetLabel="265 lb"
-        pct={(bench / 265) * 100}
-        done={bench >= 265}
-        {...liftingGoalProgressDetail(bench >= 265, (bench / 265) * 100, { kind: 'lb', target: 265, current: bench })}
-      />
-
-      <LiftingGoalCard
-        title="Barbell Row 5RM"
-        subtitle={goalLastPrSubtitle(rowDate)}
-        currentLabel={row5 > 0 ? `${Math.round(row5)} × 5` : '—'}
-        targetLabel="235 × 5"
-        pct={(row5 / 235) * 100}
-        done={row5 >= 235}
-        {...liftingGoalProgressDetail(row5 >= 235, (row5 / 235) * 100, { kind: 'lb', target: 235, current: row5 })}
-      />
-
-      <LiftingGoalCard
-        title="Pull-ups BW"
-        currentLabel={`${pullBw} reps`}
-        targetLabel="8 reps"
-        pct={(pullBw / 8) * 100}
-        done={pullBw >= 8}
-        {...liftingGoalProgressDetail(pullBw >= 8, (pullBw / 8) * 100, { kind: 'reps', target: 8, current: pullBw })}
-      />
-
-      <LiftingGoalCard
-        title="OHP 1RM"
-        subtitle={goalLastPrSubtitle(ohpDate)}
-        currentLabel={fmtLb(ohp)}
-        targetLabel="175 lb"
-        pct={(ohp / 175) * 100}
-        done={ohp >= 175}
-        milestoneNote={
-          ohp >= 165 ? (
-            <div className="text-[10px] text-emerald-400 mt-0.5">
-              ✓ Previous target (165 lb) complete
-            </div>
-          ) : undefined
-        }
-        {...liftingGoalProgressDetail(ohp >= 175, (ohp / 175) * 100, { kind: 'lb', target: 175, current: ohp })}
-      />
-
-      <LiftingGoalCard
-        title="Push Press 1RM"
-        subtitle={goalLastPrSubtitle(ppDate)}
-        currentLabel={fmtLb(pp)}
-        targetLabel="200 lb"
-        pct={(pp / 200) * 100}
-        done={pp >= 200}
-        {...liftingGoalProgressDetail(pp >= 200, (pp / 200) * 100, { kind: 'lb', target: 200, current: pp })}
-      />
+      {achieved.length > 0 && (
+        <>
+          <div className="text-xs uppercase tracking-wide text-zinc-600 pt-2">Achieved</div>
+          <div className="space-y-3">
+            {achieved.map((goal) => {
+              const lift = liftMap.get(goal.liftId);
+              const current = currentValueForGoal(goal, sets);
+              return (
+                <GoalCard
+                  key={goal.id}
+                  goal={goal}
+                  lift={lift}
+                  current={current}
+                  pct={100}
+                  lbsToGo={0}
+                  daysLeft={null}
+                  done={true}
+                />
+              );
+            })}
+          </div>
+        </>
+      )}
     </div>
   );
 }
 
-function AccessoryGoalsList({ sets }: { sets: SetLog[] }) {
-  const fmtLb = (n: number) => `${Math.round(n * 10) / 10} lb`;
+function GoalCard({
+  goal,
+  lift,
+  current,
+  pct,
+  lbsToGo,
+  daysLeft,
+  done,
+}: {
+  goal: UserGoal;
+  lift: Lift | undefined;
+  current: number;
+  pct: number;
+  lbsToGo: number;
+  daysLeft: number | null;
+  done: boolean;
+}) {
+  const metricLabel =
+    goal.metric === '1rm' ? '1RM' :
+    goal.metric === 'reps' ? 'reps' :
+    goal.targetReps ? `${goal.targetReps}RM` : 'working';
 
-  const bpPaused = bestWorkingSetWeight(setsForLift(sets, 'bp_paused'));
-  const p1Ecc = bestWorkingSetWeight(setsForLift(sets, 'p1_eccentric'));
-  const ohpVol = bestWeightAtMinReps(setsForLift(sets, 'ohp'), 10);
-  const pendlay = bestWeightAtMinReps(setsForLift(sets, 'pendlay_row'), 5);
-  const bsPause = bestWeightAtMinReps(setsForLift(sets, 'back_squat_paused'), 6);
-  const fs = bestWeightAtMinReps(setsForLift(sets, 'front_squat'), 3);
-  const bss = bestWeightAtMinReps(setsForLift(sets, 'bss'), 10);
-  const ddl = bestWeightAtMinReps(setsForLift(sets, 'ddl'), 6);
-  const rdl = bestWeightAtMinReps(setsForLift(sets, 'rdl'), 10);
+  const currentLabel = goal.metric === 'reps'
+    ? `${current} reps`
+    : `${current} lb`;
+  const targetLabel = goal.metric === 'reps'
+    ? `${goal.targetValue} reps`
+    : goal.metric === 'working_set' && goal.targetReps
+      ? `${goal.targetValue} lb × ${goal.targetReps}`
+      : `${goal.targetValue} lb`;
+
+  const setDate = new Date(goal.createdAt).toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  });
+  const achievedDate = goal.achievedAt
+    ? new Date(goal.achievedAt).toLocaleDateString('en-US', {
+        month: 'short',
+        day: 'numeric',
+        year: 'numeric',
+      })
+    : null;
+
+  const baselineSuffix =
+    goal.metric === 'reps'
+      ? `${goal.baselineValue} reps`
+      : `${goal.baselineValue} lb`;
 
   return (
-    <div className="space-y-3">
-      <p className="text-xs text-zinc-500">
-        Accessory targets — best completed sets (working/backoff for simple strength targets; rep-qualified where noted).
-      </p>
+    <LiftingGoalCard
+      title={goal.label}
+      subtitle={
+        <div className="text-xs text-zinc-500 mt-0.5">
+          {lift?.name ?? goal.liftId} · {metricLabel}
+          {goal.baselineValue > 0 && ` · started at ${baselineSuffix}`}
+        </div>
+      }
+      currentLabel={currentLabel}
+      targetLabel={targetLabel}
+      pct={pct}
+      done={done}
+      pctLabel={`${Math.round(pct)}% complete`}
+      remaining={
+        done
+          ? achievedDate
+            ? `Achieved ${achievedDate}`
+            : undefined
+          : lbsToGo > 0
+            ? `${goal.metric === 'reps' ? `${lbsToGo} reps` : `${lbsToGo} lb`} to go${
+                daysLeft != null
+                  ? ` · ${daysLeft > 0 ? `${daysLeft} days left` : 'deadline passed'}`
+                  : ''
+              }`
+            : undefined
+      }
+      milestoneNote={
+        <div className="text-[10px] text-zinc-600">
+          Set {setDate}
+          {goal.baselineValue > 0 && ` · baseline ${baselineSuffix}`}
+        </div>
+      }
+    />
+  );
+}
 
-      <LiftingGoalCard
-        title="BP (Paused) Working Set"
-        currentLabel={bpPaused > 0 ? fmtLb(bpPaused) : '—'}
-        targetLabel="225 lb"
-        pct={(bpPaused / 225) * 100}
-        done={bpPaused >= 225}
-        {...liftingGoalProgressDetail(bpPaused >= 225, (bpPaused / 225) * 100, { kind: 'lb', target: 225, current: bpPaused })}
-      />
+function GoalWriterSheet({
+  sets,
+  lifts,
+  onClose,
+}: {
+  sets: SetLog[];
+  lifts: Lift[];
+  onClose: () => void;
+}) {
+  const strengthLifts = useMemo(
+    () =>
+      lifts
+        .filter((l) => l.equipment !== 'cardio' && l.equipment !== 'time')
+        .sort((a, b) => a.name.localeCompare(b.name)),
+    [lifts],
+  );
+  const [liftQuery, setLiftQuery] = useState('');
+  const [liftId, setLiftId] = useState(strengthLifts[0]?.id ?? '');
+  const [label, setLabel] = useState('');
+  const [metric, setMetric] = useState<GoalMetric>('1rm');
+  const [targetValue, setTargetValue] = useState('');
+  const [targetReps, setTargetReps] = useState('');
+  const [deadline, setDeadline] = useState('');
+  const [busy, setBusy] = useState(false);
 
-      <LiftingGoalCard
-        title="P1 Eccentric (added load)"
-        currentLabel={p1Ecc > 0 ? fmtLb(p1Ecc) : '—'}
-        targetLabel="25 lb"
-        pct={(p1Ecc / 25) * 100}
-        done={p1Ecc >= 25}
-        {...liftingGoalProgressDetail(p1Ecc >= 25, (p1Ecc / 25) * 100, { kind: 'lb', target: 25, current: p1Ecc })}
-      />
+  const filteredLifts = useMemo(() => {
+    const q = liftQuery.trim().toLowerCase();
+    if (!q) return strengthLifts;
+    return strengthLifts.filter(
+      (l) => l.name.toLowerCase().includes(q) || l.id.toLowerCase().includes(q),
+    );
+  }, [liftQuery, strengthLifts]);
 
-      <LiftingGoalCard
-        title="OHP 100 × 10"
-        currentLabel={ohpVol > 0 ? `${fmtLb(ohpVol)} × 10` : '—'}
-        targetLabel="100 lb × 10"
-        pct={(ohpVol / 100) * 100}
-        done={ohpVol >= 100}
-        {...liftingGoalProgressDetail(ohpVol >= 100, (ohpVol / 100) * 100, { kind: 'lb', target: 100, current: ohpVol })}
-      />
+  useEffect(() => {
+    const lift = strengthLifts.find((l) => l.id === liftId);
+    if (lift) setLabel(lift.name);
+  }, [liftId, strengthLifts]);
 
-      <LiftingGoalCard
-        title="Pendlay Row 5RM"
-        currentLabel={pendlay > 0 ? `${fmtLb(pendlay)} × 5` : '—'}
-        targetLabel="215 lb × 5"
-        pct={(pendlay / 215) * 100}
-        done={pendlay >= 215}
-        {...liftingGoalProgressDetail(pendlay >= 215, (pendlay / 215) * 100, { kind: 'lb', target: 215, current: pendlay })}
-      />
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
 
-      <LiftingGoalCard
-        title="Back Squat (paused) 6RM"
-        currentLabel={bsPause > 0 ? `${fmtLb(bsPause)} × 6` : '—'}
-        targetLabel="265 lb × 6"
-        pct={(bsPause / 265) * 100}
-        done={bsPause >= 265}
-        {...liftingGoalProgressDetail(bsPause >= 265, (bsPause / 265) * 100, { kind: 'lb', target: 265, current: bsPause })}
-      />
+  async function save() {
+    if (!liftId || !label.trim()) return;
+    const target = Number(targetValue);
+    if (!Number.isFinite(target) || target <= 0) return;
+    const reps =
+      metric === 'working_set' && targetReps.trim()
+        ? Number(targetReps)
+        : null;
+    if (metric === 'working_set' && targetReps.trim() && (!Number.isFinite(reps!) || reps! < 1)) {
+      return;
+    }
 
-      <LiftingGoalCard
-        title="Front Squat 3RM (project)"
-        subtitle={<div className="text-zinc-500 text-[10px] mt-0.5">project</div>}
-        currentLabel={fs > 0 ? `${fmtLb(fs)} × 3` : '—'}
-        targetLabel="185 lb × 3"
-        pct={(fs / 185) * 100}
-        done={fs >= 185}
-        {...liftingGoalProgressDetail(fs >= 185, (fs / 185) * 100, { kind: 'lb', target: 185, current: fs })}
-      />
+    const draft: UserGoal = {
+      id: `goal-${liftId}-${metric}-${Date.now()}`,
+      userId: '',
+      liftId,
+      label: label.trim(),
+      metric,
+      targetValue: target,
+      targetReps: metric === 'working_set' ? reps : null,
+      deadline: deadline.trim() || null,
+      createdAt: new Date().toISOString(),
+      achievedAt: null,
+      baselineValue: 0,
+      active: true,
+      updatedAt: new Date().toISOString(),
+    };
+    draft.baselineValue = currentValueForGoal(draft, sets);
 
-      <LiftingGoalCard
-        title="BSS 2 × 10 L/R"
-        subtitle={(
-          <div className="text-xs text-zinc-500 mt-0.5 space-y-0.5">
-            <div>Each side</div>
-            <div className="text-[10px] text-zinc-500">
-              10 reps × each leg = 20 total reps per set. Log reps per leg.
-            </div>
-          </div>
-        )}
-        currentLabel={bss > 0 ? `${fmtLb(bss)} × 10` : '—'}
-        targetLabel="95 lb × 10"
-        pct={(bss / 95) * 100}
-        done={bss >= 95}
-        {...liftingGoalProgressDetail(bss >= 95, (bss / 95) * 100, { kind: 'lb', target: 95, current: bss })}
-      />
+    setBusy(true);
+    try {
+      await localUpsert('user_goals', draft);
+      onClose();
+    } finally {
+      setBusy(false);
+    }
+  }
 
-      <LiftingGoalCard
-        title="Deficit Deadlift 6RM"
-        currentLabel={ddl > 0 ? `${fmtLb(ddl)} × 6` : '—'}
-        targetLabel="345 lb × 6"
-        pct={(ddl / 345) * 100}
-        done={ddl >= 345}
-        {...liftingGoalProgressDetail(ddl >= 345, (ddl / 345) * 100, { kind: 'lb', target: 345, current: ddl })}
-      />
-
-      <LiftingGoalCard
-        title="RDL 10RM"
-        currentLabel={rdl > 0 ? `${fmtLb(rdl)} × 10` : '—'}
-        targetLabel="275 lb × 10"
-        pct={(rdl / 275) * 100}
-        done={rdl >= 275}
-        {...liftingGoalProgressDetail(rdl >= 275, (rdl / 275) * 100, { kind: 'lb', target: 275, current: rdl })}
-      />
+  return (
+    <div className="fixed inset-0 z-50 flex items-end justify-center sm:items-center p-0 sm:p-4">
+      <button type="button" aria-label="Close" className="absolute inset-0 bg-black/70" onClick={onClose} />
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="goal-writer-title"
+        className="relative w-full max-w-lg rounded-t-3xl sm:rounded-3xl border border-zinc-800 bg-zinc-950 shadow-2xl max-h-[min(92dvh,720px)] flex flex-col"
+      >
+        <div className="p-4 border-b border-zinc-800 shrink-0 flex items-center justify-between gap-2">
+          <h2 id="goal-writer-title" className="text-lg font-semibold text-zinc-100">New goal</h2>
+          <button type="button" onClick={onClose} className="text-zinc-500 hover:text-zinc-200 text-xl leading-none px-2" aria-label="Close">×</button>
+        </div>
+        <div className="p-4 space-y-4 overflow-y-auto flex-1">
+          <label className="block text-xs text-zinc-500">
+            Search lift
+            <input
+              type="search"
+              value={liftQuery}
+              onChange={(e) => setLiftQuery(e.target.value)}
+              placeholder="Filter lifts…"
+              className="mt-1 w-full rounded-lg bg-zinc-900 border border-zinc-800 px-3 py-2 text-sm text-zinc-200"
+            />
+          </label>
+          <label className="block text-xs text-zinc-500">
+            Lift
+            <select
+              value={liftId}
+              onChange={(e) => setLiftId(e.target.value)}
+              className="mt-1 w-full rounded-lg bg-zinc-900 border border-zinc-800 px-3 py-2 text-sm text-zinc-200"
+            >
+              {filteredLifts.map((l) => (
+                <option key={l.id} value={l.id}>{l.name}</option>
+              ))}
+            </select>
+          </label>
+          <label className="block text-xs text-zinc-500">
+            Goal label
+            <input
+              type="text"
+              value={label}
+              onChange={(e) => setLabel(e.target.value)}
+              className="mt-1 w-full rounded-lg bg-zinc-900 border border-zinc-800 px-3 py-2 text-sm text-zinc-200"
+            />
+          </label>
+          <label className="block text-xs text-zinc-500">
+            Metric
+            <select
+              value={metric}
+              onChange={(e) => setMetric(e.target.value as GoalMetric)}
+              className="mt-1 w-full rounded-lg bg-zinc-900 border border-zinc-800 px-3 py-2 text-sm text-zinc-200"
+            >
+              <option value="1rm">1RM</option>
+              <option value="working_set">Working set</option>
+              <option value="reps">Reps (bodyweight)</option>
+            </select>
+          </label>
+          <label className="block text-xs text-zinc-500">
+            {metric === 'reps' ? 'Target reps' : 'Target weight (lb)'}
+            <input
+              type="number"
+              min={1}
+              step={metric === 'reps' ? 1 : 2.5}
+              value={targetValue}
+              onChange={(e) => setTargetValue(e.target.value)}
+              className="mt-1 w-full rounded-lg bg-zinc-900 border border-zinc-800 px-3 py-2 text-sm text-zinc-200"
+            />
+          </label>
+          {metric === 'working_set' && (
+            <label className="block text-xs text-zinc-500">
+              Target reps (optional, for NRM goals)
+              <input
+                type="number"
+                min={1}
+                max={20}
+                value={targetReps}
+                onChange={(e) => setTargetReps(e.target.value)}
+                placeholder="e.g. 5 for 5RM"
+                className="mt-1 w-full rounded-lg bg-zinc-900 border border-zinc-800 px-3 py-2 text-sm text-zinc-200"
+              />
+            </label>
+          )}
+          <label className="block text-xs text-zinc-500">
+            Deadline (optional)
+            <input
+              type="date"
+              value={deadline}
+              onChange={(e) => setDeadline(e.target.value)}
+              className="mt-1 w-full rounded-lg bg-zinc-900 border border-zinc-800 px-3 py-2 text-sm text-zinc-200"
+            />
+          </label>
+        </div>
+        <div className="p-4 border-t border-zinc-800 shrink-0">
+          <button
+            type="button"
+            disabled={busy || !liftId || !label.trim() || !targetValue}
+            onClick={() => void save()}
+            className="w-full h-11 rounded-xl bg-amber-500 text-zinc-950 font-medium disabled:opacity-50"
+          >
+            Save goal
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

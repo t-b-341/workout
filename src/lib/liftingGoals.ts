@@ -1,5 +1,5 @@
 import { est1RM } from './stats';
-import type { SetIntent, SetLog } from './types';
+import type { SetIntent, SetLog, UserGoal } from './types';
 
 const GOAL_COUNT_INTENTS: SetIntent[] = ['max_test', 'working', 'backoff'];
 
@@ -83,4 +83,25 @@ export function bestWorkingSetWeight(sets: SetLog[]): number {
     best = Math.max(best, s.weight);
   }
   return best;
+}
+
+export function currentValueForGoal(goal: UserGoal, sets: SetLog[]): number {
+  const liftSets = setsForLift(sets, goal.liftId);
+  switch (goal.metric) {
+    case '1rm':
+      return currentBest1RmFromSets(liftSets);
+    case 'working_set':
+      if (goal.targetReps != null) {
+        return bestWeightAtMinReps(liftSets, goal.targetReps);
+      }
+      return bestWorkingSetWeight(liftSets);
+    case 'reps':
+      return maxBwPullupReps(liftSets);
+    default:
+      return 0;
+  }
+}
+
+export function isGoalAchieved(goal: UserGoal, currentValue: number): boolean {
+  return currentValue >= goal.targetValue;
 }
