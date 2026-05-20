@@ -1,7 +1,23 @@
-import { addDays, format, getISOWeek, getISOWeekYear, startOfISOWeek, endOfISOWeek } from 'date-fns';
+import {
+  addDays,
+  differenceInCalendarDays,
+  format,
+  getISOWeek,
+  getISOWeekYear,
+  startOfISOWeek,
+  endOfISOWeek,
+} from 'date-fns';
 
 export function todayIso(): string {
   return format(new Date(), 'yyyy-MM-dd');
+}
+
+/** Calendar days from `fromIso` to `toIso` (positive when `toIso` is later). */
+export function daysBetweenIso(fromIso: string, toIso: string): number {
+  return differenceInCalendarDays(
+    new Date(`${toIso}T12:00:00`),
+    new Date(`${fromIso}T12:00:00`),
+  );
 }
 
 /** Add signed calendar days to `YYYY-MM-dd` (local noon anchor). */

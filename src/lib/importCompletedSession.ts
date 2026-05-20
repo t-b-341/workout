@@ -1,5 +1,5 @@
 import { getDb } from '@/lib/db';
-import { decideProgression, liftForSnap } from '@/lib/progression';
+import { decideProgression } from '@/lib/progression';
 import { defaultTemplateForLocalDate } from '@/lib/seed';
 import { finalizeWorkoutPauseAtCompletion, sessionDurationMs } from '@/lib/stats';
 import { ensureLocalSeed, flushDirty, localUpsert } from '@/lib/sync';

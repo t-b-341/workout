@@ -383,15 +383,12 @@ export async function buildFullLocalExport(opts?: FullLocalExportOptions): Promi
     sessionStatus: deriveSessionStatus(s, prescriptions, setsBySessionForStatus.get(s.id) ?? []),
   }));
 
-  const set_logs_out: ExportedSetLog[] = set_logs.map((s) => {
-    const { rpe: _r, intent: _i, ...rest } = s;
-    return {
-      ...rest,
-      intent: intentOf(s, opts?.setIntentOverrides),
-      date: sessionById.get(s.sessionLogId)?.date ?? null,
-      rpe: normalizedRpeForExport(s.rpe),
-    };
-  });
+  const set_logs_out: ExportedSetLog[] = set_logs.map((s) => ({
+    ...s,
+    intent: intentOf(s, opts?.setIntentOverrides),
+    date: sessionById.get(s.sessionLogId)?.date ?? null,
+    rpe: normalizedRpeForExport(s.rpe),
+  }));
 
   const hrv_logs = buildHrvLogsExport(readiness_logs);
   const workday_logs = buildWorkdayLogsExport(meta);

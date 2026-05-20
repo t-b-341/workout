@@ -3,7 +3,7 @@ import {
   computeProgramTargetCurrentFromLogs,
   enrichProgramTargetsAtExport,
 } from '@/lib/exportSummary';
-import type { MindfulnessLog, Prescription, SessionLog, SetLog } from '@/lib/types';
+import type { MindfulnessLog, Prescription, SetLog } from '@/lib/types';
 import type { SummaryProgramTarget } from '@/lib/programExportTargets';
 
 function pt(partial: Partial<SummaryProgramTarget> & Pick<SummaryProgramTarget, 'id' | 'metric' | 'liftId'>): SummaryProgramTarget {
@@ -21,15 +21,6 @@ function pt(partial: Partial<SummaryProgramTarget> & Pick<SummaryProgramTarget, 
 }
 
 describe('enrichProgramTargetsAtExport', () => {
-  const session: SessionLog = {
-    id: 's1',
-    date: '2026-06-01',
-    templateId: 'U1',
-    mode: 'standard',
-    deload: false,
-    watchFlags: [],
-  };
-
   it('computes 1rm from max_test, else singles', () => {
     const row = pt({
       id: 'dl',

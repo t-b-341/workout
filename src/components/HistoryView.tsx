@@ -28,7 +28,7 @@ import { currentValueForGoal } from '@/lib/liftingGoals';
 import { sortSetLogsForSession } from '@/lib/sessionFilters';
 import { cancelPendingDirtyDelete, localDelete, localUpsert } from '@/lib/sync';
 import { offerDeleteUndo } from '@/lib/deleteUndoCoordinator';
-import { fmtDate, todayIso } from '@/lib/time';
+import { daysBetweenIso, fmtDate, todayIso } from '@/lib/time';
 import {
   bodyMeasurementSeries,
   bodyweightSeries,
@@ -1568,6 +1568,7 @@ function GoalsView({
   );
   const active = goals.filter((g) => !g.achievedAt);
   const achieved = goals.filter((g) => g.achievedAt);
+  const today = todayIso();
 
   return (
     <div className="space-y-4 pb-8">
@@ -1595,9 +1596,7 @@ function GoalsView({
               : 0;
             const lbsToGo = Math.max(0, goal.targetValue - current);
             const daysLeft = goal.deadline
-              ? Math.ceil(
-                  (new Date(goal.deadline).getTime() - Date.now()) / 86400000,
-                )
+              ? daysBetweenIso(today, goal.deadline)
               : null;
             return (
               <GoalCard
@@ -1746,7 +1745,7 @@ function GoalWriterSheet({
   );
   const [liftQuery, setLiftQuery] = useState('');
   const [liftId, setLiftId] = useState(strengthLifts[0]?.id ?? '');
-  const [label, setLabel] = useState('');
+  const [label, setLabel] = useState(strengthLifts[0]?.name ?? '');
   const [metric, setMetric] = useState<GoalMetric>('1rm');
   const [targetValue, setTargetValue] = useState('');
   const [targetReps, setTargetReps] = useState('');
@@ -1760,11 +1759,6 @@ function GoalWriterSheet({
       (l) => l.name.toLowerCase().includes(q) || l.id.toLowerCase().includes(q),
     );
   }, [liftQuery, strengthLifts]);
-
-  useEffect(() => {
-    const lift = strengthLifts.find((l) => l.id === liftId);
-    if (lift) setLabel(lift.name);
-  }, [liftId, strengthLifts]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -1840,7 +1834,12 @@ function GoalWriterSheet({
             Lift
             <select
               value={liftId}
-              onChange={(e) => setLiftId(e.target.value)}
+              onChange={(e) => {
+                const id = e.target.value;
+                setLiftId(id);
+                const lift = strengthLifts.find((l) => l.id === id);
+                if (lift) setLabel(lift.name);
+              }}
               className="mt-1 w-full rounded-lg bg-zinc-900 border border-zinc-800 px-3 py-2 text-sm text-zinc-200"
             >
               {filteredLifts.map((l) => (
