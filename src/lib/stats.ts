@@ -1326,19 +1326,22 @@ export function mostRecentWorkingWeight(
 ): number | null {
   const sessionDate = new Map(sessions.map((s) => [s.id, s.date]));
   const qualifying = sets
-    .filter(
-      (s) =>
-        s.liftId === liftId &&
+    .filter((s) => {
+      const intent = s.intent ?? 'working';
+      const performedLift = s.liftId === liftId || s.substituteLiftId === liftId;
+      return (
+        performedLift &&
         s.status === 'completed' &&
-        (s.intent ?? 'working') !== 'warmup' &&
-        (s.intent ?? 'working') !== 'max_test' &&
+        (intent === 'working' || intent === 'backoff') &&
         (s.weight ?? 0) > 0 &&
-        sessionDate.has(s.sessionLogId),
-    )
+        sessionDate.has(s.sessionLogId)
+      );
+    })
     .sort((a, b) => {
       const da = sessionDate.get(a.sessionLogId) ?? '';
       const db = sessionDate.get(b.sessionLogId) ?? '';
-      return da < db ? 1 : da > db ? -1 : 0;
+      if (da !== db) return da < db ? 1 : -1;
+      return (b.weight ?? 0) - (a.weight ?? 0);
     });
   return qualifying[0]?.weight ?? null;
 }
