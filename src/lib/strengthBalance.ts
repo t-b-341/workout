@@ -125,6 +125,26 @@ export const RATIO_STANDARDS: LiftRatioStandard[] = [
   },
 ];
 
+export type ValueSource = {
+  /** The value used in the ratio. */
+  value: number;
+  /** True if value is an e1RM estimate, not a direct lift. */
+  isEstimate: boolean;
+  /** Highest confirmed direct 1RM (single rep). Null if none. */
+  directBest: number | null;
+  /** e1RM estimate from best multi-rep set. Null if none. */
+  estimatedBest: number | null;
+  /** Set that produced directBest. Null if none. */
+  directSet: { weight: number; reps: number; intent: string } | null;
+  /** Set that produced estimatedBest. Null if none. */
+  estimatedSet: { weight: number; reps: number; intent: string } | null;
+  /**
+   * True when estimatedBest > directBest by >= 5 lb —
+   * suggests an untested PR opportunity on next max test.
+   */
+  prOpportunity: boolean;
+};
+
 export type RatioResult = {
   standard: LiftRatioStandard;
   numeratorValue: number;
@@ -134,43 +154,94 @@ export type RatioResult = {
   gapPct: number;
   roiScore: number;
   status: 'above' | 'within' | 'below';
+  /** Source metadata for numerator (1rm mode only). */
+  numeratorSource: ValueSource | null;
+  /** Source metadata for denominator (1rm mode only). */
+  denominatorSource: ValueSource | null;
 };
 
-function best1RmFromSets(liftSets: SetLog[]): number | null {
-  let maxTestBest = 0;
-  for (const s of liftSets) {
-    if (s.status !== 'completed') continue;
-    if (s.intent !== 'max_test') continue;
-    if (!Number.isFinite(s.weight) || s.weight <= 0) continue;
-    const val = s.reps === 1 ? s.weight : est1RM(s.weight, s.reps);
-    maxTestBest = Math.max(maxTestBest, val);
-  }
+type Best1RmResult = {
+  value: number;
+  directBest: number | null;
+  estimatedBest: number | null;
+  directSet: { weight: number; reps: number; intent: string } | null;
+  estimatedSet: { weight: number; reps: number; intent: string } | null;
+  isEstimate: boolean;
+};
 
-  let workingBest = 0;
+function best1RmFromSets(liftSets: SetLog[]): Best1RmResult | null {
+  let directBest = 0;
+  let directSet: Best1RmResult['directSet'] = null;
+  let estimatedBest = 0;
+  let estimatedSet: Best1RmResult['estimatedSet'] = null;
+
   for (const s of liftSets) {
     if (s.status !== 'completed') continue;
+    if (!Number.isFinite(s.weight) || s.weight <= 0) continue;
     const intent = s.intent ?? 'working';
-    if (intent !== 'working' && intent !== 'backoff') continue;
-    if (!Number.isFinite(s.weight) || s.weight <= 0) continue;
-    if (s.reps < 1 || s.reps > 20) continue;
-    workingBest = Math.max(workingBest, est1RM(s.weight, s.reps));
+    const isMaxTest = intent === 'max_test';
+    const isWorking = intent === 'working' || intent === 'backoff';
+
+    if (!isMaxTest && !isWorking) continue;
+
+    if (s.reps === 1) {
+      if (s.weight > directBest) {
+        directBest = s.weight;
+        directSet = { weight: s.weight, reps: 1, intent };
+      }
+    } else if (s.reps >= 2 && s.reps <= 20) {
+      const e = est1RM(s.weight, s.reps);
+      if (e > estimatedBest) {
+        estimatedBest = e;
+        estimatedSet = { weight: s.weight, reps: s.reps, intent };
+      }
+    }
   }
 
-  const best = Math.max(maxTestBest, workingBest);
-  return best > 0 ? best : null;
+  if (directBest <= 0 && estimatedBest <= 0) return null;
+
+  const value = directBest > 0 ? directBest : estimatedBest;
+  const isEstimate = directBest <= 0;
+
+  return {
+    value,
+    directBest: directBest > 0 ? directBest : null,
+    estimatedBest: estimatedBest > 0 ? Math.round(estimatedBest) : null,
+    directSet: directBest > 0 ? directSet : null,
+    estimatedSet: estimatedBest > 0 ? estimatedSet : null,
+    isEstimate,
+  };
 }
 
-function liftValue(
+function liftValueWithSource(
   liftId: string,
   mode: '1rm' | 'working',
   sets: SetLog[],
   sessions: SessionLog[],
-): number | null {
+): { value: number; source: ValueSource | null } | null {
   if (mode === '1rm') {
-    return best1RmFromSets(setsForLift(sets, liftId));
+    const r = best1RmFromSets(setsForLift(sets, liftId));
+    if (!r) return null;
+    const prOpportunity =
+      r.directBest != null &&
+      r.estimatedBest != null &&
+      r.estimatedBest >= r.directBest + 5;
+    return {
+      value: r.value,
+      source: {
+        value: r.value,
+        isEstimate: r.isEstimate,
+        directBest: r.directBest,
+        estimatedBest: r.estimatedBest,
+        directSet: r.directSet,
+        estimatedSet: r.estimatedSet,
+        prOpportunity,
+      },
+    };
   }
   const w = mostRecentWorkingWeight(liftId, sets, sessions);
-  return w != null && w > 0 ? w : null;
+  if (w == null || w <= 0) return null;
+  return { value: w, source: null };
 }
 
 /**
@@ -184,27 +255,25 @@ export function computeStrengthBalance(
   const results: RatioResult[] = [];
 
   for (const standard of RATIO_STANDARDS) {
-    const numeratorValue = liftValue(
+    const numResult = liftValueWithSource(
       standard.numeratorLiftId,
       standard.numeratorMode,
       sets,
       sessions,
     );
-    const denominatorValue = liftValue(
+    const denResult = liftValueWithSource(
       standard.denominatorLiftId,
       standard.denominatorMode,
       sets,
       sessions,
     );
 
-    if (
-      numeratorValue == null
-      || denominatorValue == null
-      || numeratorValue <= 0
-      || denominatorValue <= 0
-    ) {
-      continue;
-    }
+    if (!numResult || !denResult) continue;
+
+    const numeratorValue = numResult.value;
+    const denominatorValue = denResult.value;
+
+    if (numeratorValue <= 0 || denominatorValue <= 0) continue;
 
     const ratio = numeratorValue / denominatorValue;
     const targetMid = (standard.targetMin + standard.targetMax) / 2;
@@ -234,6 +303,8 @@ export function computeStrengthBalance(
       gapPct,
       roiScore,
       status,
+      numeratorSource: numResult.source,
+      denominatorSource: denResult.source,
     });
   }
 

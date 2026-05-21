@@ -66,6 +66,7 @@ import { labelForSiteKey, type InjurySiteKey } from '@/lib/injurySites';
 import {
   computeStrengthBalance,
   type RatioResult,
+  type ValueSource,
 } from '@/lib/strengthBalance';
 
 import type {
@@ -2016,6 +2017,48 @@ function liftLabel(liftId: string): string {
   return LIFTS.find((l) => l.id === liftId)?.name ?? liftId;
 }
 
+function renderLiftValue(
+  liftId: string,
+  value: number,
+  source: ValueSource | null,
+): ReactNode {
+  const name = liftLabel(liftId);
+  if (!source) {
+    return (
+      <span>
+        {name}: <span className="font-mono">{Math.round(value)} lb</span>
+        <span className="text-zinc-600"> (working)</span>
+      </span>
+    );
+  }
+  if (!source.isEstimate && source.directBest != null) {
+    return (
+      <span>
+        {name}:{' '}
+        <span className="font-mono text-zinc-200">
+          {Math.round(source.directBest)} lb
+        </span>
+        <span className="text-zinc-600">
+          {' '}
+          (tested {source.directSet?.intent === 'max_test' ? 'max' : 'single'})
+        </span>
+      </span>
+    );
+  }
+  return (
+    <span>
+      {name}:{' '}
+      <span className="font-mono text-amber-300/80">
+        ~{Math.round(value)} lb
+      </span>
+      <span className="text-zinc-600">
+        {' '}
+        (e1RM from {source.estimatedSet?.weight}×{source.estimatedSet?.reps})
+      </span>
+    </span>
+  );
+}
+
 function StrengthBalanceStatusBadge({ result }: { result: RatioResult }) {
   if (result.status === 'above') {
     return (
@@ -2097,8 +2140,6 @@ function StrengthBalanceView({
     results.length > 0
     && results.every((r) => r.status === 'within' || r.status === 'above');
 
-  const fmtLb = (n: number) => `${Math.round(n)}`;
-
   if (results.length === 0) {
     return (
       <div className="text-sm text-zinc-500">
@@ -2143,10 +2184,49 @@ function StrengthBalanceView({
 
             <StrengthBalanceRatioBar result={result} />
 
-            <div className="text-xs text-zinc-500">
-              {liftLabel(result.standard.numeratorLiftId)}: {fmtLb(result.numeratorValue)} lb /{' '}
-              {liftLabel(result.standard.denominatorLiftId)}: {fmtLb(result.denominatorValue)} lb
+            <div className="text-xs text-zinc-500 space-y-0.5">
+              <div>
+                {renderLiftValue(
+                  result.standard.numeratorLiftId,
+                  result.numeratorValue,
+                  result.numeratorSource,
+                )}
+              </div>
+              <div>
+                {renderLiftValue(
+                  result.standard.denominatorLiftId,
+                  result.denominatorValue,
+                  result.denominatorSource,
+                )}
+              </div>
             </div>
+
+            {(result.numeratorSource?.prOpportunity ||
+              result.denominatorSource?.prOpportunity) && (
+              <div className="rounded-lg border border-emerald-800/50 bg-emerald-950/30 px-3 py-2 space-y-0.5">
+                <div className="text-[10px] uppercase tracking-wide text-emerald-400 font-medium">
+                  Potential PR on next test
+                </div>
+                {result.numeratorSource?.prOpportunity && (
+                  <div className="text-xs text-zinc-400">
+                    {liftLabel(result.standard.numeratorLiftId)}:{' '}
+                    tested {result.numeratorSource.directBest} lb,
+                    e1RM suggests ~{result.numeratorSource.estimatedBest} lb
+                    ({result.numeratorSource.estimatedSet?.weight}×
+                    {result.numeratorSource.estimatedSet?.reps})
+                  </div>
+                )}
+                {result.denominatorSource?.prOpportunity && (
+                  <div className="text-xs text-zinc-400">
+                    {liftLabel(result.standard.denominatorLiftId)}:{' '}
+                    tested {result.denominatorSource.directBest} lb,
+                    e1RM suggests ~{result.denominatorSource.estimatedBest} lb
+                    ({result.denominatorSource.estimatedSet?.weight}×
+                    {result.denominatorSource.estimatedSet?.reps})
+                  </div>
+                )}
+              </div>
+            )}
 
             <p className="text-xs text-zinc-500 leading-snug">{result.standard.description}</p>
 
