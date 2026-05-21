@@ -1,5 +1,5 @@
 import { setsForLift } from './liftingGoals';
-import { est1RM, mostRecentWorkingWeight } from './stats';
+import { est1RM } from './stats';
 import type { SessionLog, SetLog } from './types';
 
 export type LiftRatioStandard = {
@@ -93,16 +93,15 @@ export const RATIO_STANDARDS: LiftRatioStandard[] = [
     numeratorLiftId: 'bbr',
     denominatorLiftId: 'dl',
     numeratorMode: 'working',
-    denominatorMode: 'working',
+    denominatorMode: '1rm',
     targetMin: 0.55,
     targetMax: 0.65,
     downstreamBenefit: 3,
     description:
-      'Barbell row working weight should be 55–65% of '
-      + 'deadlift working weight. Gap indicates upper '
+      'Barbell row working weight (best set) should be '
+      + '55–65% of deadlift 1RM. Gap indicates upper '
       + 'back and lat strength deficit — directly limits '
-      + 'deadlift lat engagement, bar path efficiency, '
-      + 'and row progression rate.',
+      + 'deadlift lat engagement and row progression rate.',
   },
   {
     id: 'dl_squat',
@@ -143,6 +142,10 @@ export type ValueSource = {
    * suggests an untested PR opportunity on next max test.
    */
   prOpportunity: boolean;
+  /** For working mode: reps of the set that produced value. */
+  workingReps?: number;
+  /** For working mode: date of the session. */
+  workingDate?: string;
 };
 
 export type RatioResult = {
@@ -239,14 +242,45 @@ function liftValueWithSource(
       },
     };
   }
-  const w = mostRecentWorkingWeight(liftId, sets, sessions);
-  if (w == null || w <= 0) return null;
-  return { value: w, source: null };
+  const sessionDate = new Map(sessions.map((s) => [s.id, s.date]));
+  const qualifyingSets = sets
+    .filter((s) => {
+      const intent = s.intent ?? 'working';
+      return (
+        (s.liftId === liftId || s.substituteLiftId === liftId) &&
+        s.status === 'completed' &&
+        (intent === 'working' || intent === 'backoff') &&
+        (s.weight ?? 0) > 0 &&
+        sessionDate.has(s.sessionLogId)
+      );
+    })
+    .sort((a, b) => {
+      const da = sessionDate.get(a.sessionLogId) ?? '';
+      const db = sessionDate.get(b.sessionLogId) ?? '';
+      if (da !== db) return da < db ? 1 : -1;
+      return (b.weight ?? 0) - (a.weight ?? 0);
+    });
+  const bestSet = qualifyingSets[0];
+  if (!bestSet || (bestSet.weight ?? 0) <= 0) return null;
+  return {
+    value: bestSet.weight!,
+    source: {
+      value: bestSet.weight!,
+      isEstimate: false,
+      directBest: null,
+      estimatedBest: null,
+      directSet: null,
+      estimatedSet: null,
+      prOpportunity: false,
+      workingReps: bestSet.reps,
+      workingDate: sessionDate.get(bestSet.sessionLogId),
+    },
+  };
 }
 
 /**
  * Compute ratio results from set_logs.
- * Uses est1RM for '1rm' mode and mostRecentWorkingWeight for 'working' mode.
+ * Uses est1RM for '1rm' mode and best recent working set for 'working' mode.
  */
 export function computeStrengthBalance(
   sets: SetLog[],

@@ -2017,12 +2017,51 @@ function liftLabel(liftId: string): string {
   return LIFTS.find((l) => l.id === liftId)?.name ?? liftId;
 }
 
+function computeBalanceTarget(result: RatioResult): {
+  liftId: string;
+  currentValue: number;
+  targetValue: number;
+  gapLb: number;
+} | null {
+  const { standard, numeratorValue, denominatorValue } = result;
+  if (result.status === 'within' || result.status === 'above') {
+    return null;
+  }
+  const rawTarget = denominatorValue * standard.targetMin;
+  const targetValue = Math.ceil(rawTarget / 5) * 5;
+  return {
+    liftId: standard.numeratorLiftId,
+    currentValue: Math.round(numeratorValue),
+    targetValue,
+    gapLb: targetValue - Math.round(numeratorValue),
+  };
+}
+
 function renderLiftValue(
   liftId: string,
   value: number,
   source: ValueSource | null,
 ): ReactNode {
   const name = liftLabel(liftId);
+  if (
+    source &&
+    !source.isEstimate &&
+    source.directBest === null &&
+    source.workingReps != null
+  ) {
+    return (
+      <span>
+        {name}:{' '}
+        <span className="font-mono text-zinc-200">
+          {Math.round(value)} lb
+        </span>
+        <span className="text-zinc-600">
+          {' '}
+          (best set × {source.workingReps} reps)
+        </span>
+      </span>
+    );
+  }
   if (!source) {
     return (
       <span>
@@ -2200,6 +2239,36 @@ function StrengthBalanceView({
                 )}
               </div>
             </div>
+
+            {(() => {
+              const bt = computeBalanceTarget(result);
+              if (!bt) return null;
+              return (
+                <div className="rounded-lg border border-zinc-700/50 bg-zinc-800/40 px-3 py-2 space-y-0.5">
+                  <div className="text-[10px] uppercase tracking-wide text-zinc-500 font-medium">
+                    To reach balance
+                  </div>
+                  <div className="text-xs text-zinc-300">
+                    <span className="font-medium">
+                      {liftLabel(bt.liftId)}
+                    </span>{' '}
+                    needs to reach{' '}
+                    <span className="font-mono text-amber-300">
+                      {bt.targetValue} lb
+                    </span>
+                    {' '}
+                    <span className="text-zinc-500">
+                      (+{bt.gapLb} lb from current {bt.currentValue} lb)
+                    </span>
+                  </div>
+                  <div className="text-[11px] text-zinc-600">
+                    Target based on the lower bound of the normal
+                    range ({Math.round(result.standard.targetMin * 100)}%).
+                    Reach this to bring the ratio into balance.
+                  </div>
+                </div>
+              );
+            })()}
 
             {(result.numeratorSource?.prOpportunity ||
               result.denominatorSource?.prOpportunity) && (
