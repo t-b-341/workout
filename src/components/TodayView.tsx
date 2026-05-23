@@ -262,10 +262,9 @@ export function TodayView() {
     !recoveryRated;
 
   async function handlePerceivedRecovery(n: number | null) {
-    await localUpsert('session_logs', {
-      ...session,
-      perceivedRecovery: n,
-    });
+    if (!session) return;
+    const row: SessionLog = { ...session, perceivedRecovery: n };
+    await localUpsert('session_logs', row);
     setRecoveryPromptSessionId(session.id);
   }
 
