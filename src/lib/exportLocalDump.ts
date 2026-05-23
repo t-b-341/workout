@@ -360,7 +360,7 @@ export async function buildFullLocalExport(opts?: FullLocalExportOptions): Promi
   }));
   const prescriptions_out = prescriptions.map((p) => ({
     ...p,
-    increment: p.increment ?? null,
+    increment: p.increment,
   }));
 
   const exportedAt = new Date().toISOString();
