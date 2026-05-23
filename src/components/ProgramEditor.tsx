@@ -526,6 +526,12 @@ export function ProgramEditor() {
       a.click();
       URL.revokeObjectURL(url);
       setExportWizardOpen(false);
+    } catch (err) {
+      console.error('Export failed:', err);
+      alert(
+        'Export failed: '
+        + (err instanceof Error ? err.message : String(err)),
+      );
     } finally {
       setExporting(false);
     }
