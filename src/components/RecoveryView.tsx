@@ -10,6 +10,7 @@ import {
   useNutritionForDate,
   useAllCardio,
   useSleepForDate,
+  useStoicCheckinForDate,
   useStressForDate,
   useTodayPlanTemplateId,
   useTodaySession,
@@ -460,12 +461,13 @@ export function RecoveryView() {
     <PageShell className="p-4 space-y-4">
       <MacroTrendCallout advice={macroTrend} title="Fueling trend (days before today)" />
 
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          <DidYouEatQuickSection date={date} existing={nutrition} prefs={prefs} />
-          <StressSection date={date} entries={stress ?? []} />
-        </div>
+        <DidYouEatQuickSection date={date} existing={nutrition} prefs={prefs} />
 
         <NapQuickLogCard date={date} />
+
+        <StoicCheckinCard date={date} />
+
+        <StressSection date={date} entries={stress ?? []} />
 
         <MindfulnessEntriesSection date={date} />
       <SleepSection date={date} existing={sleep} />
@@ -604,6 +606,132 @@ function DidYouEatQuickSection({
           ))}
         </ul>
       )}
+    </div>
+  );
+}
+
+function StoicCheckinCard({ date }: { date: string }) {
+  const existing = useStoicCheckinForDate(date);
+  const [open, setOpen] = useState(false);
+  const [tension, setTension] = useState('');
+  const [withinControl, setWithinControl] = useState('');
+  const [intention, setIntention] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  function hydrateFromExisting() {
+    setTension(existing?.tension ?? '');
+    setWithinControl(existing?.withinControl ?? '');
+    setIntention(existing?.intention ?? '');
+  }
+
+  function openEditor() {
+    hydrateFromExisting();
+    setOpen(true);
+  }
+
+  function closeEditor() {
+    setOpen(false);
+    hydrateFromExisting();
+  }
+
+  const handleSave = async () => {
+    setBusy(true);
+    try {
+      await localUpsert('stoic_checkins', {
+        id: `stoic-${date}`,
+        date,
+        tension,
+        withinControl,
+        intention,
+        updatedAt: new Date().toISOString(),
+      });
+      await flushDirty().catch(() => {});
+      setOpen(false);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (!open) {
+    return (
+      <div className="rounded-2xl border border-zinc-800 bg-zinc-900 px-4 py-3 flex items-center justify-between">
+        <div className="space-y-0.5">
+          <div className="text-sm font-medium text-zinc-200">Morning reflection</div>
+          {existing?.tension ? (
+            <div className="text-xs text-zinc-500 truncate max-w-[220px]">{existing.tension}</div>
+          ) : (
+            <div className="text-xs text-zinc-600">What&apos;s within your control today?</div>
+          )}
+        </div>
+        <button
+          type="button"
+          onClick={openEditor}
+          className={`text-xs px-3 py-1.5 rounded-lg border transition-colors ${
+            existing?.tension
+              ? 'border-zinc-700 text-zinc-400 hover:text-zinc-200'
+              : 'border-amber-600 text-amber-400 hover:bg-amber-600 hover:text-zinc-950'
+          }`}
+        >
+          {existing?.tension ? 'Edit' : 'Reflect'}
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="rounded-2xl border border-zinc-800 bg-zinc-900 p-4 space-y-4">
+      <div className="flex items-center justify-between">
+        <div className="text-sm font-medium text-zinc-200">Morning reflection</div>
+        <button
+          type="button"
+          onClick={closeEditor}
+          className="text-zinc-600 hover:text-zinc-400 text-lg leading-none"
+          aria-label="Close"
+        >
+          ×
+        </button>
+      </div>
+
+      {[
+        {
+          label: "What's creating tension?",
+          value: tension,
+          set: setTension,
+          placeholder: 'What situation or thought is weighing on you?',
+        },
+        {
+          label: "What's within your control?",
+          value: withinControl,
+          set: setWithinControl,
+          placeholder: 'Your choices, responses, effort, attention...',
+        },
+        {
+          label: 'One action today',
+          value: intention,
+          set: setIntention,
+          placeholder: 'One specific thing you can do within your control',
+        },
+      ].map(({ label, value, set, placeholder }) => (
+        <div key={label} className="space-y-1.5">
+          <label className="text-xs text-zinc-400">{label}</label>
+          <textarea
+            value={value}
+            onChange={(e) => set(e.target.value)}
+            placeholder={placeholder}
+            rows={2}
+            className="w-full rounded-xl bg-zinc-800 border border-zinc-700 px-3 py-2 text-sm text-zinc-200 placeholder:text-zinc-600 resize-none focus:outline-none focus:border-zinc-500"
+          />
+        </div>
+      ))}
+
+      <button
+        type="button"
+        onClick={() => void handleSave()}
+        disabled={busy || (!tension && !withinControl && !intention)}
+        className="w-full h-10 rounded-xl bg-amber-600 text-zinc-950 text-sm font-medium disabled:opacity-40 hover:bg-amber-500 transition-colors"
+      >
+        {busy ? 'Saving…' : 'Save reflection'}
+      </button>
     </div>
   );
 }

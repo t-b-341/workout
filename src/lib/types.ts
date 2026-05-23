@@ -417,6 +417,16 @@ export type UserGoal = {
   updatedAt: string;
 };
 
+export type StoicCheckin = {
+  id: string;
+  userId: string;
+  date: string;
+  tension: string;
+  withinControl: string;
+  intention: string;
+  updatedAt: string;
+};
+
 export type CbtThoughtRecord = {
   id: string;
   userId: string;

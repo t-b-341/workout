@@ -4,7 +4,7 @@ import type { DirtyRow } from './db';
  * JSON export top-level `schemaVersion` — bump when new top-level export fields or shapes ship
  * (independent of Dexie `SCHEMA_VERSION`).
  */
-export const EXPORT_SCHEMA_VERSION = 21;
+export const EXPORT_SCHEMA_VERSION = 22;
 import {
   NUTRITION_DAY_TYPES,
   SESSION_LABEL_TYPES,
@@ -426,6 +426,20 @@ function stressFields(): SchemaEntry {
   };
 }
 
+function stoicCheckinFields(): SchemaEntry {
+  return {
+    fields: {
+      id: 'string (stoic-YYYY-MM-DD)',
+      userId: 'string',
+      date: 'YYYY-MM-DD',
+      tension: 'string',
+      withinControl: 'string',
+      intention: 'string',
+      updatedAt: 'ISO timestamp',
+    },
+  };
+}
+
 function cbtThoughtRecordFields(): SchemaEntry {
   return {
     fields: {
@@ -583,6 +597,7 @@ export function buildExportSchemaDocumentation(): Record<string, SchemaEntry> {
     sleep_logs: sleepFields(),
     stress_logs: stressFields(),
     cbt_thought_records: cbtThoughtRecordFields(),
+    stoic_checkins: stoicCheckinFields(),
     mindfulness_logs: mindfulnessFields(),
     injury_episodes: injuryFields(),
     body_readiness_logs: bodyReadinessFields(),

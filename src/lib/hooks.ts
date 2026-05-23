@@ -17,6 +17,7 @@ import type {
   BodyweightLog,
   CardioLog,
   CbtThoughtRecord,
+  StoicCheckin,
   HydrationLog,
   InjuryEpisode,
   Lift,
@@ -394,6 +395,13 @@ export function useStressForDate(date: string): StressLog[] | undefined {
 export function useCbtThoughtRecordsForDate(date: string): CbtThoughtRecord[] | undefined {
   return useLiveQuery(
     () => getDb().cbt_thought_records.where('date').equals(date).sortBy('createdAt'),
+    [date],
+  );
+}
+
+export function useStoicCheckinForDate(date: string): StoicCheckin | undefined {
+  return useLiveQuery(
+    () => getDb().stoic_checkins.where('date').equals(date).first(),
     [date],
   );
 }

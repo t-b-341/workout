@@ -24,6 +24,7 @@ import type {
   BodyweightLog,
   CardioLog,
   CbtThoughtRecord,
+  StoicCheckin,
   HydrationLog,
   InjuryEpisode,
   Lift,
@@ -194,6 +195,7 @@ export type FullLocalExport = {
   sleep_logs: SleepLog[];
   stress_logs: StressLog[];
   cbt_thought_records: CbtThoughtRecord[];
+  stoic_checkins: StoicCheckin[];
   mindfulness_logs: MindfulnessLog[];
   injury_episodes: InjuryEpisode[];
   body_readiness_logs: BodyReadinessLog[];
@@ -332,6 +334,7 @@ export async function buildFullLocalExport(opts?: FullLocalExportOptions): Promi
     sleep_logs,
     stress_logs,
     cbt_thought_records,
+    stoic_checkins,
     mindfulness_logs,
     injury_episodes,
     body_readiness_logs,
@@ -352,6 +355,7 @@ export async function buildFullLocalExport(opts?: FullLocalExportOptions): Promi
     db.sleep_logs.toArray(),
     db.stress_logs.toArray(),
     db.cbt_thought_records.orderBy('createdAt').toArray(),
+    db.stoic_checkins.orderBy('date').toArray(),
     db.mindfulness_logs.toArray(),
     db.injury_episodes.toArray(),
     db.body_readiness_logs.toArray(),
@@ -525,6 +529,7 @@ export async function buildFullLocalExport(opts?: FullLocalExportOptions): Promi
     sleep_logs,
     stress_logs,
     cbt_thought_records,
+    stoic_checkins,
     mindfulness_logs,
     injury_episodes,
     body_readiness_logs,
