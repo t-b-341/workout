@@ -440,6 +440,39 @@ export function LiftCard({
                     done={isDone}
                   />
 
+                  {existing?.status === 'completed' &&
+                    (existing.intent === 'working' || existing.intent === 'backoff') && (
+                    <div className="flex gap-1 mt-1">
+                      {(['fast', 'normal', 'slow'] as const).map((speed) => (
+                        <button
+                          key={speed}
+                          type="button"
+                          onClick={async () => {
+                            await localUpsert('set_logs', {
+                              ...existing,
+                              barSpeed: existing.barSpeed === speed ? null : speed,
+                            });
+                          }}
+                          className={`flex-1 h-6 rounded text-[10px] border transition-colors ${
+                            existing.barSpeed === speed
+                              ? speed === 'fast'
+                                ? 'bg-emerald-800 border-emerald-700 text-emerald-200'
+                                : speed === 'slow'
+                                  ? 'bg-rose-900 border-rose-800 text-rose-200'
+                                  : 'bg-zinc-700 border-zinc-600 text-zinc-200'
+                              : 'bg-zinc-900 border-zinc-800 text-zinc-600 hover:text-zinc-400'
+                          }`}
+                        >
+                          {speed === 'fast'
+                            ? '⚡ Fast'
+                            : speed === 'normal'
+                              ? '→ Normal'
+                              : '↓ Slow'}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+
                   <label className="mt-3 block text-xs text-zinc-500">
                     Set intent
                     <select

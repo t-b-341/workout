@@ -16,6 +16,7 @@ import type {
   BodyMeasurementLog,
   BodyweightLog,
   CardioLog,
+  CbtThoughtRecord,
   HydrationLog,
   InjuryEpisode,
   Lift,
@@ -388,6 +389,13 @@ export function useStressForDate(date: string): StressLog[] | undefined {
     if (matches.length === 0) return undefined;
     return matches.sort((a, b) => a.loggedAt.localeCompare(b.loggedAt));
   }, [date]);
+}
+
+export function useCbtThoughtRecordsForDate(date: string): CbtThoughtRecord[] | undefined {
+  return useLiveQuery(
+    () => getDb().cbt_thought_records.where('date').equals(date).sortBy('createdAt'),
+    [date],
+  );
 }
 
 export function useAllStress(): StressLog[] | undefined {

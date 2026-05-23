@@ -40,6 +40,7 @@ import { todayIso } from '@/lib/time';
 import type { HydrationLog, NutritionDayType, NutritionLog, ReadinessLog, SessionLog, StressLog } from '@/lib/types';
 import { NUTRITION_DAY_TYPES } from '@/lib/types';
 import { defaultNutritionDayType } from '@/lib/nutritionDayType';
+import { CbtThoughtRecordSheet } from './CbtThoughtRecordSheet';
 import { BodyweightQuickLog } from './BodyweightQuickLog';
 import { InjuryTrackingPanel } from './InjuryTrackingPanel';
 import { MacroTrendCallout } from './MacroTrendCallout';
@@ -725,9 +726,18 @@ function StressSection({
   const [commentDraft, setCommentDraft] = useState('');
   const [kidsDay, setKidsDay] = useState(false);
   const [workDay, setWorkDay] = useState(false);
+  const [showThoughtRecord, setShowThoughtRecord] = useState(false);
+  const [thoughtRecordPromptDismissed, setThoughtRecordPromptDismissed] = useState(false);
+  const [lastLoggedRating, setLastLoggedRating] = useState(0);
+  const [lastSavedStressLogId, setLastSavedStressLogId] = useState<string | null>(null);
   const dayAvg = averageStressRating(entries);
   const highStress =
     entries.some((e) => e.rating >= 4) || (dayAvg != null && dayAvg >= 4);
+
+  function onRatingChange(next: 1 | 2 | 3 | 4 | 5) {
+    setRating(next);
+    setThoughtRecordPromptDismissed(false);
+  }
 
   async function addCheckIn() {
     const id =
@@ -745,6 +755,8 @@ function StressSection({
       ...(workDay ? { workDay: true } : {}),
     });
     await flushDirty().catch(() => {});
+    setLastLoggedRating(rating);
+    setLastSavedStressLogId(id);
     setCommentDraft('');
     setKidsDay(false);
     setWorkDay(false);
@@ -862,7 +874,7 @@ function StressSection({
         <div className="flex items-center gap-3">
           <button
             type="button"
-            onClick={() => setRating((v) => Math.max(1, v - 1) as 1 | 2 | 3 | 4 | 5)}
+            onClick={() => onRatingChange(Math.max(1, rating - 1) as 1 | 2 | 3 | 4 | 5)}
             className="h-9 w-9 rounded-lg bg-zinc-800 border border-zinc-700 text-zinc-200 text-lg font-medium flex items-center justify-center disabled:opacity-40"
             disabled={rating <= 1}
           >
@@ -874,7 +886,7 @@ function StressSection({
           </div>
           <button
             type="button"
-            onClick={() => setRating((v) => Math.min(5, v + 1) as 1 | 2 | 3 | 4 | 5)}
+            onClick={() => onRatingChange(Math.min(5, rating + 1) as 1 | 2 | 3 | 4 | 5)}
             className="h-9 w-9 rounded-lg bg-zinc-800 border border-zinc-700 text-zinc-200 text-lg font-medium flex items-center justify-center disabled:opacity-40"
             disabled={rating >= 5}
           >
@@ -889,6 +901,29 @@ function StressSection({
           Log check-in
         </button>
       </div>
+      {lastLoggedRating >= 4 && !thoughtRecordPromptDismissed && (
+        <div className="mt-3 rounded-xl border border-zinc-700 bg-zinc-800/50 px-3 py-2.5 flex items-center justify-between gap-3">
+          <p className="text-xs text-zinc-400 leading-snug">
+            High stress logged. Want to work through what&apos;s driving it?
+          </p>
+          <div className="flex gap-2 shrink-0">
+            <button
+              type="button"
+              onClick={() => setThoughtRecordPromptDismissed(true)}
+              className="text-xs text-zinc-600 hover:text-zinc-400"
+            >
+              Not now
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowThoughtRecord(true)}
+              className="text-xs text-amber-400 font-medium hover:text-amber-300"
+            >
+              Log thought
+            </button>
+          </div>
+        </div>
+      )}
       {highStress && (
         <div className="rounded-lg border border-amber-500/35 bg-amber-950/30 p-3 text-xs text-amber-100 space-y-1">
           <div className="font-semibold">High stress detected (4+)</div>
@@ -896,6 +931,16 @@ function StressSection({
           <div>- Do 2 minutes of slow exhales (4s inhale, 6–8s exhale).</div>
           <div>- Reduce stimulant load and hydrate before the next session.</div>
         </div>
+      )}
+      {showThoughtRecord && (
+        <CbtThoughtRecordSheet
+          date={date}
+          stressLogId={lastSavedStressLogId}
+          onClose={() => {
+            setShowThoughtRecord(false);
+            setThoughtRecordPromptDismissed(true);
+          }}
+        />
       )}
     </div>
   );

@@ -17,6 +17,7 @@ import type {
   SessionTemplate,
   SetLog,
   SleepLog,
+  CbtThoughtRecord,
   StressLog,
   SupplementLog,
   UserGoal,
@@ -36,6 +37,7 @@ export type DirtyRow = {
     | 'hydration_logs'
     | 'sleep_logs'
     | 'stress_logs'
+    | 'cbt_thought_records'
     | 'mindfulness_logs'
     | 'injury_episodes'
     | 'body_readiness_logs'
@@ -61,6 +63,7 @@ export class WorkoutDB extends Dexie {
   hydration_logs!: Table<HydrationLog, string>;
   sleep_logs!: Table<SleepLog, string>;
   stress_logs!: Table<StressLog, string>;
+  cbt_thought_records!: Table<CbtThoughtRecord, string>;
   mindfulness_logs!: Table<MindfulnessLog, string>;
   injury_episodes!: Table<InjuryEpisode, string>;
   body_readiness_logs!: Table<BodyReadinessLog, string>;
@@ -573,10 +576,34 @@ export class WorkoutDB extends Dexie {
       dirty: 'id, table, rowId, enqueuedAt',
       meta: 'key',
     });
+    // v18 — CBT thought records (synced, event-driven).
+    this.version(18).stores({
+      lifts: 'id, name',
+      templates: 'id, dayOfWeek',
+      prescriptions: 'id, templateId, liftId, [templateId+order]',
+      session_logs: 'id, date, templateId',
+      set_logs: 'id, sessionLogId, liftId, [sessionLogId+liftId+setIndex]',
+      cardio_logs: 'id, date, sessionLogId',
+      bodyweight_logs: 'id, date, isoWeek',
+      body_measurement_logs: 'id, date',
+      readiness_logs: 'id, sessionLogId, date',
+      nutrition_logs: 'id, date',
+      hydration_logs: 'id, date',
+      sleep_logs: 'id, date',
+      stress_logs: 'id, date, loggedAt',
+      cbt_thought_records: 'id, userId, date, createdAt, updatedAt',
+      mindfulness_logs: 'id, date, loggedAt',
+      injury_episodes: 'id, siteKey, startedAt',
+      body_readiness_logs: 'id, date',
+      supplement_logs: 'id, userId, date, updatedAt',
+      user_goals: 'id, userId, liftId, active, updatedAt',
+      dirty: 'id, table, rowId, enqueuedAt',
+      meta: 'key',
+    });
   }
 }
 
-export const SCHEMA_VERSION = 17;
+export const SCHEMA_VERSION = 18;
 
 let _db: WorkoutDB | null = null;
 let _dbUserId: string | null = null;

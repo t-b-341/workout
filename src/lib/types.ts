@@ -122,6 +122,8 @@ export type SetLog = {
   /** Derived effort scale where 1 RIR = 9 RPE, 2 RIR = 8 RPE, etc. */
   rpe?: number;
   status: SetStatus;
+  /** Subjective bar speed rating logged after the set (working/backoff only). */
+  barSpeed?: 'fast' | 'normal' | 'slow' | null;
   substituteLiftId?: string;
   reason?: string;
   /** For per-side lifts. */
@@ -412,6 +414,21 @@ export type UserGoal = {
   baselineValue: number;
   /** false = archived */
   active: boolean;
+  updatedAt: string;
+};
+
+export type CbtThoughtRecord = {
+  id: string;
+  userId: string;
+  date: string;
+  createdAt: string;
+  situation: string;
+  automaticThought: string;
+  emotion: string;
+  emotionIntensity: number;
+  evidence: string;
+  alternativeThought: string;
+  stressLogId?: string | null;
   updatedAt: string;
 };
 
