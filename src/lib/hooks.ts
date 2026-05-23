@@ -31,6 +31,9 @@ import type {
   StressLog,
   TemplateId,
   UserGoal,
+  PhaseGoal,
+  BlockTemplate,
+  RelationshipCheckin,
 } from './types';
 
 export function usePrescriptions(templateId?: TemplateId): Prescription[] | undefined {
@@ -271,6 +274,55 @@ export function useAllUserGoals(): UserGoal[] | undefined {
   return useLiveQuery(
     () => getDb().user_goals.orderBy('createdAt').toArray(),
     [],
+  );
+}
+
+export function useAllPhaseGoals(): PhaseGoal[] | undefined {
+  return useLiveQuery(
+    () => getDb().phase_goals.orderBy('startDate').toArray(),
+    [],
+  );
+}
+
+export function useActivePhaseGoal(): PhaseGoal | undefined {
+  const today = todayIso();
+  return useLiveQuery(
+    () => getDb().phase_goals
+      .filter(p => p.startDate <= today && p.endDate >= today)
+      .first(),
+    [],
+  );
+}
+
+export function useAllBlockTemplates(): BlockTemplate[] | undefined {
+  return useLiveQuery(
+    () => getDb().block_templates
+      .orderBy('anchorDate').reverse().toArray(),
+    [],
+  );
+}
+
+export function useRelationshipCheckinForDate(
+  date: string,
+): RelationshipCheckin | undefined {
+  return useLiveQuery(
+    () => getDb().relationship_checkins
+      .where('date').equals(date).first(),
+    [date],
+  );
+}
+
+export function useRecentRelationshipCheckins(
+  days = 14,
+): RelationshipCheckin[] | undefined {
+  const cutoff = new Date();
+  cutoff.setDate(cutoff.getDate() - days);
+  const cutoffIso = cutoff.toISOString().slice(0, 10);
+  return useLiveQuery(
+    () => getDb().relationship_checkins
+      .where('date').aboveOrEqual(cutoffIso)
+      .sortBy('date'),
+    [days],
   );
 }
 

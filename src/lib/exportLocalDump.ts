@@ -1,15 +1,14 @@
 'use client';
 
-import type { DirtyRow } from './db';
 import { getDb } from './db';
 import type { SupplementLogExport } from './supplements';
 import { buildWorkdayLogsExport } from './workday';
 import {
   buildExportSchemaDocumentation,
-  EXPORT_SCHEMA_VERSION,
   type ExportedFitnessGoal,
   type MesoAnalysisReport,
 } from './exportModelSchema';
+import { deriveMealMetrics } from './mealTiming';
 import { computeExportSummary, enrichProgramTargetsAtExport } from './exportSummary';
 import { loadFitnessGoals, type FitnessGoal } from './goals';
 import { buildExportMesocycleBlock } from './exportMesocycleBlock';
@@ -42,6 +41,9 @@ import type {
   SleepLog,
   StressLog,
   UserGoal,
+  PhaseGoal,
+  BlockTemplate,
+  RelationshipCheckin,
 } from './types';
 import {
   SESSION_LABEL_TYPES,
@@ -50,6 +52,16 @@ import {
 import { TRAINING_PLAN_GOALS, type TrainingPlanGoalRow } from './trainingPlanGoals';
 import { deriveSessionStatus } from './sessionStatus';
 import { todayIso } from './time';
+
+/** Export payload schema — bump when top-level export shape changes. */
+const FULL_LOCAL_EXPORT_SCHEMA_VERSION = 24;
+
+const MEANINGFUL_META_PREFIXES = [
+  'workout:supplements:v1:',
+  'workout:workday:v1:',
+  'recovery:prefs',
+  'meso:config',
+] as const;
 
 /** Keys this app uses in `localStorage` (UI prefs only; not secrets). */
 const KNOWN_LOCALSTORAGE_KEYS = [
@@ -71,6 +83,81 @@ export type ExportedHrvLog = {
   source: 'manual' | 'device';
   notes: string | null;
 };
+
+type StressDailySummary = {
+  date: string;
+  avgRating: number;
+  checkInCount: number;
+  minRating: number;
+  maxRating: number;
+  workDay: boolean;
+  kidsDay: boolean;
+  highStress: boolean;
+};
+
+type RelationshipWeeklySummary = {
+  weekStart: string;
+  weekEnd: string;
+  daysLogged: number;
+  avgConnectionRating: number | null;
+  avgMoodAdjustedConnection: number | null;
+  horsemenCount: number;
+  repairRate: number | null;
+  posNegRatio: number | null;
+  lowMoodDays: number;
+  highAnxietyDays: number;
+};
+
+export type ExportedRelationshipCheckin = RelationshipCheckin & {
+  moodContextFlag: boolean;
+  moodContextNote: 'low-mood-day' | 'high-anxiety-day' | null;
+};
+
+export type ExportedNutritionLog = NutritionLog & {
+  dayType: NutritionDayType;
+  mealOccasions: number;
+  firstMealTime: string | null;
+  lastMealTime: string | null;
+  longestGapMinutes: number | null;
+  avgGapMinutes: number | null;
+};
+
+export type ExportedCardioLog = CardioLog & {
+  avgHrBpm: number | null;
+  heartRateZone: 'zone1' | 'zone2' | 'zone3' | 'zone4' | 'zone5' | null;
+};
+
+/** Phase goal row with export-time context for analysis importers. */
+export type ExportedPhaseGoal = PhaseGoal & {
+  isCurrentlyActive: boolean;
+  trainingNutritionSummary: string;
+  warningDeloadInDeficit: boolean;
+  daysLogged: number;
+  avgActualCaloriesTraining: number | null;
+  calorieAdherencePct: number | null;
+};
+
+function getMondayOfWeek(date: string): string {
+  const d = new Date(`${date}T00:00:00`);
+  const day = d.getDay();
+  const diff = day === 0 ? -6 : 1 - day;
+  d.setDate(d.getDate() + diff);
+  return d.toISOString().slice(0, 10);
+}
+
+function mapPrescriptionsForMesoAnalysis(prescriptions: Prescription[]) {
+  return prescriptions.map((p) => ({
+    id: p.id,
+    templateId: p.templateId,
+    liftId: p.liftId,
+    sets: p.sets,
+    repMin: p.repMin,
+    repMax: p.repMax,
+    weight: p.weight,
+    notes: p.notes ?? null,
+    increment: p.increment ?? null,
+  }));
+}
 
 function normalizedRpeForExport(rpe: number | undefined): number | null {
   if (rpe == null || Number.isNaN(rpe)) return null;
@@ -186,14 +273,15 @@ export type FullLocalExport = {
     }
   >;
   set_logs: ExportedSetLog[];
-  cardio_logs: CardioLog[];
+  cardio_logs: ExportedCardioLog[];
   bodyweight_logs: BodyweightLog[];
   body_measurement_logs: BodyMeasurementLog[];
   readiness_logs: ReadinessLog[];
-  nutrition_logs: Array<NutritionLog & { dayType: NutritionDayType }>;
+  nutrition_logs: ExportedNutritionLog[];
   hydration_logs: HydrationLog[];
   sleep_logs: SleepLog[];
   stress_logs: StressLog[];
+  stress_daily_summaries: StressDailySummary[];
   cbt_thought_records: CbtThoughtRecord[];
   stoic_checkins: StoicCheckin[];
   mindfulness_logs: MindfulnessLog[];
@@ -209,7 +297,10 @@ export type FullLocalExport = {
   supplement_logs: SupplementLogExport[];
   /** Current mesocycle block mirror (aligned with Program tab / meso week stats). */
   mesocycle: ReturnType<typeof buildExportMesocycleBlock>;
-  dirty: DirtyRow[];
+  phase_goals: ExportedPhaseGoal[];
+  block_templates: BlockTemplate[];
+  relationship_checkins: ExportedRelationshipCheckin[];
+  relationship_weekly_summaries: RelationshipWeeklySummary[];
   meta: { key: string; value: unknown }[];
 };
 
@@ -293,15 +384,7 @@ export async function buildMesoAnalysisLive(opts?: FullLocalExportOptions): Prom
     session_logs,
     set_logs,
     lifts,
-    prescriptions: prescriptions.map((p) => ({
-      id: p.id,
-      templateId: p.templateId,
-      liftId: p.liftId,
-      sets: p.sets,
-      repMin: p.repMin,
-      repMax: p.repMax,
-      weight: p.weight,
-    })),
+    prescriptions: mapPrescriptionsForMesoAnalysis(prescriptions),
     readiness_logs,
     bodyweight_logs,
     nutrition_logs: nutrition_logs_with_day,
@@ -338,7 +421,9 @@ export async function buildFullLocalExport(opts?: FullLocalExportOptions): Promi
     mindfulness_logs,
     injury_episodes,
     body_readiness_logs,
-    dirty,
+    relationship_checkins,
+    phase_goals,
+    block_templates,
     meta,
   ] = await Promise.all([
     db.lifts.toArray(),
@@ -359,9 +444,17 @@ export async function buildFullLocalExport(opts?: FullLocalExportOptions): Promi
     db.mindfulness_logs.toArray(),
     db.injury_episodes.toArray(),
     db.body_readiness_logs.toArray(),
-    db.dirty.toArray(),
+    db.relationship_checkins.orderBy('date').toArray(),
+    db.phase_goals.orderBy('startDate').toArray(),
+    db.block_templates.orderBy('anchorDate').toArray(),
     db.meta.toArray(),
   ]);
+
+  const meta_filtered = meta.filter((m) =>
+    MEANINGFUL_META_PREFIXES.some((prefix) =>
+      (m.key as string).startsWith(prefix),
+    ),
+  );
   const lifts = liftsRaw.map((lift) => ({
     ...lift,
     loadScale: normalizedLoadScale(lift.loadScale ?? 'normal'),
@@ -390,13 +483,34 @@ export async function buildFullLocalExport(opts?: FullLocalExportOptions): Promi
 
   const session_logs_out: FullLocalExport['session_logs'] = session_logs.map((s) => ({
     ...s,
+    durationMin: s.durationMin ?? null,
+    perceivedRecovery: s.perceivedRecovery ?? null,
     sessionType: opts?.sessionTypeOverrides?.[s.id] ?? sessionTypeOf(s),
     mesoBoundary: s.date === mesoStartNorm ? 'start' : s.date === mesoEndNorm ? 'end' : null,
     sessionStatus: deriveSessionStatus(s, prescriptions, setsBySessionForStatus.get(s.id) ?? []),
   }));
 
+  const cardio_logs_out: ExportedCardioLog[] = cardio_logs.map((c) => ({
+    ...c,
+    avgHrBpm: c.avgHr ?? null,
+    heartRateZone: c.avgHr
+      ? c.avgHr < 115
+        ? 'zone1'
+        : c.avgHr < 135
+          ? 'zone2'
+          : c.avgHr < 155
+            ? 'zone3'
+            : c.avgHr < 175
+              ? 'zone4'
+              : 'zone5'
+      : null,
+  }));
+
   const set_logs_out: ExportedSetLog[] = set_logs.map((s) => ({
     ...s,
+    barSpeed: s.barSpeed ?? null,
+    prescribedRepMin: s.prescribedRepMin ?? null,
+    prescribedRepMax: s.prescribedRepMax ?? null,
     intent: intentOf(s, opts?.setIntentOverrides),
     date: sessionById.get(s.sessionLogId)?.date ?? null,
     rpe: normalizedRpeForExport(s.rpe),
@@ -427,7 +541,7 @@ export async function buildFullLocalExport(opts?: FullLocalExportOptions): Promi
   const dayTypeByDate = new Map(
     nutrition_logs.map((n) => [n.date, dayTypeOf(n, session_logs_out, cardio_logs)] as const),
   );
-  const nutrition_logs_out = nutrition_logs.map((n) => {
+  const nutrition_logs_with_day = nutrition_logs.map((n) => {
     const resolvedDayType = dayTypeOf(n, session_logs_out, cardio_logs);
     const resolvedTargets = resolveNutritionTargetsForDate({
       date: n.date,
@@ -449,6 +563,40 @@ export async function buildFullLocalExport(opts?: FullLocalExportOptions): Promi
       fatTargetG: resolvedTargets.fatG,
     };
   });
+
+  const nutrition_logs_out: ExportedNutritionLog[] = nutrition_logs_with_day.map((n) => {
+    const mealMetrics = deriveMealMetrics(n.mealTimestamps ?? []);
+    return {
+      ...n,
+      mealOccasions: mealMetrics.occasions,
+      firstMealTime: mealMetrics.firstMealTimeLabel,
+      lastMealTime: mealMetrics.lastMealTimeLabel,
+      longestGapMinutes: mealMetrics.longestGapMinutes,
+      avgGapMinutes: mealMetrics.avgGapMinutes,
+    };
+  });
+
+  const stressByDate = new Map<string, StressLog[]>();
+  for (const s of stress_logs) {
+    const existing = stressByDate.get(s.date) ?? [];
+    existing.push(s);
+    stressByDate.set(s.date, existing);
+  }
+
+  const stress_daily_summaries: StressDailySummary[] = [...stressByDate.entries()]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([date, logs]) => ({
+      date,
+      avgRating: Math.round(
+        (logs.reduce((sum, l) => sum + l.rating, 0) / logs.length) * 10,
+      ) / 10,
+      checkInCount: logs.length,
+      minRating: Math.min(...logs.map((l) => l.rating)),
+      maxRating: Math.max(...logs.map((l) => l.rating)),
+      workDay: logs.some((l) => l.workDay === true),
+      kidsDay: logs.some((l) => l.kidsDay === true),
+      highStress: logs.some((l) => l.rating >= 4),
+    }));
 
   const extraDatesForRange = [
     ...nutrition_logs.map((n) => n.date),
@@ -478,20 +626,137 @@ export async function buildFullLocalExport(opts?: FullLocalExportOptions): Promi
 
   const user_goals = await db.user_goals.orderBy('createdAt').toArray();
 
+  const today = todayIso();
+  const phase_goals_export: ExportedPhaseGoal[] = phase_goals.map((p) => {
+    const phaseNutrition = nutrition_logs_with_day.filter(
+      (n) => n.date >= p.startDate && n.date <= p.endDate,
+    );
+    const trainingDayLogs = phaseNutrition.filter((n) => n.dayType === 'training');
+    const avgActualCalories =
+      trainingDayLogs.length > 0
+        ? Math.round(
+            trainingDayLogs.reduce((sum, n) => sum + (n.caloriesActual ?? 0), 0)
+              / trainingDayLogs.length,
+          )
+        : null;
+    const calorieAdherence =
+      avgActualCalories != null && p.caloriesTraining
+        ? Math.round((avgActualCalories / p.caloriesTraining) * 100)
+        : null;
+
+    return {
+      ...p,
+      isCurrentlyActive: p.startDate <= today && p.endDate >= today,
+      trainingNutritionSummary: `${p.trainingMode} + ${p.nutritionMode}`,
+      warningDeloadInDeficit:
+        p.trainingMode === 'deload' && p.nutritionMode === 'deficit',
+      daysLogged: phaseNutrition.length,
+      avgActualCaloriesTraining: avgActualCalories,
+      calorieAdherencePct: calorieAdherence,
+    };
+  });
+
+  const relationship_checkins_export: ExportedRelationshipCheckin[] =
+    relationship_checkins.map((c) => ({
+      ...c,
+      moodContextFlag: c.moodState <= 2 || c.anxietyLevel >= 4,
+      moodContextNote:
+        c.moodState <= 2
+          ? 'low-mood-day'
+          : c.anxietyLevel >= 4
+            ? 'high-anxiety-day'
+            : null,
+    }));
+
+  const checkinsByWeek = new Map<string, RelationshipCheckin[]>();
+  for (const c of relationship_checkins) {
+    const week = getMondayOfWeek(c.date);
+    const existing = checkinsByWeek.get(week) ?? [];
+    existing.push(c);
+    checkinsByWeek.set(week, existing);
+  }
+
+  const relationship_weekly_summaries: RelationshipWeeklySummary[] =
+    [...checkinsByWeek.entries()]
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([weekStart, logs]) => {
+        const weekEnd = new Date(`${weekStart}T00:00:00`);
+        weekEnd.setDate(weekEnd.getDate() + 6);
+
+        const connections = logs
+          .map((l) => l.connectionRating)
+          .filter((r): r is number => r != null && r > 0);
+        const avgConn =
+          connections.length > 0
+            ? Math.round(
+                (connections.reduce((a, b) => a + b, 0) / connections.length) * 10,
+              ) / 10
+            : null;
+
+        const moodAdj = logs
+          .filter((l) => l.moodState >= 3)
+          .map((l) => l.connectionRating)
+          .filter((r): r is number => r != null && r > 0);
+        const avgMoodAdj =
+          moodAdj.length > 0
+            ? Math.round(
+                (moodAdj.reduce((a, b) => a + b, 0) / moodAdj.length) * 10,
+              ) / 10
+            : null;
+
+        const horsemenCount = logs.reduce(
+          (sum, l) =>
+            sum
+            + (l.usedCriticism ? 1 : 0)
+            + (l.feltContempt ? 1 : 0)
+            + (l.wasDefensive ? 1 : 0)
+            + (l.stonewalled ? 1 : 0),
+          0,
+        );
+
+        const conflicts = logs.filter((l) => l.hadConflict);
+        const repaired = conflicts.filter((l) => l.conflictRepaired === true);
+        const repairRate =
+          conflicts.length > 0
+            ? Math.round((repaired.length / conflicts.length) * 100)
+            : null;
+
+        const positiveCount = logs.reduce(
+          (sum, l) =>
+            sum
+            + (l.turnedToward ? 1 : 0)
+            + (l.expressedAppreciation ? 1 : 0)
+            + (l.physicalAffection ? 1 : 0),
+          0,
+        );
+        const negativeCount = horsemenCount;
+        const posNegRatio =
+          negativeCount > 0
+            ? Math.round((positiveCount / negativeCount) * 10) / 10
+            : positiveCount > 0
+              ? null
+              : null;
+
+        return {
+          weekStart,
+          weekEnd: weekEnd.toISOString().slice(0, 10),
+          daysLogged: logs.length,
+          avgConnectionRating: avgConn,
+          avgMoodAdjustedConnection: avgMoodAdj,
+          horsemenCount,
+          repairRate,
+          posNegRatio,
+          lowMoodDays: logs.filter((l) => l.moodState <= 2).length,
+          highAnxietyDays: logs.filter((l) => l.anxietyLevel >= 4).length,
+        };
+      });
+
   const mesoAnalysis = computeMesoAnalysis({
     exportedAtIso: exportedAt,
     session_logs,
     set_logs,
     lifts,
-    prescriptions: prescriptions.map((p) => ({
-      id: p.id,
-      templateId: p.templateId,
-      liftId: p.liftId,
-      sets: p.sets,
-      repMin: p.repMin,
-      repMax: p.repMax,
-      weight: p.weight,
-    })),
+    prescriptions: mapPrescriptionsForMesoAnalysis(prescriptions),
     readiness_logs,
     bodyweight_logs,
     nutrition_logs: nutrition_logs_out,
@@ -507,7 +772,7 @@ export async function buildFullLocalExport(opts?: FullLocalExportOptions): Promi
 
   return {
     kind: 'workout-full-local-v1',
-    schemaVersion: EXPORT_SCHEMA_VERSION,
+    schemaVersion: FULL_LOCAL_EXPORT_SCHEMA_VERSION,
     schema: buildExportSchemaDocumentation(),
     summary,
     exportedAt,
@@ -520,7 +785,7 @@ export async function buildFullLocalExport(opts?: FullLocalExportOptions): Promi
     prescriptions: prescriptions_out,
     session_logs: session_logs_out,
     set_logs: set_logs_out,
-    cardio_logs,
+    cardio_logs: cardio_logs_out,
     bodyweight_logs,
     body_measurement_logs,
     readiness_logs,
@@ -528,6 +793,7 @@ export async function buildFullLocalExport(opts?: FullLocalExportOptions): Promi
     hydration_logs,
     sleep_logs,
     stress_logs,
+    stress_daily_summaries,
     cbt_thought_records,
     stoic_checkins,
     mindfulness_logs,
@@ -538,7 +804,10 @@ export async function buildFullLocalExport(opts?: FullLocalExportOptions): Promi
     workday_logs,
     supplement_logs,
     mesocycle,
-    dirty,
-    meta,
+    phase_goals: phase_goals_export,
+    block_templates,
+    relationship_checkins: relationship_checkins_export,
+    relationship_weekly_summaries,
+    meta: meta_filtered,
   };
 }

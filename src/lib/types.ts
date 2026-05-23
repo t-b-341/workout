@@ -427,6 +427,85 @@ export type StoicCheckin = {
   updatedAt: string;
 };
 
+export type RelationshipCheckin = {
+  id: string;
+  userId: string;
+  date: string;
+
+  moodState: number;
+  anxietyLevel: number;
+
+  connectionRating: number;
+  turnedToward: boolean | null;
+  expressedAppreciation: boolean | null;
+  physicalAffection: boolean | null;
+
+  horsemenAudited: boolean;
+  usedCriticism: boolean | null;
+  feltContempt: boolean | null;
+  wasDefensive: boolean | null;
+  stonewalled: boolean | null;
+  horsemenNote: string;
+
+  hadConflict: boolean | null;
+  conflictRepaired: boolean | null;
+  tookResponsibility: boolean | null;
+
+  partnerSemedDistressed: boolean | null;
+  respondedWithCalm: boolean | null;
+
+  isWeeklyReflection: boolean;
+  knowsHerInnerWorld: boolean | null;
+  askedAboutHerWorld: boolean | null;
+  oneThingDifferently: string;
+
+  notes: string;
+  updatedAt: string;
+};
+
+export type TrainingPhaseMode =
+  | 'accumulation'
+  | 'maintenance'
+  | 'deload';
+
+export type NutritionPhaseMode =
+  | 'surplus'
+  | 'maintenance'
+  | 'deficit';
+
+export type PhaseGoal = {
+  id: string;
+  /** Display label e.g. "Block 1 — Weeks 1–4" */
+  label: string;
+  trainingMode: TrainingPhaseMode;
+  nutritionMode: NutritionPhaseMode;
+  /** YYYY-MM-DD start date */
+  startDate: string;
+  /** YYYY-MM-DD end date (inclusive) */
+  endDate: string;
+  /** Calorie target on training days */
+  caloriesTraining: number | null;
+  /** Calorie target on rest/LISS days */
+  caloriesRest: number | null;
+  /** Protein target in grams */
+  proteinG: number | null;
+  notes: string;
+  /** True if this phase is currently active based on today's date */
+  active: boolean;
+  updatedAt: string;
+};
+
+export type BlockTemplate = {
+  id: string;
+  label: string;
+  /** ISO date of block Week 1 Monday */
+  anchorDate: string;
+  /** Total weeks (default 10) */
+  totalWeeks: number;
+  phases: PhaseGoal[];
+  updatedAt: string;
+};
+
 export type CbtThoughtRecord = {
   id: string;
   userId: string;

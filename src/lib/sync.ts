@@ -31,6 +31,29 @@ import type {
 
 export type RemoteTable = DirtyRow['table'];
 
+/** Dexie-only tables (no Supabase sync / dirty queue). */
+export type LocalOnlyTable =
+  | 'phase_goals'
+  | 'block_templates'
+  | 'relationship_checkins';
+
+const LOCAL_ONLY_TO_DEXIE: Record<
+  LocalOnlyTable,
+  'phase_goals' | 'block_templates' | 'relationship_checkins'
+> = {
+  phase_goals: 'phase_goals',
+  block_templates: 'block_templates',
+  relationship_checkins: 'relationship_checkins',
+};
+
+function isLocalOnlyTable(table: string): table is LocalOnlyTable {
+  return (
+    table === 'phase_goals'
+    || table === 'block_templates'
+    || table === 'relationship_checkins'
+  );
+}
+
 /** Optional remote catalog tables (when present in Postgres). */
 type CatalogPullTable = 'templates' | 'lifts';
 
@@ -449,21 +472,33 @@ export async function restoreDeletedRow(table: RemoteTable, snapshot: Record<str
 }
 
 export async function localUpsert<T extends { id: string }>(
-  table: RemoteTable,
+  table: RemoteTable | LocalOnlyTable,
   row: T,
   opts: LocalWriteOpts = {},
 ) {
   const authUserId = await getAuthUserId();
   const rowWithUser = withUserIdLocal(row, authUserId);
   const db = getDb();
+  if (isLocalOnlyTable(table)) {
+    await db[LOCAL_ONLY_TO_DEXIE[table]].put(rowWithUser);
+    return;
+  }
   const localTable = db[TABLE_TO_LOCAL[table]];
   // @ts-expect-error dynamic table access
   await localTable.put(rowWithUser);
   if (!opts.skipDirty) await enqueueDirty(table, rowWithUser.id, 'upsert');
 }
 
-export async function localDelete(table: RemoteTable, id: string, opts: LocalWriteOpts = {}) {
+export async function localDelete(
+  table: RemoteTable | LocalOnlyTable,
+  id: string,
+  opts: LocalWriteOpts = {},
+) {
   const db = getDb();
+  if (isLocalOnlyTable(table)) {
+    await db[LOCAL_ONLY_TO_DEXIE[table]].delete(id);
+    return;
+  }
   const localTable = db[TABLE_TO_LOCAL[table]];
   // @ts-expect-error dynamic table access
   const row = await localTable.get(id);

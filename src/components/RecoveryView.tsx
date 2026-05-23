@@ -11,6 +11,7 @@ import {
   useAllCardio,
   useSleepForDate,
   useStoicCheckinForDate,
+  useRelationshipCheckinForDate,
   useStressForDate,
   useTodayPlanTemplateId,
   useTodaySession,
@@ -467,6 +468,8 @@ export function RecoveryView() {
 
         <StoicCheckinCard date={date} />
 
+        <RelationshipCheckinCard date={date} />
+
         <StressSection date={date} entries={stress ?? []} />
 
         <MindfulnessEntriesSection date={date} />
@@ -731,6 +734,625 @@ function StoicCheckinCard({ date }: { date: string }) {
         className="w-full h-10 rounded-xl bg-amber-600 text-zinc-950 text-sm font-medium disabled:opacity-40 hover:bg-amber-500 transition-colors"
       >
         {busy ? 'Saving…' : 'Save reflection'}
+      </button>
+    </div>
+  );
+}
+
+function RelationshipCheckinCard({ date }: { date: string }) {
+  const existing = useRelationshipCheckinForDate(date);
+  const [open, setOpen] = useState(false);
+  const [busy, setBusy] = useState(false);
+
+  const [moodState, setMoodState] = useState<number | null>(null);
+  const [anxietyLevel, setAnxietyLevel] = useState<number | null>(null);
+  const [connectionRating, setConnectionRating] = useState<number | null>(null);
+  const [turnedToward, setTurnedToward] = useState<boolean | null>(null);
+  const [expressedAppreciation, setExpressedAppreciation] = useState<boolean | null>(null);
+  const [physicalAffection, setPhysicalAffection] = useState<boolean | null>(null);
+  const [showHorsemen, setShowHorsemen] = useState(false);
+  const [usedCriticism, setUsedCriticism] = useState<boolean | null>(null);
+  const [feltContempt, setFeltContempt] = useState<boolean | null>(null);
+  const [wasDefensive, setWasDefensive] = useState<boolean | null>(null);
+  const [stonewalled, setStonewalled] = useState<boolean | null>(null);
+  const [horsemenNote, setHorsemenNote] = useState('');
+  const [partnerSemedDistressed, setPartnerSemedDistressed] = useState<boolean | null>(null);
+  const [respondedWithCalm, setRespondedWithCalm] = useState<boolean | null>(null);
+  const [hadConflict, setHadConflict] = useState<boolean | null>(null);
+  const [conflictRepaired, setConflictRepaired] = useState<
+    boolean | null | undefined
+  >(undefined);
+  const [tookResponsibility, setTookResponsibility] = useState<
+    boolean | null | undefined
+  >(undefined);
+  const [knowsHerInnerWorld, setKnowsHerInnerWorld] = useState<boolean | null>(null);
+  const [askedAboutHerWorld, setAskedAboutHerWorld] = useState<boolean | null>(null);
+  const [oneThingDifferently, setOneThingDifferently] = useState('');
+  const [notes, setNotes] = useState('');
+
+  const isWeeklyReflectionDay = new Date().getDay() === 0;
+  const moodAnchorComplete = moodState != null && anxietyLevel != null;
+
+  function hydrateFromExisting() {
+    setMoodState(existing?.moodState ?? null);
+    setAnxietyLevel(existing?.anxietyLevel ?? null);
+    setConnectionRating(existing?.connectionRating ?? null);
+    setTurnedToward(existing?.turnedToward ?? null);
+    setExpressedAppreciation(existing?.expressedAppreciation ?? null);
+    setPhysicalAffection(existing?.physicalAffection ?? null);
+    setShowHorsemen(existing?.horsemenAudited ?? false);
+    setUsedCriticism(existing?.usedCriticism ?? null);
+    setFeltContempt(existing?.feltContempt ?? null);
+    setWasDefensive(existing?.wasDefensive ?? null);
+    setStonewalled(existing?.stonewalled ?? null);
+    setHorsemenNote(existing?.horsemenNote ?? '');
+    setPartnerSemedDistressed(existing?.partnerSemedDistressed ?? null);
+    setRespondedWithCalm(existing?.respondedWithCalm ?? null);
+    setHadConflict(existing?.hadConflict ?? null);
+    setConflictRepaired(existing?.conflictRepaired ?? null);
+    setTookResponsibility(existing?.tookResponsibility ?? null);
+    setKnowsHerInnerWorld(existing?.knowsHerInnerWorld ?? null);
+    setAskedAboutHerWorld(existing?.askedAboutHerWorld ?? null);
+    setOneThingDifferently(existing?.oneThingDifferently ?? '');
+    setNotes(existing?.notes ?? '');
+  }
+
+  function openEditor() {
+    hydrateFromExisting();
+    setOpen(true);
+  }
+
+  function closeEditor() {
+    setOpen(false);
+    hydrateFromExisting();
+  }
+
+  async function handleSave() {
+    if (!moodAnchorComplete) return;
+    setBusy(true);
+    try {
+      await localUpsert('relationship_checkins', {
+        id: `rel-${date}`,
+        userId: existing?.userId ?? '',
+        date,
+        moodState: moodState ?? 3,
+        anxietyLevel: anxietyLevel ?? 3,
+        connectionRating: connectionRating ?? 3,
+        turnedToward,
+        expressedAppreciation,
+        physicalAffection,
+        horsemenAudited: showHorsemen,
+        usedCriticism: showHorsemen ? usedCriticism : null,
+        feltContempt: showHorsemen ? feltContempt : null,
+        wasDefensive: showHorsemen ? wasDefensive : null,
+        stonewalled: showHorsemen ? stonewalled : null,
+        horsemenNote,
+        partnerSemedDistressed,
+        respondedWithCalm,
+        hadConflict,
+        conflictRepaired: hadConflict ? (conflictRepaired ?? null) : null,
+        tookResponsibility: hadConflict ? (tookResponsibility ?? null) : null,
+        isWeeklyReflection: isWeeklyReflectionDay,
+        knowsHerInnerWorld: isWeeklyReflectionDay ? knowsHerInnerWorld : null,
+        askedAboutHerWorld: isWeeklyReflectionDay ? askedAboutHerWorld : null,
+        oneThingDifferently: isWeeklyReflectionDay ? oneThingDifferently : '',
+        notes,
+        updatedAt: new Date().toISOString(),
+      });
+      setOpen(false);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (!open) {
+    return (
+      <div
+        className="rounded-2xl border border-zinc-800
+          bg-zinc-900 px-4 py-3 flex items-center
+          justify-between cursor-pointer"
+        onClick={() => openEditor()}
+      >
+        <div className="space-y-0.5">
+          <div className="text-xs uppercase tracking-wide
+            text-zinc-500 font-medium">
+            Relationship
+          </div>
+          {existing ? (
+            <div className="flex items-center gap-2">
+              <div className="flex">
+                {[1, 2, 3, 4, 5].map((n) => (
+                  <span
+                    key={n}
+                    className={`text-base ${
+                      n <= existing.connectionRating
+                        ? 'text-amber-400'
+                        : 'text-zinc-700'
+                    }`}
+                  >
+                    ♥
+                  </span>
+                ))}
+              </div>
+              {existing.moodState <= 2 && (
+                <span className="text-[10px] text-zinc-500">
+                  (low mood day)
+                </span>
+              )}
+            </div>
+          ) : (
+            <div className="text-xs text-zinc-600">
+              Log today&apos;s check-in
+            </div>
+          )}
+        </div>
+        <span className="text-amber-400 text-sm font-medium">
+          {existing ? 'Edit' : 'Log'}
+        </span>
+      </div>
+    );
+  }
+
+  return (
+    <div className="rounded-2xl border border-zinc-800 bg-zinc-900 p-4 space-y-4">
+      <div className="flex items-center justify-between">
+        <div className="text-xs uppercase tracking-wide text-zinc-500 font-medium">
+          Relationship check-in
+        </div>
+        <button
+          type="button"
+          onClick={closeEditor}
+          className="text-zinc-600 hover:text-zinc-400 text-lg leading-none"
+          aria-label="Close"
+        >
+          ×
+        </button>
+      </div>
+
+      <div className="space-y-3">
+        <p className="text-xs text-zinc-500 leading-snug">
+          Your mood state gives context to everything below. Low mood and high
+          anxiety can make relationships feel more difficult than they are —
+          this helps you interpret the data accurately.
+        </p>
+        <p className="text-xs text-zinc-500 leading-snug">
+          Log your mood first — this gives context to everything below.
+        </p>
+
+        <div className="space-y-1.5">
+          <label className="text-xs text-zinc-400">Mood today</label>
+          <div className="flex gap-2">
+            {([
+              [1, 'Low'],
+              [2, 'Down'],
+              [3, 'Stable'],
+              [4, 'Good'],
+              [5, 'Elevated'],
+            ] as const).map(([val, label]) => (
+              <button
+                key={val}
+                type="button"
+                onClick={() => setMoodState(val)}
+                className={`flex-1 h-9 rounded-lg text-xs border transition-colors ${
+                  moodState === val
+                    ? 'bg-amber-600 border-amber-500 text-zinc-950'
+                    : 'bg-zinc-800 border-zinc-700 text-zinc-400'
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+          {(moodState === 1 || moodState === 5) && (
+            <p className="text-[10px] text-zinc-500">
+              {moodState === 1
+                ? 'Low mood days — relationship perceptions may feel more negative than they are.'
+                : 'Elevated mood — positive perceptions may be inflated. Note behaviors, not just feelings.'}
+            </p>
+          )}
+        </div>
+
+        <div className="space-y-1.5">
+          <label className="text-xs text-zinc-400">Anxiety level today</label>
+          <div className="flex gap-2">
+            {[1, 2, 3, 4, 5].map((n) => (
+              <button
+                key={n}
+                type="button"
+                onClick={() => setAnxietyLevel(n)}
+                className={`flex-1 h-9 rounded-lg text-xs border transition-colors font-mono ${
+                  anxietyLevel === n
+                    ? 'bg-zinc-600 border-zinc-500 text-zinc-100'
+                    : 'bg-zinc-800 border-zinc-700 text-zinc-400'
+                }`}
+              >
+                {n}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {moodAnchorComplete && (
+        <>
+          <div className="border-t border-zinc-800" />
+
+          <div className="space-y-4">
+            <div className="text-xs uppercase tracking-wide text-zinc-500">
+              Connection today
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-xs text-zinc-400">
+                How connected did you feel?
+              </label>
+              <div className="flex gap-2">
+                {[1, 2, 3, 4, 5].map((n) => (
+                  <button
+                    key={n}
+                    type="button"
+                    onClick={() => setConnectionRating(n)}
+                    className={`flex-1 h-9 rounded-lg text-base transition-colors ${
+                      connectionRating === n
+                        ? 'text-amber-400 bg-amber-950/30 border border-amber-800/50'
+                        : 'text-zinc-600 bg-zinc-800 border border-zinc-700'
+                    }`}
+                  >
+                    ♥
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {[
+              {
+                key: 'turnedToward',
+                val: turnedToward,
+                set: setTurnedToward,
+                label: 'Did you turn toward her when she reached out?',
+                hint: 'Any bid for attention, conversation, or connection',
+              },
+              {
+                key: 'expressedAppreciation',
+                val: expressedAppreciation,
+                set: setExpressedAppreciation,
+                label: 'Did you express appreciation or affection?',
+                hint: null,
+              },
+              {
+                key: 'physicalAffection',
+                val: physicalAffection,
+                set: setPhysicalAffection,
+                label: 'Did you make non-sexual physical contact?',
+                hint: 'Hug, touch, sitting close — daily physical warmth',
+              },
+            ].map(({ key, val, set, label, hint }) => (
+              <div key={key} className="space-y-1.5">
+                <label className="text-xs text-zinc-400">{label}</label>
+                {hint && <p className="text-[10px] text-zinc-600">{hint}</p>}
+                <div className="flex gap-2">
+                  {(['Yes', 'No'] as const).map((opt) => (
+                    <button
+                      key={opt}
+                      type="button"
+                      onClick={() => set(opt === 'Yes')}
+                      className={`flex-1 h-9 rounded-lg text-xs border transition-colors ${
+                        val === (opt === 'Yes')
+                          ? opt === 'Yes'
+                            ? 'bg-emerald-800/60 border-emerald-700 text-emerald-200'
+                            : 'bg-rose-900/50 border-rose-800 text-rose-300'
+                          : 'bg-zinc-800 border-zinc-700 text-zinc-400'
+                      }`}
+                    >
+                      {opt}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <div className="border-t border-zinc-800" />
+
+          <div className="space-y-3">
+            <button
+              type="button"
+              onClick={() => setShowHorsemen((h) => !h)}
+              className="w-full text-left"
+            >
+              <div className="flex items-center justify-between">
+                <div className="text-xs uppercase tracking-wide text-zinc-500">
+                  Self-audit (optional)
+                </div>
+                <span className="text-zinc-600 text-xs">
+                  {showHorsemen ? 'Hide ▲' : 'Show ▼'}
+                </span>
+              </div>
+              <p className="text-[10px] text-zinc-600 mt-0.5">
+                Four behaviors that predict relationship difficulty. Tracking
+                them keeps them visible.
+              </p>
+            </button>
+
+            {showHorsemen && (
+              <div className="space-y-3 border-l-2 border-zinc-800 pl-3">
+                {[
+                  {
+                    key: 'usedCriticism',
+                    val: usedCriticism,
+                    set: setUsedCriticism,
+                    label: 'Did you criticize her?',
+                    hint: 'Attacking character rather than addressing a specific behavior',
+                  },
+                  {
+                    key: 'feltContempt',
+                    val: feltContempt,
+                    set: setFeltContempt,
+                    label: 'Did you feel or express contempt?',
+                    hint: 'Eye-rolling, mockery, superiority — the most corrosive of the four',
+                  },
+                  {
+                    key: 'wasDefensive',
+                    val: wasDefensive,
+                    set: setWasDefensive,
+                    label: 'Were you defensive when she raised a concern?',
+                    hint: 'Counter-attacking or making excuses rather than hearing her',
+                  },
+                  {
+                    key: 'stonewalled',
+                    val: stonewalled,
+                    set: setStonewalled,
+                    label: 'Did you stonewall or shut down?',
+                    hint: 'Withdrawing, going silent, emotional absence — often anxiety-driven',
+                  },
+                ].map(({ key, val, set, label, hint }) => (
+                  <div key={key} className="space-y-1">
+                    <label className="text-xs text-zinc-400">{label}</label>
+                    <p className="text-[10px] text-zinc-600">{hint}</p>
+                    <div className="flex gap-2">
+                      {(['Yes', 'No'] as const).map((opt) => (
+                        <button
+                          key={opt}
+                          type="button"
+                          onClick={() => set(opt === 'Yes')}
+                          className={`flex-1 h-8 rounded-lg text-xs border transition-colors ${
+                            val === (opt === 'Yes')
+                              ? opt === 'Yes'
+                                ? 'bg-rose-900/50 border-rose-800 text-rose-300'
+                                : 'bg-emerald-800/60 border-emerald-700 text-emerald-200'
+                              : 'bg-zinc-800 border-zinc-700 text-zinc-400'
+                          }`}
+                        >
+                          {opt}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+
+                {(usedCriticism || feltContempt || wasDefensive || stonewalled) && (
+                  <div className="space-y-1.5">
+                    <label className="text-xs text-amber-400/80">
+                      What was happening? What would have been a better response?
+                    </label>
+                    <textarea
+                      value={horsemenNote}
+                      onChange={(e) => setHorsemenNote(e.target.value)}
+                      rows={2}
+                      placeholder="Brief reflection — not judgment, just data..."
+                      className="w-full rounded-xl bg-zinc-800 border border-zinc-700 px-3 py-2 text-sm text-zinc-200 placeholder:text-zinc-600 resize-none focus:outline-none focus:border-zinc-500"
+                    />
+                  </div>
+                )}
+
+                <div className="pt-1 border-t border-zinc-800/50 space-y-3">
+                  <p className="text-[10px] text-zinc-600">
+                    Partner-specific questions — distinguishes her distress signals
+                    from relationship conflict.
+                  </p>
+                  {[
+                    {
+                      key: 'partnerSemedDistressed',
+                      val: partnerSemedDistressed,
+                      set: setPartnerSemedDistressed,
+                      label: 'Did she seem distressed or dysregulated?',
+                      hint: 'May be trauma response or mood — not necessarily about you',
+                    },
+                    {
+                      key: 'respondedWithCalm',
+                      val: respondedWithCalm,
+                      set: setRespondedWithCalm,
+                      label: 'Did you respond with calm rather than escalating?',
+                      hint: 'Your nervous system regulation is co-regulatory for her',
+                    },
+                  ].map(({ key, val, set, label, hint }) => (
+                    <div key={key} className="space-y-1">
+                      <label className="text-xs text-zinc-400">{label}</label>
+                      <p className="text-[10px] text-zinc-600">{hint}</p>
+                      <div className="flex gap-2">
+                        {(['Yes', 'No'] as const).map((opt) => (
+                          <button
+                            key={opt}
+                            type="button"
+                            onClick={() => set(opt === 'Yes')}
+                            className={`flex-1 h-8 rounded-lg text-xs border transition-colors ${
+                              val === (opt === 'Yes')
+                                ? opt === 'Yes'
+                                  ? 'bg-emerald-800/60 border-emerald-700 text-emerald-200'
+                                  : 'bg-zinc-700 border-zinc-600 text-zinc-300'
+                                : 'bg-zinc-800 border-zinc-700 text-zinc-400'
+                            }`}
+                          >
+                            {opt}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div className="border-t border-zinc-800" />
+
+          <div className="space-y-3">
+            <div className="text-xs uppercase tracking-wide text-zinc-500">
+              Conflict
+            </div>
+            <div className="space-y-1">
+              <label className="text-xs text-zinc-400">
+                Was there conflict or tension today?
+              </label>
+              <div className="flex gap-2">
+                {(['Yes', 'No'] as const).map((opt) => (
+                  <button
+                    key={opt}
+                    type="button"
+                    onClick={() => setHadConflict(opt === 'Yes')}
+                    className={`flex-1 h-9 rounded-lg text-xs border transition-colors ${
+                      hadConflict === (opt === 'Yes')
+                        ? 'bg-zinc-700 border-zinc-600 text-zinc-200'
+                        : 'bg-zinc-800 border-zinc-700 text-zinc-400'
+                    }`}
+                  >
+                    {opt}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {hadConflict && (
+              <div className="space-y-3 border-l-2 border-zinc-700 pl-3">
+                {[
+                  {
+                    key: 'conflictRepaired',
+                    val: conflictRepaired,
+                    set: setConflictRepaired,
+                    label: 'Was it repaired before end of day?',
+                    hint: 'Any gesture to de-escalate counts — repair matters more than the conflict itself',
+                  },
+                  {
+                    key: 'tookResponsibility',
+                    val: tookResponsibility,
+                    set: setTookResponsibility,
+                    label: 'Did you take responsibility for your part?',
+                    hint: null,
+                  },
+                ].map(({ key, val, set, label, hint }) => (
+                  <div key={key} className="space-y-1">
+                    <label className="text-xs text-zinc-400">{label}</label>
+                    {hint && <p className="text-[10px] text-zinc-600">{hint}</p>}
+                    <div className="flex gap-2">
+                      {(['Yes', 'No', 'Partially'] as const).map((opt) => {
+                        const choice =
+                          opt === 'Yes' ? true : opt === 'No' ? false : null;
+                        const selected =
+                          opt === 'Partially'
+                            ? val === null
+                            : val === choice;
+                        return (
+                        <button
+                          key={opt}
+                          type="button"
+                          onClick={() => set(choice)}
+                          className={`flex-1 h-8 rounded-lg text-xs border transition-colors ${
+                            selected
+                              ? 'bg-zinc-700 border-zinc-600 text-zinc-200'
+                              : 'bg-zinc-800 border-zinc-700 text-zinc-400'
+                          }`}
+                        >
+                          {opt}
+                        </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {isWeeklyReflectionDay && (
+            <>
+              <div className="border-t border-zinc-800" />
+              <div className="space-y-3 border border-zinc-700/50 rounded-xl p-3 bg-zinc-800/30">
+                <div className="text-xs uppercase tracking-wide text-zinc-500">
+                  Weekly reflection
+                </div>
+                {[
+                  {
+                    key: 'knowsHerInnerWorld',
+                    val: knowsHerInnerWorld,
+                    set: setKnowsHerInnerWorld,
+                    label: "Do you know what's weighing on her most right now?",
+                    hint: 'Gottman Love Maps — knowing her inner world predicts relationship satisfaction',
+                  },
+                  {
+                    key: 'askedAboutHerWorld',
+                    val: askedAboutHerWorld,
+                    set: setAskedAboutHerWorld,
+                    label: 'Did you ask about something that matters to her this week?',
+                    hint: "Her MLIS progress, her health, her goals, what she's reading or thinking about",
+                  },
+                ].map(({ key, val, set, label, hint }) => (
+                  <div key={key} className="space-y-1">
+                    <label className="text-xs text-zinc-400">{label}</label>
+                    <p className="text-[10px] text-zinc-600">{hint}</p>
+                    <div className="flex gap-2">
+                      {(['Yes', 'No'] as const).map((opt) => (
+                        <button
+                          key={opt}
+                          type="button"
+                          onClick={() => set(opt === 'Yes')}
+                          className={`flex-1 h-8 rounded-lg text-xs border transition-colors ${
+                            val === (opt === 'Yes')
+                              ? 'bg-zinc-700 border-zinc-600 text-zinc-200'
+                              : 'bg-zinc-800 border-zinc-700 text-zinc-400'
+                          }`}
+                        >
+                          {opt}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+                <div className="space-y-1.5">
+                  <label className="text-xs text-zinc-400">
+                    One thing I want to do differently next week
+                  </label>
+                  <textarea
+                    value={oneThingDifferently}
+                    onChange={(e) => setOneThingDifferently(e.target.value)}
+                    rows={2}
+                    placeholder="Specific, behavioral, and within your control..."
+                    className="w-full rounded-xl bg-zinc-900 border border-zinc-700 px-3 py-2 text-sm text-zinc-200 placeholder:text-zinc-600 resize-none focus:outline-none focus:border-zinc-500"
+                  />
+                </div>
+              </div>
+            </>
+          )}
+
+          <div className="space-y-1.5">
+            <label className="text-xs text-zinc-400">Notes (optional)</label>
+            <textarea
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              rows={2}
+              placeholder="Anything else worth capturing briefly..."
+              className="w-full rounded-xl bg-zinc-800 border border-zinc-700 px-3 py-2 text-sm text-zinc-200 placeholder:text-zinc-600 resize-none focus:outline-none focus:border-zinc-500"
+            />
+          </div>
+        </>
+      )}
+
+      <button
+        type="button"
+        onClick={() => void handleSave()}
+        disabled={busy || !moodAnchorComplete}
+        className="w-full h-10 rounded-xl bg-amber-600 text-zinc-950 text-sm font-medium disabled:opacity-40 hover:bg-amber-500 transition-colors"
+      >
+        {busy ? 'Saving…' : 'Save check-in'}
       </button>
     </div>
   );

@@ -22,6 +22,9 @@ import type {
   StressLog,
   SupplementLog,
   UserGoal,
+  PhaseGoal,
+  BlockTemplate,
+  RelationshipCheckin,
 } from './types';
 
 export type DirtyRow = {
@@ -72,6 +75,9 @@ export class WorkoutDB extends Dexie {
   body_readiness_logs!: Table<BodyReadinessLog, string>;
   supplement_logs!: Table<SupplementLog, string>;
   user_goals!: Table<UserGoal, string>;
+  phase_goals!: Table<PhaseGoal, string>;
+  block_templates!: Table<BlockTemplate, string>;
+  relationship_checkins!: Table<RelationshipCheckin, string>;
   dirty!: Table<DirtyRow, string>;
   meta!: Table<{ key: string; value: unknown }, string>;
 
@@ -628,10 +634,65 @@ export class WorkoutDB extends Dexie {
       dirty: 'id, table, rowId, enqueuedAt',
       meta: 'key',
     });
+    // v20 — phase goals + 10-week block templates (local-only planning).
+    this.version(20).stores({
+      lifts: 'id, name',
+      templates: 'id, dayOfWeek',
+      prescriptions: 'id, templateId, liftId, [templateId+order]',
+      session_logs: 'id, date, templateId',
+      set_logs: 'id, sessionLogId, liftId, [sessionLogId+liftId+setIndex]',
+      cardio_logs: 'id, date, sessionLogId',
+      bodyweight_logs: 'id, date, isoWeek',
+      body_measurement_logs: 'id, date',
+      readiness_logs: 'id, sessionLogId, date',
+      nutrition_logs: 'id, date',
+      hydration_logs: 'id, date',
+      sleep_logs: 'id, date',
+      stress_logs: 'id, date, loggedAt',
+      cbt_thought_records: 'id, userId, date, createdAt, updatedAt',
+      stoic_checkins: 'id, userId, date, updatedAt',
+      mindfulness_logs: 'id, date, loggedAt',
+      injury_episodes: 'id, siteKey, startedAt',
+      body_readiness_logs: 'id, date',
+      supplement_logs: 'id, userId, date, updatedAt',
+      user_goals: 'id, userId, liftId, active, updatedAt',
+      phase_goals: 'id, startDate, endDate, updatedAt',
+      block_templates: 'id, anchorDate, updatedAt',
+      dirty: 'id, table, rowId, enqueuedAt',
+      meta: 'key',
+    });
+    // v21 — relationship check-ins (local-only, Dexie).
+    this.version(21).stores({
+      lifts: 'id, name',
+      templates: 'id, dayOfWeek',
+      prescriptions: 'id, templateId, liftId, [templateId+order]',
+      session_logs: 'id, date, templateId',
+      set_logs: 'id, sessionLogId, liftId, [sessionLogId+liftId+setIndex]',
+      cardio_logs: 'id, date, sessionLogId',
+      bodyweight_logs: 'id, date, isoWeek',
+      body_measurement_logs: 'id, date',
+      readiness_logs: 'id, sessionLogId, date',
+      nutrition_logs: 'id, date',
+      hydration_logs: 'id, date',
+      sleep_logs: 'id, date',
+      stress_logs: 'id, date, loggedAt',
+      cbt_thought_records: 'id, userId, date, createdAt, updatedAt',
+      stoic_checkins: 'id, userId, date, updatedAt',
+      mindfulness_logs: 'id, date, loggedAt',
+      injury_episodes: 'id, siteKey, startedAt',
+      body_readiness_logs: 'id, date',
+      supplement_logs: 'id, userId, date, updatedAt',
+      user_goals: 'id, userId, liftId, active, updatedAt',
+      phase_goals: 'id, startDate, endDate, updatedAt',
+      block_templates: 'id, anchorDate, updatedAt',
+      relationship_checkins: 'id, userId, date, updatedAt',
+      dirty: 'id, table, rowId, enqueuedAt',
+      meta: 'key',
+    });
   }
 }
 
-export const SCHEMA_VERSION = 19;
+export const SCHEMA_VERSION = 21;
 
 let _db: WorkoutDB | null = null;
 let _dbUserId: string | null = null;
