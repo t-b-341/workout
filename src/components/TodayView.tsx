@@ -77,6 +77,7 @@ export function TodayView() {
   });
   const [readinessSkipped, setReadinessSkipped] = useState(false);
   const [quickMode, setQuickMode] = useState(false);
+  const [recoveryPromptSessionId, setRecoveryPromptSessionId] = useState<string | null>(null);
 
   const programTemplates = useMemo(
     () => (templates ?? []).filter((t) => t.id !== 'QUICK'),
@@ -112,6 +113,7 @@ export function TodayView() {
   );
   const favoriteLiftIdSet = useMemo(() => new Set(favoriteLiftIds), [favoriteLiftIds]);
   const sessionActive = Boolean(session?.startedAt && !session?.completedAt);
+
   const readiness = useReadinessForSession(session?.id);
   const allReadiness = useAllReadiness();
   const allSets = useAllSets();
@@ -249,6 +251,23 @@ export function TodayView() {
     session.mode !== 'skip' &&
     (prescriptions?.length ?? 0) > 0 &&
     !session.completedAt;
+
+  const recoveryRated =
+    session.perceivedRecovery !== undefined ||
+    recoveryPromptSessionId === session.id;
+
+  const needsPerceivedRecovery =
+    Boolean(session.startedAt) &&
+    !session.completedAt &&
+    !recoveryRated;
+
+  async function handlePerceivedRecovery(n: number | null) {
+    await localUpsert('session_logs', {
+      ...session,
+      perceivedRecovery: n,
+    });
+    setRecoveryPromptSessionId(session.id);
+  }
 
   return (
     <PageShell className={`p-4 space-y-4 ${showSessionDock ? 'pb-24' : ''}`}>
@@ -438,7 +457,37 @@ export function TodayView() {
               {session.startedAt && <WorkoutStopwatchBar session={session} />}
             </>
           )}
-          {isMiniSession && (
+          {needsPerceivedRecovery && (
+            <div className="rounded-2xl border border-zinc-800 bg-zinc-900 p-5 space-y-4">
+              <div className="text-sm font-medium text-zinc-200">
+                How recovered do you feel right now?
+              </div>
+              <div className="flex gap-2">
+                {[1, 2, 3, 4, 5].map((n) => (
+                  <button
+                    key={n}
+                    type="button"
+                    onClick={() => void handlePerceivedRecovery(n)}
+                    className="flex-1 h-11 rounded-xl bg-zinc-800 border border-zinc-700 text-sm font-mono text-zinc-200 hover:bg-amber-600 hover:border-amber-500 hover:text-zinc-950 transition-colors"
+                  >
+                    {n}
+                  </button>
+                ))}
+              </div>
+              <div className="flex justify-between text-[10px] text-zinc-600">
+                <span>Very fatigued</span>
+                <span>Fully recovered</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => void handlePerceivedRecovery(null)}
+                className="w-full text-xs text-zinc-600 hover:text-zinc-400"
+              >
+                Skip
+              </button>
+            </div>
+          )}
+          {!needsPerceivedRecovery && isMiniSession && (
             <div className="rounded-xl border border-zinc-700/60
               bg-zinc-900/70 px-4 py-3 space-y-0.5">
               <div className="flex items-center justify-between">
@@ -457,7 +506,8 @@ export function TodayView() {
               </p>
             </div>
           )}
-          {visiblePrescriptions.map((p) => {
+          {!needsPerceivedRecovery &&
+          visiblePrescriptions.map((p) => {
             const lift = lifts.find((l) => l.id === p.liftId);
             if (!lift) return null;
             const modeAdjusted = applySessionMode(p, session, lift, allSets, allSessions);
@@ -522,7 +572,7 @@ export function TodayView() {
               </div>
             );
           })}
-          {sessionActive && (
+          {sessionActive && !needsPerceivedRecovery && (
             <button
               type="button"
               onClick={() => setAddExerciseOpen(true)}
@@ -535,7 +585,10 @@ export function TodayView() {
         </div>
       )}
 
-      {!needsReadiness && session.mode !== 'skip' && !sundayGateActive && (
+      {!needsReadiness &&
+        !needsPerceivedRecovery &&
+        session.mode !== 'skip' &&
+        !sundayGateActive && (
         <>
           <FinishSessionButton
             session={session}

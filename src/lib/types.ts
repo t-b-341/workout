@@ -180,6 +180,8 @@ export type SessionLog = {
   effortScale?: -1 | 0 | 1;
   /** Set when the readiness check is submitted or skipped — gates History until present. */
   readinessCompletedAt?: string;
+  /** Perceived recovery at session start (1–5). 1 = very fatigued, 5 = fully recovered. */
+  perceivedRecovery?: number | null;
   /** Optional strategy tags for this session (how you ran it). See `sessionStrategyTags.ts`. */
   tags?: SessionStrategyTagId[];
   /**
