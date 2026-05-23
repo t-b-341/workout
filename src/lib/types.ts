@@ -113,6 +113,10 @@ export type SetLog = {
   intent?: SetIntent;
   weight: number;
   reps: number;
+  /** Prescribed rep minimum at time of logging. */
+  prescribedRepMin?: number | null;
+  /** Prescribed rep maximum at time of logging. */
+  prescribedRepMax?: number | null;
   /** Reps in reserve (effort) when reps <= 12. */
   rir?: number;
   /** Derived effort scale where 1 RIR = 9 RPE, 2 RIR = 8 RPE, etc. */
@@ -163,6 +167,8 @@ export type SessionLog = {
   /** ISO timestamp set on first interaction. */
   startedAt?: string;
   completedAt?: string;
+  /** Wall-clock session length in minutes (set at completion). */
+  durationMin?: number | null;
   /** Stopwatch: cumulative paused milliseconds before current pause segment (if any). */
   workoutPausedAccumMs?: number;
   /** Stopwatch: ISO time pause began; elapsed timer freezes until cleared on resume. */

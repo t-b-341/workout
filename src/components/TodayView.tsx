@@ -896,9 +896,18 @@ function FinishSessionButton({
         }
       }
       const completedAt = new Date().toISOString();
+      const durationMin =
+        session.startedAt
+          ? Math.round(
+              (new Date(completedAt).getTime() -
+                new Date(session.startedAt).getTime()) /
+                60000,
+            )
+          : null;
       const finalSession = {
         ...finalizeWorkoutPauseAtCompletion(session, completedAt),
         completedAt,
+        durationMin,
       };
       await localUpsert('session_logs', finalSession);
       await flushDirty();

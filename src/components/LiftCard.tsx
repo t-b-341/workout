@@ -215,6 +215,8 @@ export function LiftCard({
       intent,
       weight,
       reps: args.reps,
+      prescribedRepMin: prescription.repMin,
+      prescribedRepMax: prescription.repMax,
       rir: shouldTrackRpeForReps(args.reps) && args.rir != null ? args.rir : undefined,
       rpe: shouldTrackRpeForReps(args.reps) && args.rir != null ? rpeFromRir(args.rir) : undefined,
       status,

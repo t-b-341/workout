@@ -356,7 +356,11 @@ export async function buildFullLocalExport(opts?: FullLocalExportOptions): Promi
   ]);
   const lifts = liftsRaw.map((lift) => ({
     ...lift,
-    loadScale: normalizedLoadScale(lift.loadScale),
+    loadScale: normalizedLoadScale(lift.loadScale ?? 'normal'),
+  }));
+  const prescriptions_out = prescriptions.map((p) => ({
+    ...p,
+    increment: p.increment ?? null,
   }));
 
   const exportedAt = new Date().toISOString();
@@ -505,7 +509,7 @@ export async function buildFullLocalExport(opts?: FullLocalExportOptions): Promi
     localStorage: snapshotKnownLocalStorage(),
     lifts,
     templates,
-    prescriptions,
+    prescriptions: prescriptions_out,
     session_logs: session_logs_out,
     set_logs: set_logs_out,
     cardio_logs,
