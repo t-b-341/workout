@@ -27,6 +27,9 @@ import type {
   StressLog,
   SupplementLog,
   UserGoal,
+  PhaseGoal,
+  BlockTemplate,
+  RelationshipCheckin,
 } from './types';
 
 export type RemoteTable = DirtyRow['table'];
@@ -480,7 +483,17 @@ export async function localUpsert<T extends { id: string }>(
   const rowWithUser = withUserIdLocal(row, authUserId);
   const db = getDb();
   if (isLocalOnlyTable(table)) {
-    await db[LOCAL_ONLY_TO_DEXIE[table]].put(rowWithUser);
+    switch (table) {
+      case 'phase_goals':
+        await db.phase_goals.put(rowWithUser as unknown as PhaseGoal);
+        break;
+      case 'block_templates':
+        await db.block_templates.put(rowWithUser as unknown as BlockTemplate);
+        break;
+      case 'relationship_checkins':
+        await db.relationship_checkins.put(rowWithUser as unknown as RelationshipCheckin);
+        break;
+    }
     return;
   }
   const localTable = db[TABLE_TO_LOCAL[table]];
