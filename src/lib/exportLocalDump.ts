@@ -662,7 +662,10 @@ export async function buildFullLocalExport(opts?: FullLocalExportOptions): Promi
     mesoEndDate: opts?.mesoEndDate,
   });
 
-  const user_goals = await db.user_goals.orderBy('createdAt').toArray();
+  const user_goals = (await db.user_goals.toArray())
+    .sort((a, b) =>
+      (a.createdAt ?? '').localeCompare(b.createdAt ?? ''),
+    );
 
   const today = todayIso();
   const phase_goals_export: ExportedPhaseGoal[] = phase_goals.map((p: PhaseGoal) => {

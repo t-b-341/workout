@@ -689,10 +689,14 @@ export class WorkoutDB extends Dexie {
       dirty: 'id, table, rowId, enqueuedAt',
       meta: 'key',
     });
+    // v22 — index user_goals.createdAt for export ordering.
+    this.version(22).stores({
+      user_goals: 'id, userId, liftId, active, createdAt, updatedAt',
+    });
   }
 }
 
-export const SCHEMA_VERSION = 21;
+export const SCHEMA_VERSION = 22;
 
 let _db: WorkoutDB | null = null;
 let _dbUserId: string | null = null;
