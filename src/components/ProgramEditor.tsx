@@ -151,7 +151,7 @@ export function ProgramEditor() {
   const [setIntentReviewRows, setSetIntentReviewRows] = useState<SetIntentReviewRow[]>([]);
   const phaseGoals = useAllPhaseGoals();
   const activePhase = useActivePhaseGoal();
-  const blockTemplates = useAllBlockTemplates();
+  useAllBlockTemplates();
   const [showPhasePanel, setShowPhasePanel] = useState(false);
   const [showNewBlock, setShowNewBlock] = useState(false);
 

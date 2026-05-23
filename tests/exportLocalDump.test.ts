@@ -30,8 +30,8 @@ describe('buildExportSchemaDocumentation', () => {
 });
 
 describe('EXPORT_SCHEMA_VERSION', () => {
-  it('is bumped for user_goals export shape', () => {
-    expect(EXPORT_SCHEMA_VERSION).toBe(22);
+  it('matches the current full local export payload schema', () => {
+    expect(EXPORT_SCHEMA_VERSION).toBe(24);
   });
 });
 
