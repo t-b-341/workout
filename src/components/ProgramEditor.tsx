@@ -32,6 +32,8 @@ import {
   type TemplateId,
   type PhaseGoal,
   type BlockTemplate,
+  type TrainingPhaseMode,
+  type NutritionPhaseMode,
 } from '@/lib/types';
 import { getDb } from '@/lib/db';
 import { defaultTemplateForLocalDate, sortTemplatesProgramOrder } from '@/lib/seed';
@@ -173,6 +175,8 @@ export function ProgramEditor() {
   useAllBlockTemplates();
   const [showPhasePanel, setShowPhasePanel] = useState(false);
   const [showNewBlock, setShowNewBlock] = useState(false);
+  const [editingPhase, setEditingPhase] =
+    useState<PhaseGoal | null>(null);
 
   const templatesProgramOrder = useMemo(
     () =>
@@ -903,16 +907,49 @@ export function ProgramEditor() {
 
       {showPhasePanel && (
         <div className="space-y-3 px-1">
-          <button
-            type="button"
-            onClick={() => setShowNewBlock(true)}
-            className="w-full h-10 rounded-xl border
-              border-dashed border-zinc-700 text-xs
-              text-zinc-400 hover:text-zinc-200
-              hover:border-zinc-500 transition-colors"
-          >
-            + Generate 10-week block
-          </button>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => setShowNewBlock(true)}
+              className="flex-1 h-10 rounded-xl border border-dashed
+                border-zinc-700 text-xs text-zinc-400
+                hover:text-zinc-200 hover:border-zinc-500
+                transition-colors"
+            >
+              + 10-week block
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                const today = todayIso();
+                const fourWeeksOut = (() => {
+                  const d = new Date(today);
+                  d.setDate(d.getDate() + 27);
+                  return d.toISOString().slice(0, 10);
+                })();
+                setEditingPhase({
+                  id: `phase-${Date.now()}`,
+                  label: '',
+                  trainingMode: 'accumulation',
+                  nutritionMode: 'deficit',
+                  startDate: today,
+                  endDate: fourWeeksOut,
+                  caloriesTraining: null,
+                  caloriesRest: null,
+                  proteinG: null,
+                  notes: '',
+                  active: false,
+                  updatedAt: new Date().toISOString(),
+                });
+              }}
+              className="flex-1 h-10 rounded-xl border border-dashed
+                border-zinc-700 text-xs text-zinc-400
+                hover:text-zinc-200 hover:border-zinc-500
+                transition-colors"
+            >
+              + Custom phase
+            </button>
+          </div>
 
           {(phaseGoals ?? []).map(phase => (
             <PhaseGoalCard
@@ -921,6 +958,7 @@ export function ProgramEditor() {
               onDelete={async () => {
                 await localDelete('phase_goals', phase.id);
               }}
+              onEdit={() => setEditingPhase(phase)}
             />
           ))}
 
@@ -942,6 +980,17 @@ export function ProgramEditor() {
               await localUpsert('phase_goals', phase);
             }
             setShowNewBlock(false);
+          }}
+        />
+      )}
+
+      {editingPhase && (
+        <PhaseEditSheet
+          phase={editingPhase}
+          onClose={() => setEditingPhase(null)}
+          onSave={async (updated) => {
+            await localUpsert('phase_goals', updated);
+            setEditingPhase(null);
           }}
         />
       )}
@@ -1791,12 +1840,285 @@ function MesocycleSettings() {
   );
 }
 
+function PhaseEditSheet({
+  phase,
+  onClose,
+  onSave,
+}: {
+  phase: PhaseGoal;
+  onClose: () => void;
+  onSave: (updated: PhaseGoal) => Promise<void>;
+}) {
+  const [label, setLabel] = useState(phase.label);
+  const [trainingMode, setTrainingMode] =
+    useState<TrainingPhaseMode>(phase.trainingMode);
+  const [nutritionMode, setNutritionMode] =
+    useState<NutritionPhaseMode>(phase.nutritionMode);
+  const [startDate, setStartDate] = useState(phase.startDate);
+  const [endDate, setEndDate] = useState(phase.endDate);
+  const [caloriesTraining, setCaloriesTraining] =
+    useState(String(phase.caloriesTraining ?? ''));
+  const [caloriesRest, setCaloriesRest] =
+    useState(String(phase.caloriesRest ?? ''));
+  const [proteinG, setProteinG] =
+    useState(String(phase.proteinG ?? ''));
+  const [notes, setNotes] = useState(phase.notes ?? '');
+  const [busy, setBusy] = useState(false);
+
+  const isDeloadInDeficit =
+    trainingMode === 'deload' && nutritionMode === 'deficit';
+
+  const canSave = label.trim() && startDate && endDate
+    && startDate <= endDate;
+
+  async function handleSave() {
+    if (!canSave) return;
+    setBusy(true);
+    await onSave({
+      ...phase,
+      label: label.trim(),
+      trainingMode,
+      nutritionMode,
+      startDate,
+      endDate,
+      caloriesTraining: caloriesTraining
+        ? Number(caloriesTraining) : null,
+      caloriesRest: caloriesRest
+        ? Number(caloriesRest) : null,
+      proteinG: proteinG ? Number(proteinG) : null,
+      notes,
+    });
+    setBusy(false);
+    onClose();
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end
+      justify-center">
+      <button type="button" aria-label="Close"
+        className="absolute inset-0 bg-black/70"
+        onClick={onClose} />
+      <div className="relative w-full max-w-lg
+        rounded-t-3xl border border-zinc-800 bg-zinc-950
+        max-h-[90dvh] flex flex-col">
+
+        <div className="p-4 border-b border-zinc-800
+          shrink-0 flex items-center justify-between">
+          <h3 className="text-lg font-semibold text-zinc-100">
+            Edit phase
+          </h3>
+          <button type="button" onClick={onClose}
+            className="text-zinc-500 hover:text-zinc-200
+              text-xl leading-none">×</button>
+        </div>
+
+        <div className="overflow-y-auto p-4 space-y-5">
+
+          <div className="space-y-1.5">
+            <label className="text-xs text-zinc-400">
+              Phase name
+            </label>
+            <input
+              type="text"
+              value={label}
+              onChange={e => setLabel(e.target.value)}
+              placeholder="e.g. Weeks 1–4 Accumulation"
+              className="w-full h-10 rounded-xl bg-zinc-900
+                border border-zinc-700 px-3 text-sm
+                text-zinc-200 placeholder:text-zinc-600"
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            {[
+              { label: 'Start date', value: startDate,
+                set: setStartDate },
+              { label: 'End date', value: endDate,
+                set: setEndDate },
+            ].map(({ label, value, set }) => (
+              <div key={label} className="space-y-1.5">
+                <label className="text-xs text-zinc-400">
+                  {label}
+                </label>
+                <input
+                  type="date"
+                  value={value}
+                  onChange={e => set(e.target.value)}
+                  className="w-full h-10 rounded-xl
+                    bg-zinc-900 border border-zinc-700
+                    px-3 text-sm text-zinc-200"
+                />
+              </div>
+            ))}
+          </div>
+          {startDate > endDate && (
+            <p className="text-xs text-rose-400 -mt-2">
+              End date must be after start date
+            </p>
+          )}
+
+          <div className="space-y-1.5">
+            <label className="text-xs text-zinc-400">
+              Training mode
+            </label>
+            <div className="flex gap-2">
+              {(
+                [
+                  ['accumulation', 'Accumulation',
+                    'text-amber-400 border-amber-700 bg-amber-950/30'],
+                  ['maintenance', 'Maintenance',
+                    'text-zinc-300 border-zinc-600 bg-zinc-800/50'],
+                  ['deload', 'Deload',
+                    'text-sky-400 border-sky-700 bg-sky-950/30'],
+                ] as const
+              ).map(([val, lbl, activeClass]) => (
+                <button
+                  key={val}
+                  type="button"
+                  onClick={() =>
+                    setTrainingMode(val as TrainingPhaseMode)}
+                  className={`flex-1 h-10 rounded-xl text-xs
+                    font-medium border transition-colors ${
+                    trainingMode === val
+                      ? activeClass
+                      : 'bg-zinc-900 border-zinc-700
+                         text-zinc-500'
+                  }`}
+                >
+                  {lbl}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="space-y-1.5">
+            <label className="text-xs text-zinc-400">
+              Nutrition mode
+            </label>
+            <div className="flex gap-2">
+              {(
+                [
+                  ['deficit', 'Deficit',
+                    'text-rose-400 border-rose-700 bg-rose-950/30'],
+                  ['maintenance', 'Maintenance',
+                    'text-zinc-300 border-zinc-600 bg-zinc-800/50'],
+                  ['surplus', 'Surplus',
+                    'text-emerald-400 border-emerald-700 bg-emerald-950/30'],
+                ] as const
+              ).map(([val, lbl, activeClass]) => (
+                <button
+                  key={val}
+                  type="button"
+                  onClick={() =>
+                    setNutritionMode(val as NutritionPhaseMode)}
+                  className={`flex-1 h-10 rounded-xl text-xs
+                    font-medium border transition-colors ${
+                    nutritionMode === val
+                      ? activeClass
+                      : 'bg-zinc-900 border-zinc-700
+                         text-zinc-500'
+                  }`}
+                >
+                  {lbl}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {[
+            {
+              label: 'Training day calories',
+              value: caloriesTraining,
+              set: setCaloriesTraining,
+              hint: 'Days with a logged session',
+            },
+            {
+              label: 'Rest / LISS day calories',
+              value: caloriesRest,
+              set: setCaloriesRest,
+              hint: 'Non-training days',
+            },
+            {
+              label: 'Daily protein target (g)',
+              value: proteinG,
+              set: setProteinG,
+              hint: 'All days',
+            },
+          ].map(({ label, value, set, hint }) => (
+            <div key={label} className="space-y-1.5">
+              <label className="text-xs text-zinc-400">
+                {label}
+                <span className="text-zinc-600 ml-1.5">
+                  ({hint})
+                </span>
+              </label>
+              <input
+                type="number"
+                value={value}
+                onChange={e => set(e.target.value)}
+                placeholder="—"
+                className="w-full h-10 rounded-xl bg-zinc-900
+                  border border-zinc-700 px-3 text-sm
+                  text-zinc-200 placeholder:text-zinc-600"
+              />
+            </div>
+          ))}
+
+          <div className="space-y-1.5">
+            <label className="text-xs text-zinc-400">
+              Notes (optional)
+            </label>
+            <textarea
+              value={notes}
+              onChange={e => setNotes(e.target.value)}
+              rows={2}
+              placeholder="Any context for this phase..."
+              className="w-full rounded-xl bg-zinc-900
+                border border-zinc-700 px-3 py-2.5
+                text-sm text-zinc-200
+                placeholder:text-zinc-600 resize-none
+                focus:outline-none focus:border-zinc-500"
+            />
+          </div>
+
+          {isDeloadInDeficit && (
+            <div className="rounded-xl border
+              border-amber-800/40 bg-amber-950/20 px-3 py-2
+              text-xs text-amber-400/90 leading-snug">
+              Deload in deficit — recovery capacity is lower
+              than a maintenance deload. Compensate with
+              sleep and 200g+ protein daily.
+            </div>
+          )}
+
+        </div>
+
+        <div className="p-4 border-t border-zinc-800 shrink-0">
+          <button
+            type="button"
+            disabled={!canSave || busy}
+            onClick={() => void handleSave()}
+            className="w-full h-11 rounded-xl bg-amber-600
+              text-zinc-950 text-sm font-medium
+              disabled:opacity-40 hover:bg-amber-500
+              transition-colors"
+          >
+            {busy ? 'Saving…' : 'Save phase'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function PhaseGoalCard({
   phase,
   onDelete,
+  onEdit,
 }: {
   phase: PhaseGoal;
   onDelete: () => void;
+  onEdit: () => void;
 }) {
   const trainingColor =
     phase.trainingMode === 'accumulation'
@@ -1855,16 +2177,27 @@ function PhaseGoalCard({
             {phase.startDate} → {phase.endDate}
           </div>
         </div>
-        <button
-          type="button"
-          onClick={onDelete}
-          className="shrink-0 h-6 w-6 rounded-full
-            bg-zinc-800 border border-zinc-700
-            text-zinc-500 hover:text-rose-400
-            text-xs flex items-center justify-center"
-        >
-          ×
-        </button>
+        <div className="flex items-center gap-1 shrink-0">
+          <button
+            type="button"
+            onClick={onEdit}
+            className="h-6 px-2 rounded-md bg-zinc-800
+              border border-zinc-700 text-[10px] text-zinc-400
+              hover:text-amber-400 transition-colors"
+          >
+            Edit
+          </button>
+          <button
+            type="button"
+            onClick={onDelete}
+            className="h-6 w-6 rounded-full bg-zinc-800
+              border border-zinc-700 text-zinc-500
+              hover:text-rose-400 text-xs flex items-center
+              justify-center transition-colors"
+          >
+            ×
+          </button>
+        </div>
       </div>
 
       <div className="flex gap-2 flex-wrap">
