@@ -1981,8 +1981,7 @@ function PhaseEditSheet({
                     font-medium border transition-colors ${
                     trainingMode === val
                       ? activeClass
-                      : 'bg-zinc-900 border-zinc-700
-                         text-zinc-500'
+                      : 'bg-zinc-900 border-zinc-700 text-zinc-500'
                   }`}
                 >
                   {lbl}
@@ -2015,8 +2014,7 @@ function PhaseEditSheet({
                     font-medium border transition-colors ${
                     nutritionMode === val
                       ? activeClass
-                      : 'bg-zinc-900 border-zinc-700
-                         text-zinc-500'
+                      : 'bg-zinc-900 border-zinc-700 text-zinc-500'
                   }`}
                 >
                   {lbl}
