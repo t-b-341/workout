@@ -30,7 +30,11 @@ import type {
 export type DirtyRow = {
   id: string;
   table:
+    | 'templates'
     | 'prescriptions'
+    | 'phase_goals'
+    | 'block_templates'
+    | 'relationship_checkins'
     | 'session_logs'
     | 'set_logs'
     | 'cardio_logs'

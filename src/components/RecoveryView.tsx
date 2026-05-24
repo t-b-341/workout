@@ -756,7 +756,7 @@ function RelationshipCheckinCard({ date }: { date: string }) {
   const [wasDefensive, setWasDefensive] = useState<boolean | null>(null);
   const [stonewalled, setStonewalled] = useState<boolean | null>(null);
   const [horsemenNote, setHorsemenNote] = useState('');
-  const [partnerSemedDistressed, setPartnerSemedDistressed] = useState<boolean | null>(null);
+  const [partnerSeemedDistressed, setPartnerSeemedDistressed] = useState<boolean | null>(null);
   const [respondedWithCalm, setRespondedWithCalm] = useState<boolean | null>(null);
   const [hadConflict, setHadConflict] = useState<boolean | null>(null);
   const [conflictRepaired, setConflictRepaired] = useState<
@@ -786,7 +786,7 @@ function RelationshipCheckinCard({ date }: { date: string }) {
     setWasDefensive(existing?.wasDefensive ?? null);
     setStonewalled(existing?.stonewalled ?? null);
     setHorsemenNote(existing?.horsemenNote ?? '');
-    setPartnerSemedDistressed(existing?.partnerSemedDistressed ?? null);
+    setPartnerSeemedDistressed(existing?.partnerSeemedDistressed ?? null);
     setRespondedWithCalm(existing?.respondedWithCalm ?? null);
     setHadConflict(existing?.hadConflict ?? null);
     setConflictRepaired(existing?.conflictRepaired ?? null);
@@ -827,7 +827,7 @@ function RelationshipCheckinCard({ date }: { date: string }) {
         wasDefensive: showHorsemen ? wasDefensive : null,
         stonewalled: showHorsemen ? stonewalled : null,
         horsemenNote,
-        partnerSemedDistressed,
+        partnerSeemedDistressed,
         respondedWithCalm,
         hadConflict,
         conflictRepaired: hadConflict ? (conflictRepaired ?? null) : null,
@@ -1152,9 +1152,9 @@ function RelationshipCheckinCard({ date }: { date: string }) {
                   </p>
                   {[
                     {
-                      key: 'partnerSemedDistressed',
-                      val: partnerSemedDistressed,
-                      set: setPartnerSemedDistressed,
+                      key: 'partnerSeemedDistressed',
+                      val: partnerSeemedDistressed,
+                      set: setPartnerSeemedDistressed,
                       label: 'Did she seem distressed or dysregulated?',
                       hint: 'May be trauma response or mood — not necessarily about you',
                     },

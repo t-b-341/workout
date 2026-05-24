@@ -17,6 +17,7 @@ import {
   flushDirty,
   pullAll,
   seedRemotePrescriptionsIfEmpty,
+  seedRemoteTemplatesIfEmpty,
   setCachedUserId,
   subscribeRealtime,
 } from '@/lib/sync';
@@ -93,6 +94,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         await ensureLocalSeed();
         await backfillSessionDurations();
         await seedRemotePrescriptionsIfEmpty(user.id);
+        await seedRemoteTemplatesIfEmpty(user.id);
         setSyncing(true);
         await pullAll({ full: true });
         await repairOpeningPrBaselineSession();

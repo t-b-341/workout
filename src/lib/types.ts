@@ -451,7 +451,7 @@ export type RelationshipCheckin = {
   conflictRepaired: boolean | null;
   tookResponsibility: boolean | null;
 
-  partnerSemedDistressed: boolean | null;
+  partnerSeemedDistressed: boolean | null;
   respondedWithCalm: boolean | null;
 
   isWeeklyReflection: boolean;

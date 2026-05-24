@@ -34,36 +34,13 @@ import type {
 
 export type RemoteTable = DirtyRow['table'];
 
-/** Dexie-only tables (no Supabase sync / dirty queue). */
-export type LocalOnlyTable =
-  | 'phase_goals'
-  | 'block_templates'
-  | 'relationship_checkins';
-
-const LOCAL_ONLY_TO_DEXIE: Record<
-  LocalOnlyTable,
-  'phase_goals' | 'block_templates' | 'relationship_checkins'
-> = {
-  phase_goals: 'phase_goals',
-  block_templates: 'block_templates',
-  relationship_checkins: 'relationship_checkins',
-};
-
-function isLocalOnlyTable(table: string): table is LocalOnlyTable {
-  return (
-    table === 'phase_goals'
-    || table === 'block_templates'
-    || table === 'relationship_checkins'
-  );
-}
-
 /** Optional remote catalog tables (when present in Postgres). */
-type CatalogPullTable = 'templates' | 'lifts';
+type CatalogPullTable = 'lifts';
 
 /** Tables included in watermark pull; dirty flush uses RemoteTable only. */
 type SyncPullTable = RemoteTable | CatalogPullTable;
 
-const CATALOG_PULL_TABLES = new Set<CatalogPullTable>(['templates', 'lifts']);
+const CATALOG_PULL_TABLES = new Set<CatalogPullTable>(['lifts']);
 
 function isCatalogPullTable(table: SyncPullTable): table is CatalogPullTable {
   return CATALOG_PULL_TABLES.has(table as CatalogPullTable);
@@ -118,8 +95,12 @@ function withUserIdRemote(payload: Record<string, unknown>, userId: string | nul
   return userId ? { ...payload, user_id: userId } : payload;
 }
 const FLUSH_TABLE_TIER: Record<RemoteTable, number> = {
+  templates: 0,
   prescriptions: 0,
+  phase_goals: 1,
+  block_templates: 1,
   user_goals: 1,
+  relationship_checkins: 2,
   session_logs: 1,
   set_logs: 2,
   cardio_logs: 2,
@@ -176,6 +157,9 @@ const TABLE_TO_LOCAL: Record<SyncPullTable, keyof ReturnType<typeof getDb> & str
   body_readiness_logs: 'body_readiness_logs',
   supplement_logs: 'supplement_logs',
   user_goals: 'user_goals',
+  phase_goals: 'phase_goals',
+  block_templates: 'block_templates',
+  relationship_checkins: 'relationship_checkins',
 };
 
 /**
@@ -203,6 +187,9 @@ const ALL_TABLES: SyncPullTable[] = [
   'injury_episodes',
   'supplement_logs',
   'user_goals',
+  'phase_goals',
+  'block_templates',
+  'relationship_checkins',
 ];
 
 const WATERMARK_PREFIX = 'sync:watermark:';
@@ -249,6 +236,28 @@ export async function seedRemotePrescriptionsIfEmpty(userId: string) {
   if (insertErr) throw insertErr;
 }
 
+/** First-time per-user seed of session templates on the server. */
+export async function seedRemoteTemplatesIfEmpty(userId: string) {
+  const supabase = createClient();
+  const { count, error } = await supabase
+    .from('templates')
+    .select('id', { count: 'exact', head: true });
+  if (error) {
+    if (isMissingRelationError(error)) return;
+    throw error;
+  }
+  if ((count ?? 0) > 0) return;
+
+  const rows = TEMPLATES.map((t) => ({
+    ...toRemote(t as unknown as Record<string, unknown>),
+    user_id: userId,
+  }));
+  const { error: insertErr } = await supabase
+    .from('templates')
+    .upsert(rows, { onConflict: 'id', ignoreDuplicates: true });
+  if (insertErr) throw insertErr;
+}
+
 type RowPayload = Record<string, unknown>;
 
 async function mirrorDelete(table: SyncPullTable, id: string) {
@@ -266,6 +275,15 @@ async function persistRows(table: SyncPullTable, rows: RowPayload[]) {
       return;
     case 'lifts':
       await db.lifts.bulkPut(rows.map((r) => fromRemote<Lift>(r)));
+      return;
+    case 'phase_goals':
+      await db.phase_goals.bulkPut(rows.map((r) => fromRemote<PhaseGoal>(r)));
+      return;
+    case 'block_templates':
+      await db.block_templates.bulkPut(rows.map((r) => fromRemote<BlockTemplate>(r)));
+      return;
+    case 'relationship_checkins':
+      await db.relationship_checkins.bulkPut(rows.map((r) => fromRemote<RelationshipCheckin>(r)));
       return;
     case 'prescriptions':
       await db.prescriptions.bulkPut(rows.map((r) => fromRemote<Prescription>(r)));
@@ -475,27 +493,13 @@ export async function restoreDeletedRow(table: RemoteTable, snapshot: Record<str
 }
 
 export async function localUpsert<T extends { id: string }>(
-  table: RemoteTable | LocalOnlyTable,
+  table: RemoteTable,
   row: T,
   opts: LocalWriteOpts = {},
 ) {
   const authUserId = await getAuthUserId();
   const rowWithUser = withUserIdLocal(row, authUserId);
   const db = getDb();
-  if (isLocalOnlyTable(table)) {
-    switch (table) {
-      case 'phase_goals':
-        await db.phase_goals.put(rowWithUser as unknown as PhaseGoal);
-        break;
-      case 'block_templates':
-        await db.block_templates.put(rowWithUser as unknown as BlockTemplate);
-        break;
-      case 'relationship_checkins':
-        await db.relationship_checkins.put(rowWithUser as unknown as RelationshipCheckin);
-        break;
-    }
-    return;
-  }
   const localTable = db[TABLE_TO_LOCAL[table]];
   // @ts-expect-error dynamic table access
   await localTable.put(rowWithUser);
@@ -503,15 +507,11 @@ export async function localUpsert<T extends { id: string }>(
 }
 
 export async function localDelete(
-  table: RemoteTable | LocalOnlyTable,
+  table: RemoteTable,
   id: string,
   opts: LocalWriteOpts = {},
 ) {
   const db = getDb();
-  if (isLocalOnlyTable(table)) {
-    await db[LOCAL_ONLY_TO_DEXIE[table]].delete(id);
-    return;
-  }
   const localTable = db[TABLE_TO_LOCAL[table]];
   // @ts-expect-error dynamic table access
   const row = await localTable.get(id);
