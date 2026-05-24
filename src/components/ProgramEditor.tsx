@@ -1,13 +1,15 @@
 'use client';
 
 import Link from 'next/link';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import {
   useAllBodyweight,
   useAllBlockTemplates,
   useAllPhaseGoals,
   useActivePhaseGoal,
+  useNutritionSummaryForDateRange,
+  useRecentNutritionAverages,
   useAllReadiness,
   useAllSets,
   useLifts,
@@ -151,6 +153,23 @@ export function ProgramEditor() {
   const [setIntentReviewRows, setSetIntentReviewRows] = useState<SetIntentReviewRow[]>([]);
   const phaseGoals = useAllPhaseGoals();
   const activePhase = useActivePhaseGoal();
+  const todayStr = todayIso();
+
+  const phaseProgress = activePhase
+    ? (() => {
+        const start = new Date(activePhase.startDate).getTime();
+        const end = new Date(activePhase.endDate).getTime();
+        const now = new Date(todayStr).getTime();
+        const totalDays = Math.round((end - start) / 86400000) + 1;
+        const elapsed = Math.round((now - start) / 86400000) + 1;
+        const remaining = Math.max(0, totalDays - elapsed);
+        const pct = Math.min(100, Math.round((elapsed / totalDays) * 100));
+        const weekNum = Math.ceil(elapsed / 7);
+        const totalWeeks = Math.ceil(totalDays / 7);
+        return { elapsed, remaining, pct, weekNum, totalWeeks };
+      })()
+    : null;
+
   useAllBlockTemplates();
   const [showPhasePanel, setShowPhasePanel] = useState(false);
   const [showNewBlock, setShowNewBlock] = useState(false);
@@ -839,6 +858,29 @@ export function ProgramEditor() {
                   </>
                 )}
               </div>
+              {phaseProgress && (
+                <div className="space-y-1 mt-1">
+                  <div className="flex justify-between text-[10px]
+                    text-zinc-600">
+                    <span>
+                      Week {phaseProgress.weekNum} of {phaseProgress.totalWeeks}
+                    </span>
+                    <span>{phaseProgress.remaining} days remaining</span>
+                  </div>
+                  <div className="h-1 rounded-full bg-zinc-800 overflow-hidden">
+                    <div
+                      className={`h-full rounded-full transition-all ${
+                        activePhase.trainingMode === 'deload'
+                          ? 'bg-sky-500'
+                          : activePhase.nutritionMode === 'deficit'
+                            ? 'bg-rose-500'
+                            : 'bg-amber-500'
+                      }`}
+                      style={{ width: `${phaseProgress.pct}%` }}
+                    />
+                  </div>
+                </div>
+              )}
               {activePhase.trainingMode === 'deload' &&
                 activePhase.nutritionMode === 'deficit' && (
                 <div className="text-[10px] text-amber-500/80
@@ -1774,6 +1816,21 @@ function PhaseGoalCard({
     phase.trainingMode === 'deload' &&
     phase.nutritionMode === 'deficit';
 
+  const nutritionSummary = useNutritionSummaryForDateRange(
+    phase.startDate,
+    phase.endDate,
+  );
+
+  const adherencePct =
+    nutritionSummary?.avgActualCalories != null &&
+    phase.caloriesTraining != null &&
+    phase.caloriesTraining > 0
+      ? Math.round(
+          (nutritionSummary.avgActualCalories /
+            phase.caloriesTraining) * 100
+        )
+      : null;
+
   return (
     <div className={`rounded-xl border p-3 space-y-2 ${
       phase.active
@@ -1837,6 +1894,44 @@ function PhaseGoalCard({
         </div>
       )}
 
+      {nutritionSummary && nutritionSummary.trainingDays > 0 && (
+        <div className="space-y-1 pt-1 border-t border-zinc-800/50">
+          <div className="flex justify-between text-[10px]
+            text-zinc-600">
+            <span>
+              Avg {nutritionSummary.avgActualCalories} kcal
+              · {nutritionSummary.avgProtein}g protein
+              ({nutritionSummary.trainingDays} training days logged)
+            </span>
+            {adherencePct != null && (
+              <span className={
+                adherencePct >= 95
+                  ? 'text-emerald-400'
+                  : adherencePct >= 85
+                    ? 'text-amber-400'
+                    : 'text-rose-400'
+              }>
+                {adherencePct}% adherence
+              </span>
+            )}
+          </div>
+          {adherencePct != null && (
+            <div className="h-0.5 rounded-full bg-zinc-800">
+              <div
+                className={`h-full rounded-full ${
+                  adherencePct >= 95
+                    ? 'bg-emerald-500'
+                    : adherencePct >= 85
+                      ? 'bg-amber-500'
+                      : 'bg-rose-500'
+                }`}
+                style={{ width: `${Math.min(100, adherencePct)}%` }}
+              />
+            </div>
+          )}
+        </div>
+      )}
+
       {isDeloadInDeficit && (
         <div className="text-[10px] text-amber-500/80
           border border-amber-800/30 rounded-lg px-2 py-1
@@ -1862,13 +1957,39 @@ function NewBlockSheet({
   onClose: () => void;
   onSave: (block: BlockTemplate) => Promise<void>;
 }) {
+  const recentAvg = useRecentNutritionAverages();
+
+  const defaultMaintenance = recentAvg?.avgTrainingCalories
+    ?? 2900;
+  const defaultDeficit = Math.max(
+    1800,
+    defaultMaintenance - 450,
+  );
+  const defaultProtein = recentAvg?.avgProtein ?? 200;
+
   const [anchorDate, setAnchorDate] = useState(todayIso());
-  const [caloriesDeficit, setCaloriesDeficit] = useState(2500);
+  const [caloriesDeficit, setCaloriesDeficit] =
+    useState(defaultDeficit);
   const [caloriesMaintenance, setCaloriesMaintenance] =
-    useState(2900);
-  const [caloriesRest, setCaloriesRest] = useState(2300);
-  const [proteinG, setProteinG] = useState(200);
+    useState(defaultMaintenance);
+  const [caloriesRest, setCaloriesRest] = useState(
+    Math.round(defaultMaintenance * 0.82)
+  );
+  const [proteinG, setProteinG] = useState(defaultProtein);
   const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    if (!recentAvg?.avgTrainingCalories) return;
+    const maintenance = recentAvg.avgTrainingCalories;
+    const deficit = Math.max(1800, maintenance - 450);
+    setCaloriesMaintenance(maintenance);
+    setCaloriesDeficit(deficit);
+    setCaloriesRest(Math.round(maintenance * 0.82));
+    if (recentAvg.avgProtein) {
+      setProteinG(recentAvg.avgProtein);
+    }
+  }, [recentAvg?.avgTrainingCalories,
+      recentAvg?.avgProtein]);
 
   const preview = buildTenWeekBlock(
     `block-${anchorDate}`,
@@ -1960,6 +2081,11 @@ function NewBlockSheet({
                   bg-zinc-900 border border-zinc-700
                   px-3 text-sm text-zinc-200"
               />
+              {recentAvg?.avgTrainingCalories && (
+                <p className="text-[10px] text-zinc-600">
+                  Based on your last 21 days of training day logs
+                </p>
+              )}
             </div>
           ))}
 

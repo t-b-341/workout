@@ -294,6 +294,89 @@ export function useActivePhaseGoal(): PhaseGoal | undefined {
   );
 }
 
+export function useNutritionSummaryForDateRange(
+  startDate: string,
+  endDate: string,
+): {
+  trainingDays: number;
+  avgActualCalories: number | null;
+  adherencePct: number | null;
+  avgProtein: number | null;
+} | undefined {
+  return useLiveQuery(async () => {
+    const logs = await getDb().nutrition_logs
+      .where('date')
+      .between(startDate, endDate, true, true)
+      .toArray();
+    const sessions = await getDb().session_logs
+      .where('date')
+      .between(startDate, endDate, true, true)
+      .toArray();
+    const trainingDates = new Set(sessions.map(s => s.date));
+    const trainingLogs = logs.filter(
+      n => trainingDates.has(n.date) && (n.caloriesActual ?? 0) > 0
+    );
+    if (trainingLogs.length === 0) return {
+      trainingDays: 0,
+      avgActualCalories: null,
+      adherencePct: null,
+      avgProtein: null,
+    };
+    const avgCal = Math.round(
+      trainingLogs.reduce((s, n) => s + (n.caloriesActual ?? 0), 0)
+        / trainingLogs.length
+    );
+    const avgPro = Math.round(
+      trainingLogs.reduce((s, n) => s + (n.proteinActualG ?? 0), 0)
+        / trainingLogs.length
+    );
+    return {
+      trainingDays: trainingLogs.length,
+      avgActualCalories: avgCal,
+      adherencePct: null,
+      avgProtein: avgPro,
+    };
+  }, [startDate, endDate]);
+}
+
+export function useRecentNutritionAverages(
+  days = 21,
+): {
+  avgTrainingCalories: number | null;
+  avgProtein: number | null;
+} | undefined {
+  return useLiveQuery(async () => {
+    const cutoff = new Date();
+    cutoff.setDate(cutoff.getDate() - days);
+    const cutoffIso = cutoff.toISOString().slice(0, 10);
+    const logs = await getDb().nutrition_logs
+      .where('date').aboveOrEqual(cutoffIso).toArray();
+    const sessions = await getDb().session_logs
+      .where('date').aboveOrEqual(cutoffIso).toArray();
+    const trainingDates = new Set(sessions.map(s => s.date));
+    const trainingLogs = logs.filter(
+      n => trainingDates.has(n.date) &&
+           (n.caloriesActual ?? 0) > 0
+    );
+    if (trainingLogs.length === 0) return {
+      avgTrainingCalories: null,
+      avgProtein: null,
+    };
+    return {
+      avgTrainingCalories: Math.round(
+        trainingLogs.reduce(
+          (s, n) => s + (n.caloriesActual ?? 0), 0
+        ) / trainingLogs.length
+      ),
+      avgProtein: Math.round(
+        trainingLogs.reduce(
+          (s, n) => s + (n.proteinActualG ?? 0), 0
+        ) / trainingLogs.length
+      ),
+    };
+  }, [days]);
+}
+
 export function useAllBlockTemplates(): BlockTemplate[] | undefined {
   return useLiveQuery(
     () => getDb().block_templates

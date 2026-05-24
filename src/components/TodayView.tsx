@@ -8,6 +8,7 @@ import {
   useAllSessions,
   useAllSets,
   useLifts,
+  useActivePhaseGoal,
   useMacroTrendAdvice,
   usePrescriptions,
   useReadinessForSession,
@@ -67,6 +68,24 @@ import { QuickSessionView } from './QuickSessionView';
 
 const MINI_TEMPLATE_IDS = new Set(['L2', 'U3', 'L3']);
 
+async function isPhaseTransitionDismissed(
+  phaseId: string,
+): Promise<boolean> {
+  const key = `phase_transition_seen:${phaseId}`;
+  const row = await getDb().meta.get(key);
+  return row != null;
+}
+
+async function dismissPhaseTransition(
+  phaseId: string,
+): Promise<void> {
+  const key = `phase_transition_seen:${phaseId}`;
+  await getDb().meta.put({
+    key,
+    value: new Date().toISOString(),
+  });
+}
+
 export function TodayView() {
   const templates = useTemplates();
   const lifts = useLifts();
@@ -97,6 +116,19 @@ export function TodayView() {
   const activeId = validatedChosenTemplateId ?? suggested?.id ?? null;
   const activeTemplate = programTemplates.find((t) => t.id === activeId);
   const session = useTodaySession((activeId ?? 'U1') as TemplateId);
+  const activePhase = useActivePhaseGoal();
+  const todayStr = todayIso();
+  const isNewPhaseDay = activePhase?.startDate === todayStr;
+  const [phaseTransitionDismissed, setPhaseTransitionDismissed] =
+    useState(true);
+
+  useEffect(() => {
+    if (!activePhase || !isNewPhaseDay) return;
+    isPhaseTransitionDismissed(activePhase.id).then(seen => {
+      setPhaseTransitionDismissed(seen);
+    });
+  }, [activePhase?.id, isNewPhaseDay]);
+
   const prescriptions = usePrescriptions((activeId ?? undefined) as TemplateId | undefined);
   const favoriteLiftIds = useFavoriteLiftIds();
   const displayPrescriptions = useMemo(
@@ -261,6 +293,13 @@ export function TodayView() {
     !session.completedAt &&
     !recoveryRated;
 
+  const isTrainingDay = session.mode !== 'skip';
+
+  const handleDismissPhaseTransition = async () => {
+    if (activePhase) await dismissPhaseTransition(activePhase.id);
+    setPhaseTransitionDismissed(true);
+  };
+
   async function handlePerceivedRecovery(n: number | null) {
     if (!session) return;
     const row: SessionLog = { ...session, perceivedRecovery: n };
@@ -339,6 +378,106 @@ export function TodayView() {
       />
       <MindfulnessTodayCard session={session} />
       <WorkdayCard date={todayIso()} />
+      {isNewPhaseDay && !phaseTransitionDismissed && activePhase && (
+        <div className="rounded-2xl border border-amber-700/50
+          bg-amber-950/20 px-4 py-3 space-y-1.5">
+          <div className="flex items-start justify-between gap-2">
+            <div className="space-y-0.5">
+              <div className="text-xs uppercase tracking-wide
+                text-amber-400 font-medium">
+                New phase started today
+              </div>
+              <div className="text-sm font-medium text-zinc-200">
+                {activePhase.label}
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => void handleDismissPhaseTransition()}
+              className="shrink-0 text-zinc-600 hover:text-zinc-400
+                text-lg leading-none mt-0.5"
+              aria-label="Dismiss"
+            >
+              ×
+            </button>
+          </div>
+          <div className="flex gap-3 text-xs text-zinc-400">
+            <span className={
+              activePhase.trainingMode === 'accumulation'
+                ? 'text-amber-400'
+                : activePhase.trainingMode === 'deload'
+                  ? 'text-sky-400' : 'text-zinc-400'
+            }>
+              {activePhase.trainingMode}
+            </span>
+            <span>·</span>
+            <span className={
+              activePhase.nutritionMode === 'deficit'
+                ? 'text-rose-400'
+                : activePhase.nutritionMode === 'surplus'
+                  ? 'text-emerald-400' : 'text-zinc-400'
+            }>
+              {activePhase.nutritionMode}
+            </span>
+            {activePhase.caloriesTraining && (
+              <>
+                <span>·</span>
+                <span>
+                  {activePhase.caloriesTraining.toLocaleString()} kcal
+                  training days
+                </span>
+              </>
+            )}
+            {activePhase.proteinG && (
+              <>
+                <span>·</span>
+                <span>{activePhase.proteinG}g protein</span>
+              </>
+            )}
+          </div>
+          {activePhase.trainingMode === 'deload' &&
+            activePhase.nutritionMode === 'deficit' && (
+            <div className="text-[10px] text-amber-500/80
+              border-t border-amber-800/30 pt-1.5">
+              Deload in deficit — prioritize sleep and protein
+              over session length targets this week.
+            </div>
+          )}
+        </div>
+      )}
+      {activePhase && (
+        <div className="rounded-xl border border-zinc-800
+          bg-zinc-900/50 px-3 py-2 flex items-center
+          justify-between">
+          <div className="text-xs text-zinc-500">
+            <span className={
+              activePhase.trainingMode === 'accumulation'
+                ? 'text-amber-400'
+                : activePhase.trainingMode === 'deload'
+                  ? 'text-sky-400'
+                  : 'text-zinc-400'
+            }>
+              {activePhase.trainingMode}
+            </span>
+            {' · '}
+            <span className={
+              activePhase.nutritionMode === 'deficit'
+                ? 'text-rose-400'
+                : activePhase.nutritionMode === 'surplus'
+                  ? 'text-emerald-400'
+                  : 'text-zinc-400'
+            }>
+              {activePhase.nutritionMode}
+            </span>
+          </div>
+          {activePhase.caloriesTraining && (
+            <div className="text-xs font-mono text-zinc-400">
+              {activePhase.caloriesTraining.toLocaleString()} kcal
+              {isTrainingDay ? ' today' : ''}
+            </div>
+          )}
+        </div>
+      )}
       <SupplementsCard date={todayIso()} />
       <DayNotesCard date={todayIso()} />
       {(weeklyFlags.bodyweightOverdue || weeklyFlags.measurementsOverdue) && (
