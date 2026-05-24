@@ -8,7 +8,7 @@ import {
   importCompletedSession,
   PP_OHP_WORKOUT_MAY_15,
 } from '@/lib/importCompletedSession';
-import { initDb } from '@/lib/db';
+import { getDb, initDb } from '@/lib/db';
 import { AppShellImportTrigger } from '@/components/AppShellImportTrigger';
 import { shellMaxClass, useLayoutMode } from '@/lib/layoutMode';
 import {
@@ -30,6 +30,27 @@ declare global {
       importCompletedSession: typeof importCompletedSession;
       PP_OHP_WORKOUT_MAY_15: typeof PP_OHP_WORKOUT_MAY_15;
     };
+  }
+}
+
+async function backfillSessionDurations() {
+  const db = getDb();
+  const sessions = await db.session_logs
+    .filter((s) =>
+      s.startedAt != null
+      && s.completedAt != null
+      && (s.durationMin == null || s.durationMin === 0),
+    )
+    .toArray();
+
+  for (const s of sessions) {
+    const startMs = Date.parse(s.startedAt!);
+    const endMs = Date.parse(s.completedAt!);
+    if (Number.isNaN(startMs) || Number.isNaN(endMs)) continue;
+    const durationMin = Math.round((endMs - startMs) / 60000);
+    if (durationMin > 0 && durationMin < 600) {
+      await db.session_logs.update(s.id, { durationMin });
+    }
   }
 }
 
@@ -70,6 +91,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         // Allow the browser client to register the session on its headers.
         await new Promise((resolve) => setTimeout(resolve, 100));
         await ensureLocalSeed();
+        await backfillSessionDurations();
         await seedRemotePrescriptionsIfEmpty(user.id);
         setSyncing(true);
         await pullAll({ full: true });

@@ -52,6 +52,7 @@ import {
 } from './types';
 import { TRAINING_PLAN_GOALS, type TrainingPlanGoalRow } from './trainingPlanGoals';
 import { deriveSessionStatus } from './sessionStatus';
+import { currentValueForGoal, isGoalAchieved } from './liftingGoals';
 import { todayIso } from './time';
 
 /** Export payload schema — bump when top-level export shape changes. */
@@ -126,6 +127,14 @@ export type ExportedNutritionLog = NutritionLog & {
 export type ExportedCardioLog = CardioLog & {
   avgHrBpm: number | null;
   heartRateZone: 'zone1' | 'zone2' | 'zone3' | 'zone4' | 'zone5' | null;
+};
+
+export type ExportedUserGoal = UserGoal & {
+  currentValue: number | null;
+  pct: number;
+  lbsToGo: number | null;
+  repsToGo: number | null;
+  done: boolean;
 };
 
 /** Phase goal row with export-time context for analysis importers. */
@@ -290,8 +299,8 @@ export type FullLocalExport = {
   body_readiness_logs: BodyReadinessLog[];
   /** Morning RMSSD readings derived from `readiness_logs` (same data as in-app HRV history). */
   hrv_logs: ExportedHrvLog[];
-  /** User-defined lifting goals from `user_goals` Dexie table. */
-  user_goals: UserGoal[];
+  /** User-defined lifting goals with export-time progress. */
+  user_goals: ExportedUserGoal[];
   /** Work shift checklist entries from Dexie meta (`workout:workday:v1:*`). */
   workday_logs: ReturnType<typeof buildWorkdayLogsExport>;
   /** Supplement checklist rows from synced `supplement_logs` Dexie table. */
@@ -577,10 +586,10 @@ export async function buildFullLocalExport(opts?: FullLocalExportOptions): Promi
   });
 
   const dayTypeByDate = new Map<string, NutritionDayType>(
-    nutrition_logs.map((n: NutritionLog) => [n.date, dayTypeOf(n, session_logs_out, cardio_logs)] as const),
+    nutrition_logs.map((n: NutritionLog) => [n.date, dayTypeOf(n, session_logs, cardio_logs)] as const),
   );
   const nutrition_logs_with_day = nutrition_logs.map((n: NutritionLog) => {
-    const resolvedDayType = dayTypeOf(n, session_logs_out, cardio_logs);
+    const resolvedDayType = dayTypeOf(n, session_logs, cardio_logs);
     const resolvedTargets = resolveNutritionTargetsForDate({
       date: n.date,
       resolvedDayType,
@@ -662,10 +671,42 @@ export async function buildFullLocalExport(opts?: FullLocalExportOptions): Promi
     mesoEndDate: opts?.mesoEndDate,
   });
 
-  const user_goals = (await db.user_goals.toArray())
+  const userGoalsRaw = (await db.user_goals.toArray())
     .sort((a, b) =>
       (a.createdAt ?? '').localeCompare(b.createdAt ?? ''),
     );
+
+  const user_goals: ExportedUserGoal[] = userGoalsRaw.map((goal: UserGoal) => {
+    const current = currentValueForGoal(goal, set_logs, bodyweight_logs);
+    const done = isGoalAchieved(goal, current);
+    const lbsToGo =
+      goal.metric !== 'bodyweight' && !done
+        ? Math.max(0, goal.targetValue - current)
+        : goal.metric === 'bodyweight' && !done
+          ? Math.max(0, current - goal.targetValue)
+          : 0;
+    const repsToGo =
+      goal.metric === 'reps' && !done
+        ? Math.max(0, goal.targetValue - current)
+        : null;
+    const pct =
+      goal.targetValue > 0
+        ? Math.min(100, Math.round(
+            goal.metric === 'bodyweight'
+              ? ((goal.baselineValue - current)
+                / Math.max(1, goal.baselineValue - goal.targetValue)) * 100
+              : (current / goal.targetValue) * 100,
+          ))
+        : 0;
+    return {
+      ...goal,
+      currentValue: current > 0 ? current : null,
+      pct,
+      lbsToGo: lbsToGo > 0 ? lbsToGo : null,
+      repsToGo,
+      done,
+    };
+  });
 
   const today = todayIso();
   const phase_goals_export: ExportedPhaseGoal[] = phase_goals.map((p: PhaseGoal) => {
