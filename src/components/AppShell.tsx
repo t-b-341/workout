@@ -91,7 +91,17 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         await seedRemotePrescriptionsIfEmpty(user.id);
         await seedRemoteTemplatesIfEmpty(user.id);
         if (!cancelled) setSyncing(true);
-        await pullAll({ full: true });
+        await Promise.race([
+          pullAll({ full: true }),
+          new Promise<void>((_, reject) =>
+            setTimeout(
+              () => reject(new Error('Sync timed out — continuing offline')),
+              15_000,
+            ),
+          ),
+        ]).catch((err) => {
+          console.warn('[AppShell] pullAll failed or timed out:', err);
+        });
         await repairOpeningPrBaselineSession();
         await backfillCardioFromSets();
         await flushDirty();
@@ -182,22 +192,26 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
-  if (error) {
-    return (
-      <main className="min-h-dvh p-6 flex flex-col gap-3">
-        <h1 className="text-xl font-semibold">Sync error</h1>
-        <pre className="text-sm text-red-400 whitespace-pre-wrap">{error}</pre>
-        <button onClick={() => location.reload()} className="rounded-lg bg-zinc-800 h-11 px-4">Retry</button>
-      </main>
-    );
-  }
-
   if (!dbReady || !ready) {
     return (
       <main className="min-h-dvh flex items-center justify-center">
-        <div className="text-zinc-400 text-sm">
-          {!dbReady ? 'Loading…' : syncing ? 'Syncing…' : 'Loading…'}
-        </div>
+        {error ? (
+          <div className="space-y-3 text-center px-6">
+            <div className="text-rose-400 text-sm font-medium">Failed to load</div>
+            <div className="text-zinc-500 text-xs leading-snug max-w-xs">{error}</div>
+            <button
+              type="button"
+              onClick={() => window.location.reload()}
+              className="h-9 px-4 rounded-xl bg-zinc-800 border border-zinc-700 text-sm text-zinc-300 hover:text-zinc-100"
+            >
+              Retry
+            </button>
+          </div>
+        ) : (
+          <div className="text-zinc-400 text-sm">
+            {!dbReady ? 'Loading…' : syncing ? 'Syncing…' : 'Loading…'}
+          </div>
+        )}
       </main>
     );
   }
