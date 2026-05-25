@@ -194,15 +194,15 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   if (!dbReady || !ready) {
     return (
-      <main className="min-h-dvh flex items-center justify-center">
+      <main className="min-h-dvh flex items-center justify-center p-6">
         {error ? (
-          <div className="space-y-3 text-center px-6">
+          <div className="space-y-4 text-center max-w-sm">
             <div className="text-rose-400 text-sm font-medium">Failed to load</div>
-            <div className="text-zinc-500 text-xs leading-snug max-w-xs">{error}</div>
+            <div className="text-zinc-500 text-xs leading-snug">{error}</div>
             <button
               type="button"
               onClick={() => window.location.reload()}
-              className="h-9 px-4 rounded-xl bg-zinc-800 border border-zinc-700 text-sm text-zinc-300 hover:text-zinc-100"
+              className="h-10 px-6 rounded-xl bg-zinc-800 border border-zinc-700 text-sm text-zinc-300 hover:text-zinc-100 transition-colors"
             >
               Retry
             </button>

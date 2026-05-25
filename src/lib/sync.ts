@@ -402,23 +402,28 @@ async function persistRows(table: SyncPullTable, rows: RowPayload[]) {
 export async function pullAll(opts: { full?: boolean } = {}) {
   const supabase = createClient();
   const db = getDb();
-  const pullErrors: string[] = [];
+  const pullErrors: Array<{ table: string; error: unknown }> = [];
 
   for (const table of ALL_TABLES) {
     try {
       const watermark = opts.full ? null : await getWatermark(table);
-
       let q = supabase.from(table).select('*');
       if (watermark) q = q.gt('updated_at', watermark);
       const { data, error } = await q;
+
       if (error) {
-        if (isCatalogPullTable(table) && isMissingRelationError(error)) continue;
-        throw error;
+        if (
+          isCatalogPullTable(table) &&
+          isMissingRelationError(error)
+        ) {
+          continue;
+        }
+        console.warn(`[pullAll] ${table} error:`, error.message);
+        pullErrors.push({ table, error });
+        continue;
       }
 
       if (opts.full && !watermark) {
-        // First-ever pull (or forced full refresh): clear before rewrite so
-        // server-deletes propagate.
         const localTable = db[TABLE_TO_LOCAL[table]];
         // @ts-expect-error dynamic table access
         await localTable.clear();
@@ -427,7 +432,6 @@ export async function pullAll(opts: { full?: boolean } = {}) {
       const rows = (data ?? []) as RowPayload[];
       if (rows.length > 0) {
         await persistRows(table, rows);
-        // Track the highest updated_at we just stored.
         let max = watermark ?? '';
         for (const r of rows) {
           const ts = (r.updated_at as string | undefined) ?? '';
@@ -435,19 +439,16 @@ export async function pullAll(opts: { full?: boolean } = {}) {
         }
         if (max) await setWatermark(table, max);
       } else if (!watermark) {
-        // Even an empty first pull should set a watermark so subsequent
-        // `pullAll` calls go incremental.
         await setWatermark(table, new Date(0).toISOString());
       }
     } catch (err) {
-      console.warn(`[pullAll] failed to pull table '${table}':`, err);
-      pullErrors.push(table);
+      console.warn(`[pullAll] ${table} threw:`, err);
+      pullErrors.push({ table, error: err });
     }
   }
 
-  if (pullErrors.length > 0) {
-    console.warn('[pullAll] tables with pull errors:', pullErrors);
-  }
+  // pullAll resolves even with partial errors — the app
+  // loads in a degraded state and syncs on next attempt.
 }
 
 /** Mark a row dirty so the next flush pushes it. */
