@@ -15,7 +15,7 @@
 // Bump CACHE_VERSION to force clients to drop the old shell cache after
 // a deploy that changes shell behavior.
 
-const CACHE_VERSION = 'v2';
+const CACHE_VERSION = 'v3';
 const SHELL = `workout-shell-${CACHE_VERSION}`;
 const STATIC = `workout-static-${CACHE_VERSION}`;
 const RUNTIME = `workout-runtime-${CACHE_VERSION}`;
