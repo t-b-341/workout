@@ -19,6 +19,7 @@ import type {
   SleepLog,
   CbtThoughtRecord,
   StoicCheckin,
+  StoicMoment,
   StressLog,
   SupplementLog,
   CaffeineLog,
@@ -50,6 +51,7 @@ export type DirtyRow = {
     | 'stress_logs'
     | 'cbt_thought_records'
     | 'stoic_checkins'
+    | 'stoic_moments'
     | 'mindfulness_logs'
     | 'injury_episodes'
     | 'body_readiness_logs'
@@ -80,6 +82,7 @@ export class WorkoutDB extends Dexie {
   stress_logs!: Table<StressLog, string>;
   cbt_thought_records!: Table<CbtThoughtRecord, string>;
   stoic_checkins!: Table<StoicCheckin, string>;
+  stoic_moments!: Table<StoicMoment, string>;
   mindfulness_logs!: Table<MindfulnessLog, string>;
   injury_episodes!: Table<InjuryEpisode, string>;
   body_readiness_logs!: Table<BodyReadinessLog, string>;
@@ -718,10 +721,14 @@ export class WorkoutDB extends Dexie {
     this.version(25).stores({
       training_checklist: 'id, userId, completed, createdAt, updatedAt',
     });
+    // v26 — stoic moments: as-wanted quick capture (synced).
+    this.version(26).stores({
+      stoic_moments: 'id, userId, date, createdAt, updatedAt',
+    });
   }
 }
 
-export const SCHEMA_VERSION = 25;
+export const SCHEMA_VERSION = 26;
 
 let _db: WorkoutDB | null = null;
 let _dbUserId: string | null = null;

@@ -18,6 +18,7 @@ import type {
   CardioLog,
   CbtThoughtRecord,
   StoicCheckin,
+  StoicMoment,
   HydrationLog,
   InjuryEpisode,
   Lift,
@@ -591,6 +592,20 @@ export function useStoicCheckinForDate(date: string): StoicCheckin | undefined {
   return useLiveQuery(
     () => getDb().stoic_checkins.where('date').equals(date).first(),
     [date],
+  );
+}
+
+export function useStoicMomentsForDate(date: string): StoicMoment[] | undefined {
+  return useLiveQuery(
+    () => getDb().stoic_moments.where('date').equals(date).sortBy('createdAt'),
+    [date],
+  );
+}
+
+export function useAllStoicMoments(): StoicMoment[] | undefined {
+  return useLiveQuery(
+    () => getDb().stoic_moments.orderBy('createdAt').reverse().toArray(),
+    [],
   );
 }
 

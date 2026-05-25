@@ -31,7 +31,7 @@ describe('buildExportSchemaDocumentation', () => {
 
 describe('EXPORT_SCHEMA_VERSION', () => {
   it('matches the current full local export payload schema', () => {
-    expect(EXPORT_SCHEMA_VERSION).toBe(27);
+    expect(EXPORT_SCHEMA_VERSION).toBe(28);
   });
 });
 

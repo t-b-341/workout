@@ -471,6 +471,18 @@ export type StoicCheckin = {
   updatedAt: string;
 };
 
+export type StoicMoment = {
+  id: string;
+  userId: string;
+  date: string;
+  createdAt: string;
+  /** Single free-text field: what's the situation and what is within your control right now? */
+  reflection: string;
+  /** Optional: what's the one action you can take? */
+  action?: string;
+  updatedAt: string;
+};
+
 export type RelationshipCheckin = {
   id: string;
   userId: string;

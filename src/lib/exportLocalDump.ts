@@ -24,6 +24,7 @@ import type {
   CardioLog,
   CbtThoughtRecord,
   StoicCheckin,
+  StoicMoment,
   HydrationLog,
   InjuryEpisode,
   Lift,
@@ -59,7 +60,7 @@ import { currentValueForGoal, isGoalAchieved } from './liftingGoals';
 import { todayIso } from './time';
 
 /** Export payload schema — bump when top-level export shape changes. */
-const FULL_LOCAL_EXPORT_SCHEMA_VERSION = 27;
+const FULL_LOCAL_EXPORT_SCHEMA_VERSION = 28;
 
 const MEANINGFUL_META_PREFIXES = [
   'workout:supplements:v1:',
@@ -297,6 +298,7 @@ export type FullLocalExport = {
   stress_daily_summaries: StressDailySummary[];
   cbt_thought_records: CbtThoughtRecord[];
   stoic_checkins: StoicCheckin[];
+  stoic_moments: StoicMoment[];
   mindfulness_logs: MindfulnessLog[];
   injury_episodes: InjuryEpisode[];
   body_readiness_logs: BodyReadinessLog[];
@@ -578,6 +580,7 @@ export async function buildFullLocalExport(opts?: FullLocalExportOptions): Promi
     .sort((a, b) => a.date.localeCompare(b.date));
   const training_checklist = await db.training_checklist
     .orderBy('createdAt').toArray();
+  const stoic_moments = await db.stoic_moments.orderBy('createdAt').toArray();
   const supplement_logs: SupplementLogExport[] = supplementRows.map((r: SupplementLog) => ({
     date: r.date,
     zma: r.zma,
@@ -897,6 +900,7 @@ export async function buildFullLocalExport(opts?: FullLocalExportOptions): Promi
     stress_daily_summaries,
     cbt_thought_records,
     stoic_checkins,
+    stoic_moments,
     mindfulness_logs,
     injury_episodes,
     body_readiness_logs,

@@ -11,6 +11,7 @@ import {
   useAllCardio,
   useSleepForDate,
   useStoicCheckinForDate,
+  useStoicMomentsForDate,
   useCaffeineLogsForDate,
   useOralHealthForDate,
   useRelationshipCheckinForDate,
@@ -45,6 +46,7 @@ import type { HydrationLog, NutritionDayType, NutritionLog, ReadinessLog, Sessio
 import { NUTRITION_DAY_TYPES } from '@/lib/types';
 import { defaultNutritionDayType } from '@/lib/nutritionDayType';
 import { CbtThoughtRecordSheet } from './CbtThoughtRecordSheet';
+import { StoicMomentSheet } from './StoicMomentSheet';
 import { BodyweightQuickLog } from './BodyweightQuickLog';
 import { InjuryTrackingPanel } from './InjuryTrackingPanel';
 import { MacroTrendCallout } from './MacroTrendCallout';
@@ -413,6 +415,8 @@ function DailyRecoveryExplainSheet({
 
 export function RecoveryView() {
   const date = todayIso();
+  const [showStoicMoment, setShowStoicMoment] = useState(false);
+  const stoicMoments = useStoicMomentsForDate(date);
   const yesterday = addDaysIso(date, -1);
   const prefs = useRecoveryPrefs(); // always defined; live-updates when meta row changes
   const nutrition = useNutritionForDate(date);
@@ -469,7 +473,11 @@ export function RecoveryView() {
 
         <NapQuickLogCard date={date} />
 
-        <StoicCheckinCard date={date} />
+        <StoicCheckinCard
+          date={date}
+          momentCount={stoicMoments?.length ?? 0}
+          onQuickMoment={() => setShowStoicMoment(true)}
+        />
 
         <SupplementsCard date={date} />
 
@@ -544,6 +552,13 @@ export function RecoveryView() {
         <div className="text-sm text-zinc-300">{plan.cardioNote}</div>
         <div className="text-sm text-zinc-300">{plan.nutritionNote}</div>
       </div>
+
+      {showStoicMoment && (
+        <StoicMomentSheet
+          date={date}
+          onClose={() => setShowStoicMoment(false)}
+        />
+      )}
     </PageShell>
   );
 }
@@ -814,7 +829,15 @@ function CaffeineCard({ date }: { date: string }) {
   );
 }
 
-function StoicCheckinCard({ date }: { date: string }) {
+function StoicCheckinCard({
+  date,
+  momentCount = 0,
+  onQuickMoment,
+}: {
+  date: string;
+  momentCount?: number;
+  onQuickMoment?: () => void;
+}) {
   const existing = useStoicCheckinForDate(date);
   const [open, setOpen] = useState(false);
   const [tension, setTension] = useState('');
@@ -867,18 +890,34 @@ function StoicCheckinCard({ date }: { date: string }) {
           ) : (
             <div className="text-xs text-zinc-600">What&apos;s within your control today?</div>
           )}
+          {momentCount > 0 && (
+            <div className="text-[10px] text-zinc-600 mt-1">
+              {momentCount} moment{momentCount > 1 ? 's' : ''} today
+            </div>
+          )}
         </div>
-        <button
-          type="button"
-          onClick={openEditor}
-          className={`text-xs px-3 py-1.5 rounded-lg border transition-colors ${
-            existing?.tension
-              ? 'border-zinc-700 text-zinc-400 hover:text-zinc-200'
-              : 'border-amber-600 text-amber-400 hover:bg-amber-600 hover:text-zinc-950'
-          }`}
-        >
-          {existing?.tension ? 'Edit' : 'Reflect'}
-        </button>
+        <div className="flex flex-col items-end gap-1 shrink-0">
+          <button
+            type="button"
+            onClick={openEditor}
+            className={`text-xs px-3 py-1.5 rounded-lg border transition-colors ${
+              existing?.tension
+                ? 'border-zinc-700 text-zinc-400 hover:text-zinc-200'
+                : 'border-amber-600 text-amber-400 hover:bg-amber-600 hover:text-zinc-950'
+            }`}
+          >
+            {existing?.tension ? 'Edit' : 'Reflect'}
+          </button>
+          {onQuickMoment && (
+            <button
+              type="button"
+              onClick={onQuickMoment}
+              className="text-[10px] text-zinc-600 hover:text-amber-400 transition-colors"
+            >
+              + Quick moment
+            </button>
+          )}
+        </div>
       </div>
     );
   }

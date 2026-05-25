@@ -24,6 +24,7 @@ import type {
   SleepLog,
   CbtThoughtRecord,
   StoicCheckin,
+  StoicMoment,
   StressLog,
   SupplementLog,
   CaffeineLog,
@@ -118,6 +119,7 @@ const FLUSH_TABLE_TIER: Record<RemoteTable, number> = {
   stress_logs: 3,
   cbt_thought_records: 2,
   stoic_checkins: 2,
+  stoic_moments: 2,
   mindfulness_logs: 3,
   injury_episodes: 3,
   body_readiness_logs: 3,
@@ -158,6 +160,7 @@ const TABLE_TO_LOCAL: Record<SyncPullTable, keyof ReturnType<typeof getDb> & str
   stress_logs: 'stress_logs',
   cbt_thought_records: 'cbt_thought_records',
   stoic_checkins: 'stoic_checkins',
+  stoic_moments: 'stoic_moments',
   mindfulness_logs: 'mindfulness_logs',
   injury_episodes: 'injury_episodes',
   body_readiness_logs: 'body_readiness_logs',
@@ -186,6 +189,7 @@ const ALL_TABLES: SyncPullTable[] = [
   'stress_logs',
   'cbt_thought_records',
   'stoic_checkins',
+  'stoic_moments',
   'nutrition_logs',
   'hydration_logs',
   'bodyweight_logs',
@@ -338,6 +342,9 @@ async function persistRows(table: SyncPullTable, rows: RowPayload[]) {
       return;
     case 'stoic_checkins':
       await db.stoic_checkins.bulkPut(rows.map((r) => fromRemote<StoicCheckin>(r)));
+      return;
+    case 'stoic_moments':
+      await db.stoic_moments.bulkPut(rows.map((r) => fromRemote<StoicMoment>(r)));
       return;
     case 'mindfulness_logs':
       await db.mindfulness_logs.bulkPut(rows.map((r) => fromRemote<MindfulnessLog>(r)));

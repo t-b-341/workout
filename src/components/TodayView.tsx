@@ -65,6 +65,7 @@ import { SupplementsCard } from './SupplementsCard';
 import { sortPrescriptionsWithFavoritesFirst, useFavoriteLiftIds } from '@/lib/favoriteLifts';
 import { sortTemplatesProgramOrder } from '@/lib/seed';
 import { QuickSessionView } from './QuickSessionView';
+import { StoicMomentSheet } from './StoicMomentSheet';
 
 const MINI_TEMPLATE_IDS = new Set(['L2', 'U3', 'L3']);
 
@@ -96,6 +97,7 @@ export function TodayView() {
   });
   const [readinessSkipped, setReadinessSkipped] = useState(false);
   const [quickMode, setQuickMode] = useState(false);
+  const [showStoicMoment, setShowStoicMoment] = useState(false);
   const [recoveryPromptSessionId, setRecoveryPromptSessionId] = useState<string | null>(null);
 
   const programTemplates = useMemo(
@@ -480,6 +482,13 @@ export function TodayView() {
       )}
       <SupplementsCard date={todayIso()} />
       <DayNotesCard date={todayIso()} />
+      <button
+        type="button"
+        onClick={() => setShowStoicMoment(true)}
+        className="w-full h-9 rounded-xl border border-zinc-800 bg-zinc-900/50 text-xs text-zinc-500 hover:text-amber-400 hover:border-zinc-700 transition-colors text-left px-3"
+      >
+        + Stoic moment
+      </button>
       {(weeklyFlags.bodyweightOverdue || weeklyFlags.measurementsOverdue) && (
         <WeeklyTrackingReminder
           bodyweightOverdue={weeklyFlags.bodyweightOverdue}
@@ -728,6 +737,13 @@ export function TodayView() {
         session.mode !== 'skip' &&
         !sundayGateActive && (
         <>
+          <button
+            type="button"
+            onClick={() => setShowStoicMoment(true)}
+            className="w-full h-9 rounded-xl border border-zinc-800 bg-zinc-900/50 text-xs text-zinc-500 hover:text-amber-400 hover:border-zinc-700 transition-colors text-left px-3"
+          >
+            + Stoic moment
+          </button>
           <FinishSessionButton
             session={session}
             prescriptions={visiblePrescriptions}
@@ -762,6 +778,12 @@ export function TodayView() {
           prs={sessionRecap.prs}
           highlights={sessionRecap.highlights}
           replay={sessionRecap.replay}
+        />
+      )}
+      {showStoicMoment && (
+        <StoicMomentSheet
+          date={todayIso()}
+          onClose={() => setShowStoicMoment(false)}
         />
       )}
     </PageShell>
