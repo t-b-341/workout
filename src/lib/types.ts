@@ -197,6 +197,7 @@ export type CardioType = 'liss' | 'intervals' | 'occupational';
 
 export type CardioLog = {
   id: string;
+  userId?: string;
   sessionLogId?: string;
   /** ISO date YYYY-MM-DD. */
   date: string;
@@ -220,6 +221,7 @@ export type CardioLog = {
 
 export type BodyweightLog = {
   id: string;
+  userId?: string;
   /** ISO date YYYY-MM-DD. */
   date: string;
   /** ISO week string e.g. "2026-W17". */
@@ -233,6 +235,7 @@ export type MeasurementTimeOfDay = (typeof MEASUREMENT_TIME_OF_DAY)[number];
 
 export type BodyMeasurementLog = {
   id: string;
+  userId?: string;
   /** ISO date YYYY-MM-DD. */
   date: string;
   /** Narrowest point. */
@@ -251,6 +254,7 @@ export type BodyMeasurementLog = {
 
 export type ReadinessLog = {
   id: string;
+  userId?: string;
   sessionLogId: string;
   /** ISO date YYYY-MM-DD. */
   date: string;
@@ -296,6 +300,7 @@ export type ReadinessLog = {
 /** Mindfulness session: optional 1–60 min duration and/or wall-clock log time. */
 export type MindfulnessLog = {
   id: string;
+  userId?: string;
   /** Calendar day (local) for filtering. */
   date: string;
   /** ISO timestamp when logged. */
@@ -312,6 +317,7 @@ export type NutritionDayType = (typeof NUTRITION_DAY_TYPES)[number];
 
 export type NutritionLog = {
   id: string;
+  userId?: string;
   /** ISO date YYYY-MM-DD. */
   date: string;
   /** Day classification when this row was saved (frozen for export accuracy). */
@@ -335,6 +341,7 @@ export type NutritionLog = {
 
 export type HydrationLog = {
   id: string;
+  userId?: string;
   /** ISO date YYYY-MM-DD. */
   date: string;
   waterTargetMl: number;
@@ -346,6 +353,7 @@ export type HydrationLog = {
 
 export type SleepLog = {
   id: string;
+  userId?: string;
   /** ISO date YYYY-MM-DD. */
   date: string;
   sleepHours: number;
@@ -373,6 +381,7 @@ export type InjuryEpisode = {
 /** Subjective “how’s your body today” for injury-aware training (1 = poor, 5 = great). */
 export type BodyReadinessLog = {
   id: string;
+  userId?: string;
   /** ISO date YYYY-MM-DD. */
   date: string;
   score: 1 | 2 | 3 | 4 | 5;
@@ -580,6 +589,7 @@ export type CbtThoughtRecord = {
 /** Momentary stress check-in: timestamp + 1–5 (higher = more stressed). Multiple per day allowed. */
 export type StressLog = {
   id: string;
+  userId?: string;
   /** Calendar day (local) for filtering. */
   date: string;
   /** ISO timestamp when logged. */

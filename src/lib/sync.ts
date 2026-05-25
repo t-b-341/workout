@@ -70,14 +70,39 @@ function cloneRowForUndo(row: Record<string, unknown>): Record<string, unknown> 
 
 let _cachedUserId: string | null = null;
 
+if (typeof window !== 'undefined') {
+  const _supabase = createClient();
+  _supabase.auth.onAuthStateChange((_, session) => {
+    _cachedUserId = session?.user?.id ?? null;
+  });
+}
+
 async function getAuthUserId(): Promise<string | null> {
   if (_cachedUserId) return _cachedUserId;
+
   const supabase = createClient();
+
   const {
     data: { session },
   } = await supabase.auth.getSession();
-  _cachedUserId = session?.user?.id ?? null;
-  return _cachedUserId;
+  if (session?.user?.id) {
+    _cachedUserId = session.user.id;
+    return _cachedUserId;
+  }
+
+  try {
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (user?.id) {
+      _cachedUserId = user.id;
+      return _cachedUserId;
+    }
+  } catch {
+    // Network unavailable — continue without userId
+  }
+
+  return null;
 }
 
 /** Prime from a server-verified user before child components write rows. */

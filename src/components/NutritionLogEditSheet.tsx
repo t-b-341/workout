@@ -281,7 +281,9 @@ export function NutritionLogEditSheet({
       mealsLoggedCount,
       ...(mealTimestampsOut !== undefined ? { mealTimestamps: mealTimestampsOut } : {}),
     });
-    await flushDirty().catch(() => {});
+    await flushDirty().catch((err) => {
+      console.error('[NutritionLogEditSheet] flushDirty failed:', err);
+    });
   }
 
   async function save() {
