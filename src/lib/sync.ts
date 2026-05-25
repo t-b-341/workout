@@ -473,24 +473,53 @@ export async function flushDirty() {
 
   const authUserId = await getAuthUserId();
   let refreshed = false;
+  const failedItems: Array<{ item: DirtyRow; err: Error }> = [];
+
   for (const item of dirty) {
     let attempt = 0;
-    while (true) {
+    let pushed = false;
+    while (!pushed) {
       attempt++;
       const err = await pushOne(item, authUserId);
-      if (!err) break;
+      if (!err) {
+        pushed = true;
+        break;
+      }
 
-      const status = (err as { status?: number; code?: string }).status;
+      const status = (err as { status?: number }).status;
       const code = (err as { code?: string }).code;
-      const isAuth = status === 401 || code === 'PGRST301' || /jwt/i.test(err.message ?? '');
+      const isAuth =
+        status === 401 ||
+        code === 'PGRST301' ||
+        /jwt/i.test(err.message ?? '');
+
       if (isAuth && !refreshed && attempt === 1) {
         await supabase.auth.refreshSession();
         refreshed = true;
         continue;
       }
-      throw err;
+
+      // Non-auth error — log and skip this row.
+      // It stays in the dirty queue and will retry on
+      // the next periodic flush.
+      console.warn(
+        `[flushDirty] failed to push ${item.table}:${item.rowId}:`,
+        err.message
+      );
+      failedItems.push({ item, err });
+      break;
     }
-    await db.dirty.delete(item.id);
+
+    if (pushed) {
+      await db.dirty.delete(item.id);
+    }
+  }
+
+  if (failedItems.length > 0) {
+    console.warn(
+      `[flushDirty] ${failedItems.length} rows failed to push`,
+      failedItems.map(f => `${f.item.table}:${f.item.rowId}`)
+    );
   }
 }
 

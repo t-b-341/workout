@@ -80,36 +80,44 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         }
         await initDb(user.id);
         setCachedUserId(user.id);
-        if (!cancelled) {
-          setUserId(user.id);
-          setDbReady(true);
-        }
         // Allow the browser client to register the session on its headers.
         await new Promise((resolve) => setTimeout(resolve, 100));
         await ensureLocalSeed();
-        await backfillSessionDurations();
-        await seedRemotePrescriptionsIfEmpty(user.id);
-        await seedRemoteTemplatesIfEmpty(user.id);
-        if (!cancelled) setSyncing(true);
-        await Promise.race([
-          pullAll({ full: true }),
-          new Promise<void>((_, reject) =>
-            setTimeout(
-              () => reject(new Error('Sync timed out — continuing offline')),
-              15_000,
-            ),
-          ),
-        ]).catch((err) => {
-          console.warn('[AppShell] pullAll failed or timed out:', err);
-        });
-        await repairOpeningPrBaselineSession();
-        await backfillCardioFromSets();
-        await flushDirty();
+
+        // App is ready to render with local data.
+        // Sync happens in background — failures don't block UI.
         if (!cancelled) {
-          setSyncing(false);
+          setUserId(user.id);
+          setDbReady(true);
+          setSyncing(true);
           setReady(true);
         }
+
+        try {
+          await backfillSessionDurations();
+          await seedRemotePrescriptionsIfEmpty(user.id);
+          await seedRemoteTemplatesIfEmpty(user.id);
+          await Promise.race([
+            pullAll({ full: true }),
+            new Promise<void>((_, reject) =>
+              setTimeout(
+                () => reject(new Error('Sync timed out')),
+                15_000,
+              ),
+            ),
+          ]).catch((err) => {
+            console.warn('[AppShell] pullAll failed:', err);
+          });
+          await repairOpeningPrBaselineSession();
+          await backfillCardioFromSets();
+          await flushDirty();
+        } catch (syncErr) {
+          console.warn('[AppShell] background sync error:', syncErr);
+        } finally {
+          if (!cancelled) setSyncing(false);
+        }
       } catch (e) {
+        console.error('[AppShell] critical init error:', e);
         if (!cancelled) setError((e as Error).message);
       }
     })();
