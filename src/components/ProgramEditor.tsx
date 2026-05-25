@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import {
   useAllBodyweight,
@@ -10,6 +10,7 @@ import {
   useActivePhaseGoal,
   useNutritionSummaryForDateRange,
   useRecentNutritionAverages,
+  useTrainingChecklist,
   useAllReadiness,
   useAllSets,
   useLifts,
@@ -34,6 +35,7 @@ import {
   type BlockTemplate,
   type TrainingPhaseMode,
   type NutritionPhaseMode,
+  type TrainingChecklistItem,
 } from '@/lib/types';
 import { getDb } from '@/lib/db';
 import { defaultTemplateForLocalDate, sortTemplatesProgramOrder } from '@/lib/seed';
@@ -42,7 +44,9 @@ import {
   todayPlanPreferenceIsForToday,
 } from '@/lib/todayPlanPreference';
 import { buildFullLocalExport } from '@/lib/exportLocalDump';
+import { ensureMay20HistoricDeadliftSession } from '@/lib/historicSession';
 import { fmtDate, todayIso } from '@/lib/time';
+import { HistoricSessionSheet } from './HistoricSessionSheet';
 import {
   buildRoutineMarkdown,
   buildUpcomingWeekRoutineMarkdown,
@@ -173,7 +177,13 @@ export function ProgramEditor() {
     : null;
 
   useAllBlockTemplates();
+  const [showExport, setShowExport] = useState(false);
+  const [showHistoric, setShowHistoric] = useState(false);
   const [showPhasePanel, setShowPhasePanel] = useState(false);
+
+  useEffect(() => {
+    void ensureMay20HistoricDeadliftSession().catch(() => {});
+  }, []);
   const [showNewBlock, setShowNewBlock] = useState(false);
   const [editingPhase, setEditingPhase] =
     useState<PhaseGoal | null>(null);
@@ -569,54 +579,12 @@ export function ProgramEditor() {
             onClick={async () => { await flushDirty(); await pullAll(); }}
             className="h-10 px-3 rounded-lg bg-zinc-800 text-sm"
           >Sync</button>
-          <button
-            type="button"
-            onClick={() => exportClaudeUpcomingWeek('md')}
-            disabled={exportingClaude !== 'idle' || exporting}
-            title="Next Mon–Sun on your program with calendar dates, plus 7 days of nutrition / sleep / stress before that week. Smaller than full Claude export."
-            className="h-10 px-3 rounded-lg bg-zinc-800 text-sm disabled:opacity-50"
-          >
-            {exportingClaude === 'upMd' ? 'Exporting…' : 'Upcoming week* · .md'}
-          </button>
-          <button
-            type="button"
-            onClick={() => exportClaudeUpcomingWeek('txt')}
-            disabled={exportingClaude !== 'idle' || exporting}
-            title="Same as upcoming week .md as plain text."
-            className="h-10 px-3 rounded-lg bg-zinc-800 text-sm disabled:opacity-50"
-          >
-            {exportingClaude === 'upTxt' ? 'Exporting…' : 'Upcoming week* · .txt'}
-          </button>
-          <button
-            type="button"
-            onClick={() => exportClaudeBrief('md')}
-            disabled={exportingClaude !== 'idle' || exporting}
-            className="h-10 px-3 rounded-lg bg-zinc-800 text-sm disabled:opacity-50"
-          >
-            {exportingClaude === 'md' ? 'Exporting…' : 'Claude .md'}
-          </button>
-          <button
-            type="button"
-            onClick={() => exportClaudeBrief('txt')}
-            disabled={exportingClaude !== 'idle' || exporting}
-            className="h-10 px-3 rounded-lg bg-zinc-800 text-sm disabled:opacity-50"
-          >
-            {exportingClaude === 'txt' ? 'Exporting…' : 'Claude .txt'}
-          </button>
           <Link
             href="/program/meso-analysis"
             className="h-10 px-3 rounded-lg bg-zinc-800 text-sm inline-flex items-center"
           >
             Meso analysis
           </Link>
-          <button
-            type="button"
-            onClick={() => void openExportWizard()}
-            disabled={exporting || exportingClaude !== 'idle'}
-            className="h-10 px-3 rounded-lg bg-zinc-800 text-sm disabled:opacity-50"
-          >
-            {exporting ? 'Exporting…' : 'Full JSON (guided)'}
-          </button>
         </div>
       </div>
       {exportWizardOpen && (
@@ -814,6 +782,23 @@ export function ProgramEditor() {
             })}
           </div>
         </div>
+      )}
+
+      <div>
+        <div className="text-xs uppercase tracking-wide
+          text-zinc-500 mb-2">Training checklist</div>
+        <TrainingChecklist />
+        <button
+          type="button"
+          onClick={() => setShowHistoric(true)}
+          className="mt-2 text-xs text-zinc-500 hover:text-amber-400"
+        >
+          + Add past session
+        </button>
+      </div>
+
+      {showHistoric && (
+        <HistoricSessionSheet onClose={() => setShowHistoric(false)} />
       )}
 
       <div
@@ -1125,9 +1110,258 @@ export function ProgramEditor() {
         </div>
       </div>
 
-      <ProgramTargetsEditor lifts={lifts} />
+      <div className="rounded-2xl border border-zinc-800
+        bg-zinc-900 overflow-hidden">
+        <button
+          type="button"
+          onClick={() => setShowExport(s => !s)}
+          className="w-full flex items-center justify-between
+            px-4 py-3 text-left"
+        >
+          <div>
+            <div className="text-xs uppercase tracking-wide
+              text-zinc-500">Data export</div>
+            <div className="text-sm font-medium text-zinc-300">
+              JSON export
+            </div>
+          </div>
+          <span className="text-zinc-600">
+            {showExport ? '▲' : '▼'}
+          </span>
+        </button>
+        {showExport && (
+          <div className="border-t border-zinc-800 p-4 space-y-4">
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => void openExportWizard()}
+                disabled={exporting || exportingClaude !== 'idle'}
+                className="h-10 px-3 rounded-lg bg-zinc-800 text-sm disabled:opacity-50"
+              >
+                {exporting ? 'Exporting…' : 'Full JSON (guided)'}
+              </button>
+              <button
+                type="button"
+                onClick={() => exportClaudeBrief('md')}
+                disabled={exportingClaude !== 'idle' || exporting}
+                className="h-10 px-3 rounded-lg bg-zinc-800 text-sm disabled:opacity-50"
+              >
+                {exportingClaude === 'md' ? 'Exporting…' : 'Claude .md'}
+              </button>
+              <button
+                type="button"
+                onClick={() => exportClaudeBrief('txt')}
+                disabled={exportingClaude !== 'idle' || exporting}
+                className="h-10 px-3 rounded-lg bg-zinc-800 text-sm disabled:opacity-50"
+              >
+                {exportingClaude === 'txt' ? 'Exporting…' : 'Claude .txt'}
+              </button>
+              <button
+                type="button"
+                onClick={() => exportClaudeUpcomingWeek('md')}
+                disabled={exportingClaude !== 'idle' || exporting}
+                className="h-10 px-3 rounded-lg bg-zinc-800 text-sm disabled:opacity-50"
+              >
+                {exportingClaude === 'upMd' ? 'Exporting…' : 'Upcoming week · .md'}
+              </button>
+              <button
+                type="button"
+                onClick={() => exportClaudeUpcomingWeek('txt')}
+                disabled={exportingClaude !== 'idle' || exporting}
+                className="h-10 px-3 rounded-lg bg-zinc-800 text-sm disabled:opacity-50"
+              >
+                {exportingClaude === 'upTxt' ? 'Exporting…' : 'Upcoming week · .txt'}
+              </button>
+            </div>
+            <ProgramTargetsEditor lifts={lifts} />
+          </div>
+        )}
+      </div>
       <MesocycleSettings />
     </PageShell>
+  );
+}
+
+function TrainingChecklist() {
+  const items = useTrainingChecklist();
+  const [newText, setNewText] = useState('');
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [commentText, setCommentText] = useState('');
+  const active = (items ?? []).filter(i => !i.completed);
+  const done = (items ?? []).filter(i => i.completed);
+
+  async function addItem() {
+    if (!newText.trim()) return;
+    const now = new Date().toISOString();
+    await localUpsert('training_checklist', {
+      id: `tc-${Date.now()}`,
+      createdAt: now,
+      text: newText.trim(),
+      completed: false,
+      completedAt: null,
+      comments: [],
+      updatedAt: now,
+    });
+    setNewText('');
+  }
+
+  async function toggleComplete(item: TrainingChecklistItem) {
+    const now = new Date().toISOString();
+    await localUpsert('training_checklist', {
+      ...item,
+      completed: !item.completed,
+      completedAt: !item.completed ? now : null,
+      updatedAt: now,
+    });
+  }
+
+  async function addComment(item: TrainingChecklistItem) {
+    if (!commentText.trim()) return;
+    const now = new Date().toISOString();
+    await localUpsert('training_checklist', {
+      ...item,
+      comments: [
+        ...item.comments,
+        {
+          id: `c-${Date.now()}`,
+          text: commentText.trim(),
+          createdAt: now,
+        },
+      ],
+      updatedAt: now,
+    });
+    setCommentText('');
+  }
+
+  async function deleteItem(item: TrainingChecklistItem) {
+    await localDelete('training_checklist', item.id);
+  }
+
+  function renderItem(item: TrainingChecklistItem) {
+    const isExpanded = expandedId === item.id;
+    return (
+      <div key={item.id}
+        className={`rounded-xl border p-3 space-y-2 ${
+          item.completed
+            ? 'border-zinc-800/50 bg-zinc-900/30'
+            : 'border-zinc-800 bg-zinc-900/50'
+        }`}>
+        <div className="flex items-start gap-2">
+          <button type="button"
+            onClick={() => void toggleComplete(item)}
+            className={`shrink-0 h-5 w-5 rounded border
+              flex items-center justify-center mt-0.5 ${
+              item.completed
+                ? 'bg-emerald-700 border-emerald-600'
+                : 'border-zinc-600'
+            }`}>
+            {item.completed && (
+              <span className="text-[10px] text-white">✓</span>
+            )}
+          </button>
+          <div className="flex-1 min-w-0">
+            <div className={`text-sm ${
+              item.completed
+                ? 'line-through text-zinc-600'
+                : 'text-zinc-200'
+            }`}>
+              {item.text}
+            </div>
+            {item.completedAt && (
+              <div className="text-[10px] text-zinc-600 mt-0.5">
+                Done {new Date(item.completedAt)
+                  .toLocaleDateString()}
+              </div>
+            )}
+            {item.comments.length > 0 && (
+              <div className="mt-1 space-y-1">
+                {item.comments.map(c => (
+                  <div key={c.id}
+                    className="text-xs text-zinc-500
+                      border-l-2 border-zinc-700 pl-2">
+                    {c.text}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+          <div className="flex gap-1 shrink-0">
+            <button type="button"
+              onClick={() => setExpandedId(
+                isExpanded ? null : item.id,
+              )}
+              className="text-[10px] px-2 h-6 rounded-md
+                bg-zinc-800 border border-zinc-700
+                text-zinc-500 hover:text-amber-400">
+              Comment
+            </button>
+            <button type="button"
+              onClick={() => void deleteItem(item)}
+              className="h-6 w-6 rounded-full bg-zinc-800
+                border border-zinc-700 text-zinc-600
+                hover:text-rose-400 text-xs flex items-center
+                justify-center">
+              ×
+            </button>
+          </div>
+        </div>
+        {isExpanded && (
+          <div className="flex gap-2 pl-7">
+            <input
+              type="text"
+              value={commentText}
+              onChange={e => setCommentText(e.target.value)}
+              onKeyDown={e => {
+                if (e.key === 'Enter') void addComment(item);
+              }}
+              placeholder='e.g. "375 — had more in tank"'
+              className="flex-1 h-8 rounded-lg bg-zinc-800
+                border border-zinc-700 px-2.5 text-xs
+                text-zinc-200 placeholder:text-zinc-600"
+            />
+            <button type="button"
+              onClick={() => void addComment(item)}
+              className="h-8 px-3 rounded-lg bg-amber-600
+                text-zinc-950 text-xs font-medium">
+              Add
+            </button>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-3">
+      <div className="flex gap-2">
+        <input
+          type="text"
+          value={newText}
+          onChange={e => setNewText(e.target.value)}
+          onKeyDown={e => { if (e.key === 'Enter') void addItem(); }}
+          placeholder="Add a training goal or note..."
+          className="flex-1 h-10 rounded-xl bg-zinc-900
+            border border-zinc-700 px-3 text-sm
+            text-zinc-200 placeholder:text-zinc-600"
+        />
+        <button type="button" onClick={() => void addItem()}
+          className="h-10 px-4 rounded-xl bg-amber-600
+            text-zinc-950 text-sm font-medium
+            hover:bg-amber-500">
+          Add
+        </button>
+      </div>
+
+      {active.map(renderItem)}
+
+      {done.length > 0 && (
+        <>
+          <div className="text-[10px] uppercase tracking-wide
+            text-zinc-700 pt-1">Completed</div>
+          {done.slice(0, 5).map(renderItem)}
+        </>
+      )}
+    </div>
   );
 }
 

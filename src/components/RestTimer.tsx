@@ -6,7 +6,15 @@ import { useEffect, useState } from 'react';
  *  second using a single setInterval shared per mount. Renders nothing if
  *  `since` is missing. Caller controls visibility (e.g., hide once next set
  *  is logged). */
-export function RestTimer({ since, label = 'rested' }: { since?: string; label?: string }) {
+export function RestTimer({
+  since,
+  label = 'rested',
+  restTargetSeconds,
+}: {
+  since?: string;
+  label?: string;
+  restTargetSeconds?: number;
+}) {
   const [now, setNow] = useState<number>(() => Date.now());
   useEffect(() => {
     if (!since) return;
@@ -32,6 +40,17 @@ export function RestTimer({ since, label = 'rested' }: { since?: string; label?:
   return (
     <span className={`text-xs font-mono ${tone}`} aria-live="polite">
       {label} {m}:{s.toString().padStart(2, '0')}
+      {restTargetSeconds && elapsed < restTargetSeconds && (
+        <span className="text-zinc-700 ml-1">
+          / {Math.floor(restTargetSeconds / 60)}:
+          {(restTargetSeconds % 60).toString().padStart(2, '0')}
+        </span>
+      )}
+      {restTargetSeconds && elapsed >= restTargetSeconds && (
+        <span className="text-emerald-400 ml-1 text-[10px]">
+          ✓ ready
+        </span>
+      )}
     </span>
   );
 }

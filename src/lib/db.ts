@@ -21,6 +21,9 @@ import type {
   StoicCheckin,
   StressLog,
   SupplementLog,
+  CaffeineLog,
+  OralHealthLog,
+  TrainingChecklistItem,
   UserGoal,
   PhaseGoal,
   BlockTemplate,
@@ -51,6 +54,9 @@ export type DirtyRow = {
     | 'injury_episodes'
     | 'body_readiness_logs'
     | 'supplement_logs'
+    | 'caffeine_logs'
+    | 'oral_health_logs'
+    | 'training_checklist'
     | 'user_goals';
   rowId: string;
   op: 'upsert' | 'delete';
@@ -78,6 +84,9 @@ export class WorkoutDB extends Dexie {
   injury_episodes!: Table<InjuryEpisode, string>;
   body_readiness_logs!: Table<BodyReadinessLog, string>;
   supplement_logs!: Table<SupplementLog, string>;
+  caffeine_logs!: Table<CaffeineLog, string>;
+  oral_health_logs!: Table<OralHealthLog, string>;
+  training_checklist!: Table<TrainingChecklistItem, string>;
   user_goals!: Table<UserGoal, string>;
   phase_goals!: Table<PhaseGoal, string>;
   block_templates!: Table<BlockTemplate, string>;
@@ -697,10 +706,22 @@ export class WorkoutDB extends Dexie {
     this.version(22).stores({
       user_goals: 'id, userId, liftId, active, createdAt, updatedAt',
     });
+    // v23 — caffeine intake logs (synced).
+    this.version(23).stores({
+      caffeine_logs: 'id, userId, date, loggedAt, updatedAt',
+    });
+    // v24 — oral health daily checklist (synced).
+    this.version(24).stores({
+      oral_health_logs: 'id, userId, date, updatedAt',
+    });
+    // v25 — training checklist (synced).
+    this.version(25).stores({
+      training_checklist: 'id, userId, completed, createdAt, updatedAt',
+    });
   }
 }
 
-export const SCHEMA_VERSION = 22;
+export const SCHEMA_VERSION = 25;
 
 let _db: WorkoutDB | null = null;
 let _dbUserId: string | null = null;

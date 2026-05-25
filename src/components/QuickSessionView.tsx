@@ -82,7 +82,12 @@ function QuickLiftBlock({
   };
   return (
     <div className="space-y-1">
-      <LiftCard prescription={effectivePrescription} lift={lift} session={session} />
+      <LiftCard
+        prescription={effectivePrescription}
+        lift={lift}
+        session={session}
+        restTargetSeconds={120}
+      />
       <button
         type="button"
         onClick={onAddSet}

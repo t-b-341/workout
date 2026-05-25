@@ -26,6 +26,9 @@ import type {
   StoicCheckin,
   StressLog,
   SupplementLog,
+  CaffeineLog,
+  OralHealthLog,
+  TrainingChecklistItem,
   UserGoal,
   PhaseGoal,
   BlockTemplate,
@@ -99,8 +102,10 @@ const FLUSH_TABLE_TIER: Record<RemoteTable, number> = {
   prescriptions: 0,
   phase_goals: 1,
   block_templates: 1,
+  training_checklist: 1,
   user_goals: 1,
   relationship_checkins: 2,
+  caffeine_logs: 2,
   session_logs: 1,
   set_logs: 2,
   cardio_logs: 2,
@@ -117,6 +122,7 @@ const FLUSH_TABLE_TIER: Record<RemoteTable, number> = {
   injury_episodes: 3,
   body_readiness_logs: 3,
   supplement_logs: 3,
+  oral_health_logs: 3,
 };
 
 /** Order dirty rows so FKs succeed (parents before children on upsert; upserts before deletes). */
@@ -156,6 +162,9 @@ const TABLE_TO_LOCAL: Record<SyncPullTable, keyof ReturnType<typeof getDb> & str
   injury_episodes: 'injury_episodes',
   body_readiness_logs: 'body_readiness_logs',
   supplement_logs: 'supplement_logs',
+  caffeine_logs: 'caffeine_logs',
+  oral_health_logs: 'oral_health_logs',
+  training_checklist: 'training_checklist',
   user_goals: 'user_goals',
   phase_goals: 'phase_goals',
   block_templates: 'block_templates',
@@ -190,6 +199,9 @@ const ALL_TABLES: SyncPullTable[] = [
   'phase_goals',
   'block_templates',
   'relationship_checkins',
+  'caffeine_logs',
+  'oral_health_logs',
+  'training_checklist',
 ];
 
 const WATERMARK_PREFIX = 'sync:watermark:';
@@ -318,6 +330,9 @@ async function persistRows(table: SyncPullTable, rows: RowPayload[]) {
     case 'stress_logs':
       await db.stress_logs.bulkPut(rows.map((r) => fromRemote<StressLog>(r)));
       return;
+    case 'caffeine_logs':
+      await db.caffeine_logs.bulkPut(rows.map((r) => fromRemote<CaffeineLog>(r)));
+      return;
     case 'cbt_thought_records':
       await db.cbt_thought_records.bulkPut(rows.map((r) => fromRemote<CbtThoughtRecord>(r)));
       return;
@@ -335,6 +350,12 @@ async function persistRows(table: SyncPullTable, rows: RowPayload[]) {
       return;
     case 'supplement_logs':
       await db.supplement_logs.bulkPut(rows.map((r) => fromRemote<SupplementLog>(r)));
+      return;
+    case 'oral_health_logs':
+      await db.oral_health_logs.bulkPut(rows.map((r) => fromRemote<OralHealthLog>(r)));
+      return;
+    case 'training_checklist':
+      await db.training_checklist.bulkPut(rows.map((r) => fromRemote<TrainingChecklistItem>(r)));
       return;
     case 'user_goals':
       await db.user_goals.bulkPut(rows.map((r) => fromRemote<UserGoal>(r)));

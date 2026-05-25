@@ -3,6 +3,7 @@ import type { Lift, Prescription, SessionTemplate } from './types';
 export const LIFTS: Lift[] = [
   // Upper - barbell
   { id: 'pp', name: 'Push Press', equipment: 'barbell', loadUnit: 'lb', repUnit: 'reps', increment: 5,
+    notes: 'Cue: dip-and-drive — explosive hip extension launches the bar, arms finish.',
     pattern: 'vert-push', muscleGroups: ['front-delt', 'side-delt', 'triceps', 'core'] },
   { id: 'ohp', name: 'OHP (dead-stop)', equipment: 'barbell', loadUnit: 'lb', repUnit: 'reps', increment: 5, notes: 'Dead-stop',
     pattern: 'vert-push', muscleGroups: ['front-delt', 'side-delt', 'triceps'] },
@@ -10,7 +11,8 @@ export const LIFTS: Lift[] = [
     pattern: 'vert-push', muscleGroups: ['front-delt', 'side-delt', 'triceps'] },
   { id: 'bp', name: 'Bench Press', equipment: 'barbell', loadUnit: 'lb', repUnit: 'reps', increment: 5,
     pattern: 'horiz-push', muscleGroups: ['chest', 'front-delt', 'triceps'] },
-  { id: 'bp_paused', name: 'Bench Press (paused)', equipment: 'barbell', loadUnit: 'lb', repUnit: 'reps', increment: 5, notes: 'Paused at chest',
+  { id: 'bp_paused', name: 'Bench Press (paused)', equipment: 'barbell', loadUnit: 'lb', repUnit: 'reps', increment: 5,
+    notes: 'Paused at chest. Cue: leg drive — push floor away at liftoff.',
     pattern: 'horiz-push', muscleGroups: ['chest', 'front-delt', 'triceps'] },
   { id: 'wgbp', name: 'Wide-Grip Bench Press', equipment: 'barbell', loadUnit: 'lb', repUnit: 'reps', increment: 5,
     pattern: 'horiz-push', muscleGroups: ['chest', 'front-delt', 'triceps'] },
@@ -38,6 +40,12 @@ export const LIFTS: Lift[] = [
     pattern: 'horiz-pull', muscleGroups: ['biceps', 'forearms'] },
   { id: 'pronated_barbell_curls', name: 'Pronated Barbell Curls', equipment: 'barbell', loadUnit: 'lb', repUnit: 'reps', increment: 5, notes: 'Overhand grip',
     pattern: 'horiz-pull', muscleGroups: ['biceps', 'forearms'] },
+  { id: 'barbell_wrist_curl', name: 'Barbell Wrist Curl',
+    equipment: 'barbell', loadUnit: 'lb', repUnit: 'reps',
+    increment: 5, notes: 'Forearm flexor. Palms up, wrists over bench edge.' },
+  { id: 'barbell_wrist_extension', name: 'Barbell Wrist Extension',
+    equipment: 'barbell', loadUnit: 'lb', repUnit: 'reps',
+    increment: 5, notes: 'Forearm extensor. Palms down, wrists over bench edge.' },
 
   // Upper - bodyweight pullup variants (P1). Added-load snap rules: `LIFT_IDS_PULLUP_ADDED_LOAD` in progression.ts.
   { id: 'p1_eccentric', name: 'P1 Weighted Eccentric', equipment: 'bodyweight', loadUnit: 'lb', repUnit: 'reps', increment: 2.5, notes: '5 sec eccentric, weighted (added load)',
@@ -56,6 +64,9 @@ export const LIFTS: Lift[] = [
     pattern: 'squat', muscleGroups: ['quads', 'glutes', 'core', 'mid-back'] },
   { id: 'breathing_back_squat', name: 'Breathing Back Squat', equipment: 'barbell', loadUnit: 'lb', repUnit: 'reps', increment: 5, notes: 'Bar on back, breathe between reps',
     pattern: 'squat', muscleGroups: ['quads', 'glutes', 'low-back', 'core'] },
+  { id: 'zercher_squat', name: 'Zercher Squat',
+    equipment: 'barbell', loadUnit: 'lb', repUnit: 'reps',
+    increment: 5, notes: 'Bar in elbow crease. Upright torso, high elbows throughout.' },
   { id: 'dl', name: 'Deadlift', equipment: 'barbell', loadUnit: 'lb', repUnit: 'reps', increment: 5,
     pattern: 'hinge', muscleGroups: ['hamstrings', 'glutes', 'low-back', 'traps', 'lats'] },
   { id: 'ddl', name: 'Deficit Deadlift', equipment: 'barbell', loadUnit: 'lb', repUnit: 'reps', increment: 5,
@@ -65,6 +76,10 @@ export const LIFTS: Lift[] = [
   { id: 'bss', name: 'Bulgarian Split Squat', equipment: 'barbell', loadUnit: 'lb', repUnit: 'reps', increment: 5,
     pattern: 'squat', muscleGroups: ['quads', 'glutes', 'hamstrings'],
     notes: 'Barbell; rear foot elevated. Log reps PER LEG — 2×10 means 10 each leg (20 total). Each set is one leg cycle.' },
+  { id: 'bonk_carry', name: 'Bonk Carry',
+    equipment: 'bodyweight', loadUnit: 'lb', repUnit: 'seconds',
+    increment: 5,
+    notes: 'Front-loaded carry (person as sandbag). Log load in lb and duration in seconds. Optional: note distance in feet.' },
 
   // Lower - dumbbell
   { id: 'planks', name: 'Planks', equipment: 'time', loadUnit: 'none', repUnit: 'seconds', increment: 5, notes: '+5 sec/wk per set',

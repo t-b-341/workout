@@ -6,6 +6,7 @@ import { localUpsert } from '@/lib/sync';
 import { isoWeekStringFromIsoDate } from '@/lib/time';
 import { useThisWeekBodyweight } from '@/lib/hooks';
 import type { ReadinessLog, SessionLog } from '@/lib/types';
+import { CbtThoughtRecordSheet } from './CbtThoughtRecordSheet';
 
 export type { ReadinessRecommendation } from '@/lib/recommendMode';
 export { recommendMode } from '@/lib/recommendMode';
@@ -32,6 +33,7 @@ export function ReadinessForm({
   const [hrvSkipped, setHrvSkipped] = useState(false);
   const [busy, setBusy] = useState(false);
   const [recommended, setRecommended] = useState<ReadinessRecommendation | null>(null);
+  const [showCbt, setShowCbt] = useState(false);
 
   const showBwInput = promptBodyweight && !existingBw;
 
@@ -222,6 +224,14 @@ export function ReadinessForm({
         Meditation / mindfulness is logged on Today and Recovery — multiple timed entries per day.
       </p>
 
+      <button
+        type="button"
+        onClick={() => setShowCbt(true)}
+        className="text-xs text-zinc-500 hover:text-amber-400"
+      >
+        Log a thought record →
+      </button>
+
       {showBwInput && (
         <div className="border-t border-zinc-800 pt-3">
           <label className="flex items-center justify-between gap-3">
@@ -295,6 +305,13 @@ export function ReadinessForm({
             >Keep current mode</button>
           </div>
         </div>
+      )}
+
+      {showCbt && (
+        <CbtThoughtRecordSheet
+          date={session.date}
+          onClose={() => setShowCbt(false)}
+        />
       )}
     </div>
   );

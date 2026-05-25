@@ -22,6 +22,8 @@ import {
   useHistoryGoalSets,
   useLifts,
   useTemplates,
+  useAllCaffeineLogs,
+  useAllSupplementLogs,
 } from '@/lib/hooks';
 import { getDb } from '@/lib/db';
 import { currentValueForGoal } from '@/lib/liftingGoals';
@@ -86,6 +88,8 @@ import type {
   MindfulnessLog,
   GoalMetric,
   UserGoal,
+  SupplementLog,
+  CaffeineLog,
 } from '@/lib/types';
 
 type Tab =
@@ -97,6 +101,8 @@ type Tab =
   | 'bodyweight'
   | 'measurements'
   | 'diet'
+  | 'supplements'
+  | 'caffeine'
   | 'hydration'
   | 'injuries'
   | 'hrv'
@@ -115,6 +121,8 @@ const TABS: Array<{ id: Tab; label: string }> = [
   { id: 'bodyweight', label: 'BW' },
   { id: 'measurements', label: 'Measure' },
   { id: 'diet', label: 'Diet' },
+  { id: 'supplements', label: 'Supplements' },
+  { id: 'caffeine', label: 'Caffeine' },
   { id: 'hydration', label: 'Hydration' },
   { id: 'injuries', label: 'Injuries' },
   { id: 'hrv', label: 'HRV' },
@@ -140,6 +148,8 @@ export function HistoryView() {
   const hydration = useAllHydration();
   const episodes = useAllInjuryEpisodes();
   const mindfulness = useAllMindfulness();
+  const allCaffeine = useAllCaffeineLogs();
+  const supplementLogs = useAllSupplementLogs();
   const wellnessTargets = useWellnessTargets();
   const wkTargets = wellnessTargets ?? defaultWellnessTargets();
   useGoalAchievementDetector(userGoals, allSets, bodyweights);
@@ -159,7 +169,9 @@ export function HistoryView() {
     !nutrition ||
     !hydration ||
     !episodes ||
-    !mindfulness
+    !mindfulness ||
+    allCaffeine === undefined ||
+    supplementLogs === undefined
   ) {
     return <div className="p-6 text-zinc-500">Loading…</div>;
   }
@@ -212,6 +224,12 @@ export function HistoryView() {
       {tab === 'bodyweight' && <BodyweightList logs={bodyweights} />}
       {tab === 'measurements' && <MeasurementsList logs={bodyMeasurements} />}
       {tab === 'diet' && <DietList logs={nutrition} />}
+      {tab === 'supplements' && (
+        <SupplementsHistoryView logs={supplementLogs ?? []} />
+      )}
+      {tab === 'caffeine' && (
+        <CaffeineHistoryView logs={allCaffeine ?? []} />
+      )}
       {tab === 'hydration' && <HydrationList logs={hydration} />}
       {tab === 'injuries' && <InjuriesList episodes={episodes} />}
       {tab === 'hrv' && <HrvList readiness={readiness} />}
@@ -2817,6 +2835,101 @@ function Stat({ label, value, unit, tone }: { label: string; value: string; unit
       <div className={`text-lg font-mono ${tone === 'warn' ? 'text-rose-400' : 'text-zinc-100'}`}>
         {value}<span className="text-xs text-zinc-500 ml-1">{unit}</span>
       </div>
+    </div>
+  );
+}
+
+function SupplementsHistoryView({
+  logs,
+}: { logs: SupplementLog[] }) {
+  return (
+    <div className="space-y-2 pb-8">
+      {logs.length === 0 && (
+        <p className="text-sm text-zinc-600 text-center py-8">
+          No supplement logs yet.
+        </p>
+      )}
+      {logs.map(l => (
+        <div key={l.id}
+          className="rounded-xl border border-zinc-800
+            bg-zinc-900/50 px-3 py-2.5 flex items-center
+            justify-between">
+          <span className="text-xs text-zinc-400">{l.date}</span>
+          <div className="flex gap-2">
+            {(['zma', 'd3k2', 'multi', 'creatine'] as const)
+              .filter(k => l[k])
+              .map(k => (
+                <span key={k}
+                  className="text-[10px] text-emerald-400
+                    border border-emerald-800/40 rounded-full
+                    px-1.5 py-0.5 uppercase tracking-wide">
+                  {k}
+                </span>
+              ))}
+            {!l.allTaken && (
+              <span className="text-[10px] text-zinc-600">
+                partial
+              </span>
+            )}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function CaffeineHistoryView({
+  logs,
+}: { logs: CaffeineLog[] }) {
+  const byDate = new Map<string, CaffeineLog[]>();
+  for (const l of logs) {
+    const existing = byDate.get(l.date) ?? [];
+    existing.push(l);
+    byDate.set(l.date, existing);
+  }
+  const dates = [...byDate.keys()].sort().reverse();
+
+  return (
+    <div className="space-y-3 pb-8">
+      {dates.length === 0 && (
+        <p className="text-sm text-zinc-600 text-center py-8">
+          No caffeine logged yet.
+        </p>
+      )}
+      {dates.map(date => {
+        const dayLogs = byDate.get(date)!;
+        const totalMg = dayLogs.reduce(
+          (s, l) => s + l.amountMg, 0,
+        );
+        return (
+          <div key={date}
+            className="rounded-xl border border-zinc-800
+              bg-zinc-900/50 px-3 py-2.5 space-y-1.5">
+            <div className="flex justify-between text-xs">
+              <span className="text-zinc-400">{date}</span>
+              <span className={`font-mono ${
+                totalMg >= 400
+                  ? 'text-amber-400'
+                  : 'text-zinc-400'
+              }`}>
+                {totalMg}mg total
+              </span>
+            </div>
+            {dayLogs.map(l => (
+              <div key={l.id}
+                className="flex justify-between text-[11px]
+                  text-zinc-600">
+                <span>
+                  {new Date(l.loggedAt).toLocaleTimeString(
+                    [], { hour: '2-digit', minute: '2-digit' },
+                  )}
+                </span>
+                <span>{l.pieces}× ({l.amountMg}mg)</span>
+              </div>
+            ))}
+          </div>
+        );
+      })}
     </div>
   );
 }

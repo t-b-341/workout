@@ -45,6 +45,9 @@ import type {
   BlockTemplate,
   RelationshipCheckin,
   SupplementLog,
+  CaffeineLog,
+  OralHealthLog,
+  TrainingChecklistItem,
 } from './types';
 import {
   SESSION_LABEL_TYPES,
@@ -56,7 +59,7 @@ import { currentValueForGoal, isGoalAchieved } from './liftingGoals';
 import { todayIso } from './time';
 
 /** Export payload schema — bump when top-level export shape changes. */
-const FULL_LOCAL_EXPORT_SCHEMA_VERSION = 24;
+const FULL_LOCAL_EXPORT_SCHEMA_VERSION = 27;
 
 const MEANINGFUL_META_PREFIXES = [
   'workout:supplements:v1:',
@@ -305,6 +308,9 @@ export type FullLocalExport = {
   workday_logs: ReturnType<typeof buildWorkdayLogsExport>;
   /** Supplement checklist rows from synced `supplement_logs` Dexie table. */
   supplement_logs: SupplementLogExport[];
+  caffeine_logs: CaffeineLog[];
+  oral_health_logs: OralHealthLog[];
+  training_checklist: TrainingChecklistItem[];
   /** Current mesocycle block mirror (aligned with Program tab / meso week stats). */
   mesocycle: ReturnType<typeof buildExportMesocycleBlock>;
   phase_goals: ExportedPhaseGoal[];
@@ -566,6 +572,12 @@ export async function buildFullLocalExport(opts?: FullLocalExportOptions): Promi
   const hrv_logs = buildHrvLogsExport(readiness_logs);
   const workday_logs = buildWorkdayLogsExport(meta);
   const supplementRows = await db.supplement_logs.orderBy('date').toArray();
+  const caffeine_logs = (await db.caffeine_logs.toArray())
+    .sort((a, b) => a.loggedAt.localeCompare(b.loggedAt));
+  const oral_health_logs = (await db.oral_health_logs.toArray())
+    .sort((a, b) => a.date.localeCompare(b.date));
+  const training_checklist = await db.training_checklist
+    .orderBy('createdAt').toArray();
   const supplement_logs: SupplementLogExport[] = supplementRows.map((r: SupplementLog) => ({
     date: r.date,
     zma: r.zma,
@@ -892,6 +904,9 @@ export async function buildFullLocalExport(opts?: FullLocalExportOptions): Promi
     user_goals,
     workday_logs,
     supplement_logs,
+    caffeine_logs,
+    oral_health_logs,
+    training_checklist,
     mesocycle,
     phase_goals: phase_goals_export,
     block_templates,

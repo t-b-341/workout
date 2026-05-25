@@ -11,6 +11,8 @@ import {
   useAllCardio,
   useSleepForDate,
   useStoicCheckinForDate,
+  useCaffeineLogsForDate,
+  useOralHealthForDate,
   useRelationshipCheckinForDate,
   useStressForDate,
   useTodayPlanTemplateId,
@@ -47,6 +49,7 @@ import { BodyweightQuickLog } from './BodyweightQuickLog';
 import { InjuryTrackingPanel } from './InjuryTrackingPanel';
 import { MacroTrendCallout } from './MacroTrendCallout';
 import { PageShell } from './PageShell';
+import { SupplementsCard } from './SupplementsCard';
 import { TrackerReminderCard } from './TrackerReminderCard';
 import { WellnessTargetsCard } from './WellnessTargetsCard';
 import { MindfulnessEntriesSection } from './MindfulnessEntriesSection';
@@ -468,6 +471,12 @@ export function RecoveryView() {
 
         <StoicCheckinCard date={date} />
 
+        <SupplementsCard date={date} />
+
+        <CaffeineCard date={date} />
+
+        <OralHealthCard date={date} />
+
         <RelationshipCheckinCard date={date} />
 
         <StressSection date={date} entries={stress ?? []} />
@@ -613,6 +622,198 @@ function DidYouEatQuickSection({
   );
 }
 
+const ORAL_ITEMS = [
+  {
+    key: 'tongueScrape' as const,
+    label: 'Tongue scrape',
+    hint: 'Morning — removes overnight bacteria',
+  },
+  {
+    key: 'brush' as const,
+    label: 'Brush',
+    hint: '2 min, soft bristle',
+  },
+  {
+    key: 'floss' as const,
+    label: 'Floss',
+    hint: 'Before brushing ideally',
+  },
+  {
+    key: 'mouthwash' as const,
+    label: 'Mouthwash',
+    hint: '30 min gap from brushing',
+  },
+];
+
+function OralHealthCard({ date }: { date: string }) {
+  const existing = useOralHealthForDate(date);
+  const state = {
+    tongueScrape: existing?.tongueScrape ?? false,
+    brush: existing?.brush ?? false,
+    floss: existing?.floss ?? false,
+    mouthwash: existing?.mouthwash ?? false,
+  };
+
+  const allDone = state.tongueScrape && state.brush
+    && state.floss && state.mouthwash;
+
+  async function toggle(
+    key: keyof typeof state,
+  ) {
+    const next = { ...state, [key]: !state[key] };
+    const allD = next.tongueScrape && next.brush
+      && next.floss && next.mouthwash;
+    await localUpsert('oral_health_logs', {
+      id: `oral-${date}`,
+      date,
+      ...next,
+      allDone: allD,
+      updatedAt: new Date().toISOString(),
+    });
+    await flushDirty().catch(() => {});
+  }
+
+  return (
+    <div className="rounded-2xl border border-zinc-800
+      bg-zinc-900 p-4 space-y-3">
+      <div className="flex items-center justify-between">
+        <div>
+          <div className="text-xs uppercase tracking-wide
+            text-zinc-500">Oral health</div>
+          <div className="text-sm font-medium text-zinc-200">
+            Daily routine
+          </div>
+        </div>
+        {allDone && (
+          <span className="text-[10px] text-emerald-400
+            border border-emerald-800/40 rounded-full
+            px-2 py-0.5">
+            All done ✓
+          </span>
+        )}
+      </div>
+      <div className="space-y-2">
+        {ORAL_ITEMS.map(({ key, label, hint }) => (
+          <button
+            key={key}
+            type="button"
+            onClick={() => void toggle(key)}
+            className={`w-full flex items-center gap-3
+              rounded-xl px-3 py-2.5 border transition-colors
+              text-left ${
+              state[key]
+                ? 'border-emerald-800/50 bg-emerald-950/20'
+                : 'border-zinc-800 bg-zinc-900/50'
+            }`}
+          >
+            <div className={`h-4 w-4 rounded border
+              flex items-center justify-center shrink-0 ${
+              state[key]
+                ? 'bg-emerald-600 border-emerald-500'
+                : 'border-zinc-600'
+            }`}>
+              {state[key] && (
+                <span className="text-[10px] text-white">✓</span>
+              )}
+            </div>
+            <div>
+              <div className={`text-xs font-medium ${
+                state[key] ? 'text-emerald-300' : 'text-zinc-300'
+              }`}>{label}</div>
+              <div className="text-[10px] text-zinc-600">
+                {hint}
+              </div>
+            </div>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function CaffeineCard({ date }: { date: string }) {
+  const logs = useCaffeineLogsForDate(date);
+  const [busy, setBusy] = useState(false);
+
+  const totalMg = (logs ?? []).reduce(
+    (sum, l) => sum + l.amountMg, 0,
+  );
+
+  async function logPiece(pieces: number) {
+    setBusy(true);
+    try {
+      await localUpsert('caffeine_logs', {
+        id: `caff-${date}-${Date.now()}`,
+        date,
+        loggedAt: new Date().toISOString(),
+        amountMg: 125 * pieces,
+        pieces,
+        updatedAt: new Date().toISOString(),
+      });
+      await flushDirty().catch(() => {});
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="rounded-2xl border border-zinc-800
+      bg-zinc-900 p-4 space-y-3">
+      <div className="flex items-center justify-between">
+        <div>
+          <div className="text-xs uppercase tracking-wide
+            text-zinc-500">Caffeine</div>
+          <div className="text-sm font-medium text-zinc-200">
+            {totalMg > 0
+              ? `${totalMg}mg today`
+              : 'None logged'}
+          </div>
+        </div>
+        {totalMg >= 400 && (
+          <span className="text-[10px] text-amber-400
+            border border-amber-800/40 rounded-full px-2 py-0.5">
+            ≥400mg
+          </span>
+        )}
+      </div>
+
+      <div className="flex gap-2">
+        {[1, 2, 3].map(n => (
+          <button
+            key={n}
+            type="button"
+            disabled={busy}
+            onClick={() => void logPiece(n)}
+            className="flex-1 h-9 rounded-xl bg-zinc-800
+              border border-zinc-700 text-xs text-zinc-300
+              hover:bg-zinc-700 transition-colors
+              disabled:opacity-50"
+          >
+            +{n} ({n * 125}mg)
+          </button>
+        ))}
+      </div>
+
+      {(logs ?? []).length > 0 && (
+        <div className="space-y-1">
+          {logs!.map(l => (
+            <div key={l.id}
+              className="flex items-center justify-between
+              text-xs text-zinc-500">
+              <span>
+                {new Date(l.loggedAt).toLocaleTimeString(
+                  [], { hour: '2-digit', minute: '2-digit' },
+                )} — {l.pieces} piece{l.pieces > 1 ? 's' : ''}
+              </span>
+              <span className="font-mono">{l.amountMg}mg</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function StoicCheckinCard({ date }: { date: string }) {
   const existing = useStoicCheckinForDate(date);
   const [open, setOpen] = useState(false);
@@ -620,6 +821,7 @@ function StoicCheckinCard({ date }: { date: string }) {
   const [withinControl, setWithinControl] = useState('');
   const [intention, setIntention] = useState('');
   const [busy, setBusy] = useState(false);
+  const [showCbt, setShowCbt] = useState(false);
 
   function hydrateFromExisting() {
     setTension(existing?.tension ?? '');
@@ -735,6 +937,21 @@ function StoicCheckinCard({ date }: { date: string }) {
       >
         {busy ? 'Saving…' : 'Save reflection'}
       </button>
+
+      <button
+        type="button"
+        onClick={() => setShowCbt(true)}
+        className="text-xs text-zinc-500 hover:text-amber-400"
+      >
+        Log a thought record with this reflection →
+      </button>
+
+      {showCbt && (
+        <CbtThoughtRecordSheet
+          date={date}
+          onClose={() => setShowCbt(false)}
+        />
+      )}
     </div>
   );
 }
@@ -769,6 +986,7 @@ function RelationshipCheckinCard({ date }: { date: string }) {
   const [askedAboutHerWorld, setAskedAboutHerWorld] = useState<boolean | null>(null);
   const [oneThingDifferently, setOneThingDifferently] = useState('');
   const [notes, setNotes] = useState('');
+  const [showCbt, setShowCbt] = useState(false);
 
   const isWeeklyReflectionDay = new Date().getDay() === 0;
   const moodAnchorComplete = moodState != null && anxietyLevel != null;
@@ -1354,6 +1572,21 @@ function RelationshipCheckinCard({ date }: { date: string }) {
       >
         {busy ? 'Saving…' : 'Save check-in'}
       </button>
+
+      <button
+        type="button"
+        onClick={() => setShowCbt(true)}
+        className="text-xs text-zinc-500 hover:text-amber-400"
+      >
+        Log a thought record →
+      </button>
+
+      {showCbt && (
+        <CbtThoughtRecordSheet
+          date={date}
+          onClose={() => setShowCbt(false)}
+        />
+      )}
     </div>
   );
 }

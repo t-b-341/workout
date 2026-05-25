@@ -42,6 +42,8 @@ type Props = {
   effectiveSets?: number;
   onAddSet?: () => void;
   onRemoveLastSet?: () => void;
+  /** When set, RestTimer shows target duration and “ready” feedback. */
+  restTargetSeconds?: number;
 };
 
 export type CardioSetMeta = {
@@ -99,6 +101,7 @@ export function LiftCard({
   effectiveSets,
   onAddSet,
   onRemoveLastSet,
+  restTargetSeconds,
 }: Props) {
   const sets = useSetsForSession(session.id);
   const history = useLastSessionsForLift(prescription.liftId, 3);
@@ -120,7 +123,14 @@ export function LiftCard({
   const [substituteId, setSubstituteId] = useState<string>('');
   const [pendingIntentByKey, setPendingIntentByKey] = useState<Record<string, SetIntent>>({});
 
-  const liftSets = (sets ?? []).filter((s) => s.prescriptionId === prescription.id);
+  const isQuickSession = prescription.id.startsWith('quick-');
+  const liftSets = (sets ?? []).filter(
+    (s) =>
+      s.sessionLogId === session.id
+      && (isQuickSession
+        ? s.liftId === prescription.liftId
+        : s.prescriptionId === prescription.id),
+  );
   const setCount = effectiveSets ?? prescription.sets;
   const indexes = Array.from({ length: setCount }, (_, i) => i);
   const sides: Array<'L' | 'R' | undefined> = prescription.perSide ? ['L', 'R'] : [undefined];
@@ -139,10 +149,10 @@ export function LiftCard({
   // shown above the next un-logged set row.
   const mostRecentLogTs = useMemo(() => {
     return liftSets
-      .map((s) => s.loggedAt)
-      .filter((x): x is string => !!x)
+      .filter((s) => s.status === 'completed' && s.loggedAt)
+      .map((s) => s.loggedAt!)
       .sort()
-      .pop();
+      .pop() ?? null;
   }, [liftSets]);
 
   // PR check: at log time we want to know whether the just-saved set beat
@@ -319,7 +329,10 @@ export function LiftCard({
             {prescription.perSide && <span className="text-zinc-500"> · per side</span>}
           </div>
           {prescription.notes && (
-            <div className="text-xs text-zinc-500 mt-1">{prescription.notes}</div>
+            <div className="text-[10px] text-zinc-600 mt-1
+              italic">
+              {prescription.notes}
+            </div>
           )}
           {isCardio && (
             <div className="text-[11px] text-zinc-500 mt-2 rounded-lg bg-zinc-950/80 border border-zinc-800 px-2 py-1.5">
@@ -365,7 +378,10 @@ export function LiftCard({
               <div key={key} className="space-y-1">
                 {isNextUnlogged && mostRecentLogTs && (
                   <div className="px-1">
-                    <RestTimer since={mostRecentLogTs} />
+                    <RestTimer
+                      since={mostRecentLogTs ?? undefined}
+                      restTargetSeconds={restTargetSeconds}
+                    />
                   </div>
                 )}
                 <div
@@ -470,6 +486,15 @@ export function LiftCard({
                               : '↓ Slow'}
                         </button>
                       ))}
+                    </div>
+                  )}
+
+                  {prescription.notes &&
+                    existing?.status !== 'completed' && (
+                    <div className="text-[10px] text-amber-400/70
+                      leading-snug pt-0.5 flex items-start gap-1">
+                      <span className="text-amber-600 shrink-0">↑</span>
+                      {prescription.notes}
                     </div>
                   )}
 

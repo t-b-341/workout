@@ -29,6 +29,10 @@ import type {
   SetLog,
   SleepLog,
   StressLog,
+  SupplementLog,
+  CaffeineLog,
+  OralHealthLog,
+  TrainingChecklistItem,
   TemplateId,
   UserGoal,
   PhaseGoal,
@@ -380,6 +384,50 @@ export function useRecentNutritionAverages(
       ),
     };
   }, [days]);
+}
+
+export function useTrainingChecklist(): TrainingChecklistItem[] | undefined {
+  return useLiveQuery(
+    () => getDb().training_checklist
+      .orderBy('createdAt').reverse().toArray(),
+    [],
+  );
+}
+
+export function useOralHealthForDate(
+  date: string,
+): OralHealthLog | undefined {
+  return useLiveQuery(
+    () => getDb().oral_health_logs
+      .where('date').equals(date).first(),
+    [date],
+  );
+}
+
+export function useCaffeineLogsForDate(
+  date: string,
+): CaffeineLog[] | undefined {
+  return useLiveQuery(
+    () => getDb().caffeine_logs
+      .where('date').equals(date)
+      .sortBy('loggedAt'),
+    [date],
+  );
+}
+
+export function useAllCaffeineLogs(): CaffeineLog[] | undefined {
+  return useLiveQuery(
+    () => getDb().caffeine_logs
+      .orderBy('loggedAt').reverse().toArray(),
+    [],
+  );
+}
+
+export function useAllSupplementLogs(): SupplementLog[] | undefined {
+  return useLiveQuery(
+    () => getDb().supplement_logs.orderBy('date').reverse().toArray(),
+    [],
+  );
 }
 
 export function useAllBlockTemplates(): BlockTemplate[] | undefined {

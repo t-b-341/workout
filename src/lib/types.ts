@@ -391,6 +391,50 @@ export type SupplementLog = {
   updatedAt: string;
 };
 
+export type CaffeineLog = {
+  id: string;
+  userId: string;
+  /** YYYY-MM-DD */
+  date: string;
+  /** ISO timestamp */
+  loggedAt: string;
+  /** 125 per piece */
+  amountMg: number;
+  /** 1, 2, 3... */
+  pieces: number;
+  notes?: string;
+  updatedAt: string;
+};
+
+export type OralHealthLog = {
+  id: string;
+  userId: string;
+  date: string;
+  tongueScrape: boolean;
+  brush: boolean;
+  floss: boolean;
+  mouthwash: boolean;
+  allDone: boolean;
+  updatedAt: string;
+};
+
+export type TrainingChecklistComment = {
+  id: string;
+  text: string;
+  createdAt: string;
+};
+
+export type TrainingChecklistItem = {
+  id: string;
+  userId: string;
+  createdAt: string;
+  text: string;
+  completed: boolean;
+  completedAt: string | null;
+  comments: TrainingChecklistComment[];
+  updatedAt: string;
+};
+
 export type GoalMetric = '1rm' | 'working_set' | 'reps' | 'bodyweight';
 
 export type UserGoal = {

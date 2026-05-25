@@ -4,7 +4,7 @@ import type { DirtyRow } from './db';
  * JSON export top-level `schemaVersion` — bump when new top-level export fields or shapes ship
  * (independent of Dexie `SCHEMA_VERSION`).
  */
-export const EXPORT_SCHEMA_VERSION = 24;
+export const EXPORT_SCHEMA_VERSION = 27;
 import {
   NUTRITION_DAY_TYPES,
   SESSION_LABEL_TYPES,
