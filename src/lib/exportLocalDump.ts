@@ -60,7 +60,7 @@ import { currentValueForGoal, isGoalAchieved } from './liftingGoals';
 import { todayIso } from './time';
 
 /** Export payload schema — bump when top-level export shape changes. */
-const FULL_LOCAL_EXPORT_SCHEMA_VERSION = 28;
+const FULL_LOCAL_EXPORT_SCHEMA_VERSION = 29;
 
 const MEANINGFUL_META_PREFIXES = [
   'workout:supplements:v1:',
@@ -88,6 +88,30 @@ export type ExportedHrvLog = {
   hrvMs: number;
   source: 'manual' | 'device';
   notes: string | null;
+};
+
+export type ExportedHrvAllEntry = {
+  date: string;
+  hrvMs: number | null;
+  skipped: boolean;
+  measuredMin: number | null;
+};
+
+export type ExportedRecoveryScoreReliability = {
+  date: string;
+  hrvIncluded: boolean;
+  reliability: 'full' | 'reduced_hrv_skipped' | 'reduced_hrv_missing';
+};
+
+export type HrvSkipSummary = {
+  totalReadinessDays: number;
+  measuredCount: number;
+  skippedCount: number;
+  skipPct: number | null;
+  currentSkipStreak: number;
+  lastMeasuredDate: string | null;
+  recoveryScoreImpactNote: string;
+  recoveryScoreReliabilityByDay: ExportedRecoveryScoreReliability[];
 };
 
 type StressDailySummary = {
@@ -304,6 +328,10 @@ export type FullLocalExport = {
   body_readiness_logs: BodyReadinessLog[];
   /** Morning RMSSD readings derived from `readiness_logs` (same data as in-app HRV history). */
   hrv_logs: ExportedHrvLog[];
+  /** All HRV-related readiness days: measured readings and explicit skips. */
+  hrv_all_entries: ExportedHrvAllEntry[];
+  /** Aggregate skip rates, streaks, and recovery-score reliability flags. */
+  hrv_skip_summary: HrvSkipSummary;
   /** User-defined lifting goals with export-time progress. */
   user_goals: ExportedUserGoal[];
   /** Work shift checklist entries from Dexie meta (`workout:workday:v1:*`). */
@@ -572,6 +600,85 @@ export async function buildFullLocalExport(opts?: FullLocalExportOptions): Promi
   }));
 
   const hrv_logs = buildHrvLogsExport(readiness_logs);
+
+  const hrvTotal = readiness_logs.filter(
+    (r) => r.hrvRmssd != null || r.hrvSkipped === true,
+  ).length;
+
+  const hrvSkippedCount = readiness_logs.filter(
+    (r) => r.hrvSkipped === true,
+  ).length;
+
+  const hrvMeasuredCount = readiness_logs.filter(
+    (r) =>
+      r.hrvRmssd != null &&
+      !r.hrvSkipped &&
+      Number.isFinite(r.hrvRmssd!),
+  ).length;
+
+  const hrvSkipPct =
+    hrvTotal > 0 ? Math.round((hrvSkippedCount / hrvTotal) * 100) : null;
+
+  const sortedReadiness = [...readiness_logs].sort((a, b) =>
+    a.date.localeCompare(b.date),
+  );
+  let currentSkipStreak = 0;
+  for (let i = sortedReadiness.length - 1; i >= 0; i--) {
+    const r = sortedReadiness[i]!;
+    if (r.hrvSkipped === true) {
+      currentSkipStreak++;
+    } else if (r.hrvRmssd != null) {
+      break;
+    }
+  }
+
+  const lastMeasuredRow = [...sortedReadiness]
+    .reverse()
+    .find((r) => r.hrvRmssd != null && !r.hrvSkipped);
+
+  const recoveryScoreReliability = sortedReadiness
+    .filter((r) => r.soreness != null || r.motivation != null)
+    .map((r) => ({
+      date: r.date,
+      hrvIncluded: !!(r.hrvRmssd != null && !r.hrvSkipped),
+      reliability:
+        r.hrvRmssd != null && !r.hrvSkipped
+          ? ('full' as const)
+          : r.hrvSkipped
+            ? ('reduced_hrv_skipped' as const)
+            : ('reduced_hrv_missing' as const),
+    }));
+
+  const hrv_skip_summary: HrvSkipSummary = {
+    totalReadinessDays: hrvTotal,
+    measuredCount: hrvMeasuredCount,
+    skippedCount: hrvSkippedCount,
+    skipPct: hrvSkipPct,
+    currentSkipStreak,
+    lastMeasuredDate: lastMeasuredRow?.date ?? null,
+    recoveryScoreImpactNote:
+      hrvSkipPct != null && hrvSkipPct > 50
+        ? 'HRV skipped >50% of days — recovery scores are '
+          + 'systematically underestimated. Measuring HRV '
+          + 'consistently would improve score accuracy.'
+        : hrvSkipPct != null && hrvSkipPct > 20
+          ? 'HRV skipped on ' + hrvSkipPct + '% of days — '
+            + 'recovery scores on those days carry 20% less '
+            + 'signal than measured days.'
+          : 'HRV coverage is good — recovery scores are '
+            + 'reliable.',
+    recoveryScoreReliabilityByDay: recoveryScoreReliability,
+  };
+
+  const hrv_all_entries: ExportedHrvAllEntry[] = sortedReadiness
+    .filter((r) => r.hrvRmssd != null || r.hrvSkipped === true)
+    .map((r) => ({
+      date: r.date,
+      hrvMs: r.hrvRmssd ?? null,
+      skipped: r.hrvSkipped === true,
+      measuredMin: r.hrvMeasuredMin ?? null,
+    }));
+
   const workday_logs = buildWorkdayLogsExport(meta);
   const supplementRows = await db.supplement_logs.orderBy('date').toArray();
   const caffeine_logs = (await db.caffeine_logs.toArray())
@@ -905,6 +1012,8 @@ export async function buildFullLocalExport(opts?: FullLocalExportOptions): Promi
     injury_episodes,
     body_readiness_logs,
     hrv_logs,
+    hrv_all_entries,
+    hrv_skip_summary,
     user_goals,
     workday_logs,
     supplement_logs,
