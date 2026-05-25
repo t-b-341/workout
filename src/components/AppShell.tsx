@@ -114,7 +114,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       }
     })();
     return () => { cancelled = true; };
-  }, [router]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Periodic flush, plus a periodic incremental pull. Visibility & online
   // events also trigger an immediate pull+flush so resuming the app feels
