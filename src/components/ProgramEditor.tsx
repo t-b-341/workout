@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import {
   useAllBodyweight,
@@ -2290,37 +2290,34 @@ function NewBlockSheet({
 }) {
   const recentAvg = useRecentNutritionAverages();
 
-  const defaultMaintenance = recentAvg?.avgTrainingCalories
-    ?? 2900;
-  const defaultDeficit = Math.max(
-    1800,
-    defaultMaintenance - 450,
-  );
-  const defaultProtein = recentAvg?.avgProtein ?? 200;
+  const computedDefaults = useMemo(() => {
+    const maintenance = recentAvg?.avgTrainingCalories ?? 2900;
+    return {
+      caloriesMaintenance: maintenance,
+      caloriesDeficit: Math.max(1800, maintenance - 450),
+      caloriesRest: Math.round(maintenance * 0.82),
+      proteinG: recentAvg?.avgProtein ?? 200,
+    };
+  }, [recentAvg?.avgTrainingCalories, recentAvg?.avgProtein]);
 
   const [anchorDate, setAnchorDate] = useState(todayIso());
-  const [caloriesDeficit, setCaloriesDeficit] =
-    useState(defaultDeficit);
-  const [caloriesMaintenance, setCaloriesMaintenance] =
-    useState(defaultMaintenance);
-  const [caloriesRest, setCaloriesRest] = useState(
-    Math.round(defaultMaintenance * 0.82)
-  );
-  const [proteinG, setProteinG] = useState(defaultProtein);
+  const [caloriesDeficitOverride, setCaloriesDeficitOverride] =
+    useState<number | null>(null);
+  const [caloriesMaintenanceOverride, setCaloriesMaintenanceOverride] =
+    useState<number | null>(null);
+  const [caloriesRestOverride, setCaloriesRestOverride] =
+    useState<number | null>(null);
+  const [proteinGOverride, setProteinGOverride] =
+    useState<number | null>(null);
   const [busy, setBusy] = useState(false);
 
-  useEffect(() => {
-    if (!recentAvg?.avgTrainingCalories) return;
-    const maintenance = recentAvg.avgTrainingCalories;
-    const deficit = Math.max(1800, maintenance - 450);
-    setCaloriesMaintenance(maintenance);
-    setCaloriesDeficit(deficit);
-    setCaloriesRest(Math.round(maintenance * 0.82));
-    if (recentAvg.avgProtein) {
-      setProteinG(recentAvg.avgProtein);
-    }
-  }, [recentAvg?.avgTrainingCalories,
-      recentAvg?.avgProtein]);
+  const caloriesDeficit =
+    caloriesDeficitOverride ?? computedDefaults.caloriesDeficit;
+  const caloriesMaintenance =
+    caloriesMaintenanceOverride ?? computedDefaults.caloriesMaintenance;
+  const caloriesRest =
+    caloriesRestOverride ?? computedDefaults.caloriesRest;
+  const proteinG = proteinGOverride ?? computedDefaults.proteinG;
 
   const preview = buildTenWeekBlock(
     `block-${anchorDate}`,
@@ -2374,25 +2371,25 @@ function NewBlockSheet({
             {
               label: 'Deficit calories (training days)',
               value: caloriesDeficit,
-              set: setCaloriesDeficit,
+              set: setCaloriesDeficitOverride,
               hint: 'Weeks 1–4 and 9–10',
             },
             {
               label: 'Maintenance calories (training days)',
               value: caloriesMaintenance,
-              set: setCaloriesMaintenance,
+              set: setCaloriesMaintenanceOverride,
               hint: 'Weeks 5–8',
             },
             {
               label: 'Rest/LISS day calories',
               value: caloriesRest,
-              set: setCaloriesRest,
+              set: setCaloriesRestOverride,
               hint: 'All phases',
             },
             {
               label: 'Daily protein target (g)',
               value: proteinG,
-              set: setProteinG,
+              set: setProteinGOverride,
               hint: 'All phases',
             },
           ].map(({ label, value, set, hint }) => (

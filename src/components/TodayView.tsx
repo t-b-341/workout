@@ -127,7 +127,7 @@ export function TodayView() {
     isPhaseTransitionDismissed(activePhase.id).then(seen => {
       setPhaseTransitionDismissed(seen);
     });
-  }, [activePhase?.id, isNewPhaseDay]);
+  }, [activePhase, isNewPhaseDay]);
 
   const prescriptions = usePrescriptions((activeId ?? undefined) as TemplateId | undefined);
   const favoriteLiftIds = useFavoriteLiftIds();
