@@ -924,7 +924,7 @@ export function ProgramEditor() {
                 const today = todayIso();
                 const fourWeeksOut = (() => {
                   const d = new Date(today);
-                  d.setDate(d.getDate() + 27);
+                  d.setDate(d.getDate() + 6);
                   return d.toISOString().slice(0, 10);
                 })();
                 setEditingPhase({

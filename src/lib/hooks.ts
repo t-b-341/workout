@@ -285,13 +285,18 @@ export function useAllPhaseGoals(): PhaseGoal[] | undefined {
 }
 
 export function useActivePhaseGoal(): PhaseGoal | undefined {
-  const today = todayIso();
-  return useLiveQuery(
-    () => getDb().phase_goals
-      .filter(p => p.startDate <= today && p.endDate >= today)
-      .first(),
-    [],
-  );
+  return useLiveQuery(async () => {
+    const today = todayIso();
+    const all = await getDb().phase_goals
+      .filter(
+        (p) => p.startDate <= today && p.endDate >= today,
+      )
+      .toArray();
+    if (all.length === 0) return undefined;
+    return all.sort((a, b) =>
+      b.startDate.localeCompare(a.startDate),
+    )[0];
+  }, []);
 }
 
 export function useNutritionSummaryForDateRange(
