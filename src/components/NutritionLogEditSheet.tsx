@@ -266,6 +266,7 @@ export function NutritionLogEditSheet({
     }
 
     await localUpsert('nutrition_logs', {
+      ...log,
       id: log.id,
       date: log.date,
       dayType,
