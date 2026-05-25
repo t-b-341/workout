@@ -87,7 +87,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           router.replace('/login');
           return;
         }
-        initDb(user.id);
+        await initDb(user.id);
         setCachedUserId(user.id);
         // Allow the browser client to register the session on its headers.
         await new Promise((resolve) => setTimeout(resolve, 100));

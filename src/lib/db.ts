@@ -208,6 +208,9 @@ export class WorkoutDB extends Dexie {
       meta: 'key',
     });
 
+    // v7 — no-op bridge (keeps upgrade chain sequential between v6 and v8).
+    this.version(7).stores({});
+
     // v8 — stress check-ins: timestamp + single 1–5 rating; multiple rows per day.
     this.version(8).stores({
       lifts: 'id, name',
@@ -733,13 +736,43 @@ export const SCHEMA_VERSION = 26;
 let _db: WorkoutDB | null = null;
 let _dbUserId: string | null = null;
 
-export function initDb(userId: string): WorkoutDB {
-  if (_db && _dbUserId === userId) return _db;
-  if (_db && _dbUserId !== userId) {
-    void _db.close();
-    _db = null;
+async function openDbWithFallback(userId: string): Promise<WorkoutDB> {
+  const name = `workout-${userId}`;
+  try {
+    const db = new WorkoutDB(name);
+    await db.open();
+    return db;
+  } catch (err) {
+    console.error('DB open failed, attempting recovery:', err);
+    await Dexie.delete(name);
+    const db = new WorkoutDB(name);
+    await db.open();
+    return db;
   }
-  _db = new WorkoutDB(`workout-${userId}`);
+}
+
+export async function initDb(userId: string): Promise<WorkoutDB> {
+  if (_db && _dbUserId === userId) {
+    if (!_db.isOpen()) {
+      try {
+        await _db.open();
+      } catch (err) {
+        console.error('DB re-open failed, attempting recovery:', err);
+        _db.close();
+        _db = null;
+        _dbUserId = null;
+        _db = await openDbWithFallback(userId);
+        _dbUserId = userId;
+      }
+    }
+    return _db;
+  }
+  if (_db) {
+    _db.close();
+    _db = null;
+    _dbUserId = null;
+  }
+  _db = await openDbWithFallback(userId);
   _dbUserId = userId;
   return _db;
 }
