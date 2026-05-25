@@ -97,7 +97,12 @@ export class WorkoutDB extends Dexie {
   dirty!: Table<DirtyRow, string>;
   meta!: Table<{ key: string; value: unknown }, string>;
 
-  constructor(name = 'workout') {
+  constructor(name: string) {
+    if (name === 'workout' || !name.startsWith('workout-')) {
+      throw new Error(
+        `WorkoutDB requires a user-scoped name (workout-<userId>), got "${name}"`,
+      );
+    }
     super(name);
 
     // v1 — original schema. NEVER edit a previously released version block.
@@ -736,17 +741,28 @@ export const SCHEMA_VERSION = 26;
 let _db: WorkoutDB | null = null;
 let _dbUserId: string | null = null;
 
+function deleteStaleUnscopedWorkoutDb(): void {
+  void Dexie.exists('workout').then((exists) => {
+    if (exists) {
+      console.log('[initDb] Deleting stale unscoped database');
+      void Dexie.delete('workout');
+    }
+  });
+}
+
 async function openDbWithFallback(userId: string): Promise<WorkoutDB> {
   const name = `workout-${userId}`;
   try {
     const db = new WorkoutDB(name);
     await db.open();
+    deleteStaleUnscopedWorkoutDb();
     return db;
   } catch (err) {
     console.error('DB open failed, attempting recovery:', err);
     await Dexie.delete(name);
     const db = new WorkoutDB(name);
     await db.open();
+    deleteStaleUnscopedWorkoutDb();
     return db;
   }
 }
@@ -779,7 +795,7 @@ export async function initDb(userId: string): Promise<WorkoutDB> {
 
 export function getDb(): WorkoutDB {
   if (!_db) {
-    throw new Error('DB not initialized — call initDb(userId) first');
+    throw new Error('DB not initialized. Call initDb(userId) first.');
   }
   return _db;
 }

@@ -60,6 +60,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const { mode, toggleMode } = useLayoutMode();
   const shell = shellMaxClass(mode);
+  const [dbReady, setDbReady] = useState(false);
   const [ready, setReady] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -71,16 +72,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     (async () => {
       try {
         const supabase = createClient();
-        // Explicitly restore session from cookie so the browser client attaches
-        // a Bearer token to all subsequent requests. Without this, OAuth
-        // redirects can result in an unauthenticated client on first render.
-        const { data: { session: initialSession } } = await supabase.auth.getSession();
-        if (!initialSession) {
-          clearCachedUserId();
-          router.replace('/login');
-          return;
-        }
-        // Verify server-side (detects expired / revoked tokens).
         const { data: { user } } = await supabase.auth.getUser();
         if (!user) {
           clearCachedUserId();
@@ -89,19 +80,22 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         }
         await initDb(user.id);
         setCachedUserId(user.id);
+        if (!cancelled) {
+          setUserId(user.id);
+          setDbReady(true);
+        }
         // Allow the browser client to register the session on its headers.
         await new Promise((resolve) => setTimeout(resolve, 100));
         await ensureLocalSeed();
         await backfillSessionDurations();
         await seedRemotePrescriptionsIfEmpty(user.id);
         await seedRemoteTemplatesIfEmpty(user.id);
-        setSyncing(true);
+        if (!cancelled) setSyncing(true);
         await pullAll({ full: true });
         await repairOpeningPrBaselineSession();
         await backfillCardioFromSets();
         await flushDirty();
         if (!cancelled) {
-          setUserId(user.id);
           setSyncing(false);
           setReady(true);
         }
@@ -198,10 +192,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     );
   }
 
-  if (!ready) {
+  if (!dbReady || !ready) {
     return (
       <main className="min-h-dvh flex items-center justify-center">
-        <div className="text-zinc-400 text-sm">{syncing ? 'Syncing…' : 'Loading…'}</div>
+        <div className="text-zinc-400 text-sm">
+          {!dbReady ? 'Loading…' : syncing ? 'Syncing…' : 'Loading…'}
+        </div>
       </main>
     );
   }
