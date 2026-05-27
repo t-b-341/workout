@@ -15,6 +15,7 @@ import {
   clearCachedUserId,
   ensureLocalSeed,
   flushDirty,
+  localUpsert,
   pullAll,
   seedRemotePrescriptionsIfEmpty,
   seedRemoteTemplatesIfEmpty,
@@ -50,7 +51,11 @@ async function backfillSessionDurations() {
     if (Number.isNaN(startMs) || Number.isNaN(endMs)) continue;
     const durationMin = Math.round((endMs - startMs) / 60000);
     if (durationMin > 0 && durationMin < 600) {
-      await db.session_logs.update(s.id, { durationMin });
+      // Go through localUpsert (not db.session_logs.update) so the change
+      // enqueues to the dirty queue and propagates to other devices. A
+      // direct Dexie write would leave durationMin computed only on the
+      // device that first noticed the missing field.
+      await localUpsert('session_logs', { ...s, durationMin });
     }
   }
 }

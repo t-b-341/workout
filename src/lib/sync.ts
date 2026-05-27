@@ -151,6 +151,11 @@ const USER_SCOPED_ID_TABLES: ReadonlySet<RemoteTable> = new Set<RemoteTable>([
   'relationship_checkins',
   'body_measurement_logs',
   'supplement_logs',
+  // Block planner / phase goals can collide too: NewBlockSheet builds the
+  // block id as `block-${anchorDate}` and phases derive `${blockId}-p1`,
+  // both shared if two users plan a block on the same anchor.
+  'block_templates',
+  'phase_goals',
 ]);
 
 /**
@@ -471,6 +476,13 @@ async function persistRows(table: SyncPullTable, rows: RowPayload[]) {
     case 'user_goals':
       await db.user_goals.bulkPut(rows.map((r) => fromRemote<UserGoal>(r)));
       return;
+    default: {
+      // Exhaustiveness guard. If a new table is added to SyncPullTable
+      // without a case here, the assignment fails to compile, so the pull
+      // path never silently drops rows for a new table.
+      const _exhaustive: never = table;
+      void _exhaustive;
+    }
   }
 }
 

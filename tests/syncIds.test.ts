@@ -24,6 +24,8 @@ describe('remoteIdFor', () => {
       'relationship_checkins',
       'body_measurement_logs',
       'supplement_logs',
+      'block_templates',
+      'phase_goals',
     ] as const;
     for (const t of tables) {
       expect(remoteIdFor(t, 'shared-id', 'user-abc')).toBe('user-abc:shared-id');

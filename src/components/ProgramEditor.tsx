@@ -1577,7 +1577,7 @@ type ScheduleRow = {
   date: string;            // ISO yyyy-mm-dd
   dayOfWeek: number;       // 1=Mon..7=Sun
   template: SessionTemplate;
-  status: 'completed' | 'today' | 'upcoming' | 'missed' | 'partial';
+  status: 'completed' | 'today' | 'upcoming' | 'missed' | 'partial' | 'skipped';
   sessionId?: string;
 };
 
@@ -1703,9 +1703,83 @@ function Schedule({
       setLogs={sets}
       sessions={sessions}
       onSelectTemplate={onSelectTemplate}
+      onSkip={async (r) => {
+        await skipPlannedSession(r.date, r.template.id);
+      }}
+      onRestore={async (r) => {
+        await restorePlannedSession(r.date, r.template.id, sets ?? []);
+      }}
     />
     </>
   );
+}
+
+/**
+ * Soft-delete a planned session. Upserts `session_logs` with
+ * `sessionStatus: 'skipped'` so the row stays around (which keeps any
+ * `readiness_logs` it references intact — the FK from readiness → session
+ * stays valid because we don't delete the parent). If no row existed yet,
+ * a minimal one is created just to hold the skip marker so future devices
+ * see the same schedule.
+ */
+async function skipPlannedSession(date: string, templateId: TemplateId): Promise<void> {
+  const db = getDb();
+  const id = `${date}-${templateId}`;
+  const existing = await db.session_logs.get(id);
+  const base: SessionLog = existing ?? {
+    id,
+    date,
+    templateId,
+    mode: 'standard',
+    deload: false,
+    watchFlags: [],
+    sessionType: 'standard',
+  };
+  await localUpsert('session_logs', { ...base, sessionStatus: 'skipped' });
+  await flushDirty().catch(() => {});
+}
+
+/**
+ * Undo a skip. If the session row has no other activity (no readiness
+ * check, no started/completed timestamp, no logged sets), the whole row
+ * gets deleted so the schedule treats the day as fresh `upcoming` again.
+ * Otherwise we clear `sessionStatus` with an explicit `null` — the
+ * upsert codec drops `undefined` keys, so `null` is the wire-level
+ * sentinel that actually clears the server column.
+ *
+ * Crucially we also consult Dexie directly for any `readiness_logs` rows
+ * pointing at this session id, because `readiness_logs.session_log_id`
+ * has `ON DELETE CASCADE` on Supabase — if we hard-deleted a session
+ * with a readiness check, the server would wipe the readiness too.
+ * The `existing.readinessCompletedAt` field is normally enough to
+ * detect that, but a direct table query makes us robust to a partial
+ * write where the readiness landed but the session's mirror field
+ * didn't.
+ */
+async function restorePlannedSession(
+  date: string,
+  templateId: TemplateId,
+  allSets: SetLog[],
+): Promise<void> {
+  const db = getDb();
+  const id = `${date}-${templateId}`;
+  const existing = await db.session_logs.get(id);
+  if (!existing) return;
+  const hasSets = allSets.some((s) => s.sessionLogId === id);
+  const hasReadiness =
+    (await db.readiness_logs.where('sessionLogId').equals(id).count()) > 0;
+  const hasActivity =
+    existing.startedAt != null ||
+    existing.completedAt != null ||
+    existing.readinessCompletedAt != null ||
+    hasReadiness ||
+    hasSets;
+  if (hasActivity) {
+    await localUpsert('session_logs', { ...existing, sessionStatus: null });
+  } else {
+    await localDelete('session_logs', id);
+  }
+  await flushDirty().catch(() => {});
 }
 
 function ScheduleRowItem({
@@ -1721,7 +1795,8 @@ function ScheduleRowItem({
     row.status === 'today' ? 'bg-amber-500/10' :
     row.status === 'completed' ? '' :
     row.status === 'partial' ? 'bg-amber-900/10' :
-    row.status === 'missed' ? 'bg-rose-950/20' : '';
+    row.status === 'missed' ? 'bg-rose-950/20' :
+    row.status === 'skipped' ? 'bg-zinc-950 opacity-60' : '';
   return (
     <button
       type="button"
@@ -1746,6 +1821,7 @@ function StatusBadge({ status }: { status: ScheduleRow['status'] }) {
     completed: { label: 'done',      className: 'bg-emerald-700 text-emerald-100' },
     partial:   { label: 'partial',   className: 'bg-amber-700 text-amber-100' },
     missed:    { label: 'missed',    className: 'bg-rose-900 text-rose-200' },
+    skipped:   { label: 'skipped',   className: 'bg-zinc-700 text-zinc-300' },
     upcoming:  { label: '',          className: 'invisible' },
   };
   const { label, className } = map[status];
@@ -1790,7 +1866,9 @@ function buildSchedule(
       const session = sessionsByKey.get(`${date}:${t.id}`);
       const setCount = session ? (setCountBySession.get(session.id) ?? 0) : 0;
       let status: ScheduleRow['status'];
-      if (session?.completedAt) {
+      if (session?.sessionStatus === 'skipped') {
+        status = 'skipped';
+      } else if (session?.completedAt) {
         status = 'completed';
       } else if (date === today) {
         status = 'today';

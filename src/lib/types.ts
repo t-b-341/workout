@@ -188,9 +188,12 @@ export type SessionLog = {
   tags?: SessionStrategyTagId[];
   /**
    * Lifecycle / analytics classification. Usually derived from set_logs + prescriptions;
-   * persisted when explicitly skipped (`skipped`).
+   * persisted when explicitly skipped (`skipped`). `null` is the sentinel used to
+   * clear a previously persisted status on the server (the upsert payload needs an
+   * explicit null because supabase-js strips `undefined` keys from JSON.stringify).
+   * Locally treat `null` the same as absent — readers compare to `'skipped'` explicitly.
    */
-  sessionStatus?: SessionStatus;
+  sessionStatus?: SessionStatus | null;
 };
 
 export type CardioType = 'liss' | 'intervals' | 'occupational';

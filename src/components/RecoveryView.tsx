@@ -1946,6 +1946,13 @@ function StressSection({
           </div>
         </div>
       )}
+      <button
+        type="button"
+        onClick={() => setShowThoughtRecord(true)}
+        className="text-xs text-zinc-500 hover:text-amber-400 self-start"
+      >
+        Log a thought record →
+      </button>
       {highStress && (
         <div className="rounded-lg border border-amber-500/35 bg-amber-950/30 p-3 text-xs text-amber-100 space-y-1">
           <div className="font-semibold">High stress detected (4+)</div>

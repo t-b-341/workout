@@ -11,7 +11,7 @@ import type { Lift, Prescription, SessionLog, SessionTemplate, SetLog, TemplateI
 export type ScheduleWorkoutPeekRow = {
   date: string;
   template: SessionTemplate;
-  status: 'completed' | 'today' | 'upcoming' | 'missed' | 'partial';
+  status: 'completed' | 'today' | 'upcoming' | 'missed' | 'partial' | 'skipped';
 };
 
 type Props = {
@@ -24,6 +24,10 @@ type Props = {
   setLogs?: SetLog[];
   sessions?: SessionLog[];
   onSelectTemplate: (id: TemplateId) => void;
+  /** Mark this planned day as skipped (soft-delete; preserves readiness etc.). */
+  onSkip?: (row: ScheduleWorkoutPeekRow) => Promise<void> | void;
+  /** Clear the `skipped` flag (and remove the row if it has no other activity). */
+  onRestore?: (row: ScheduleWorkoutPeekRow) => Promise<void> | void;
 };
 
 export function ScheduleWorkoutSheet({
@@ -35,6 +39,8 @@ export function ScheduleWorkoutSheet({
   setLogs,
   sessions,
   onSelectTemplate,
+  onSkip,
+  onRestore,
 }: Props) {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -126,6 +132,32 @@ export function ScheduleWorkoutSheet({
           >
             Jump to Program editor ({row.template.id})
           </button>
+          {row.status === 'skipped' && onRestore && (
+            <button
+              type="button"
+              className="w-full h-11 rounded-xl border border-emerald-700 bg-emerald-950/40 text-emerald-200 text-sm font-medium hover:bg-emerald-900/40 transition-colors"
+              onClick={async () => {
+                await onRestore(row);
+                onClose();
+              }}
+            >
+              Restore this planned session
+            </button>
+          )}
+          {(row.status === 'today' || row.status === 'upcoming' || row.status === 'missed') && onSkip && (
+            <button
+              type="button"
+              className="w-full h-11 rounded-xl border border-rose-800 bg-rose-950/30 text-rose-200 text-sm font-medium hover:bg-rose-900/40 transition-colors"
+              onClick={async () => {
+                await onSkip(row);
+                onClose();
+              }}
+            >
+              {row.status === 'today'
+                ? "Skip today's session (readiness check stays)"
+                : 'Mark this planned session as skipped'}
+            </button>
+          )}
           <button
             type="button"
             className="w-full h-10 rounded-xl text-zinc-500 text-sm hover:text-zinc-300"
