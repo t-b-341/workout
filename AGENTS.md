@@ -24,6 +24,8 @@ Personal strength + cardio tracker: **Next.js 16** (App Router), **TypeScript**,
 - `npm run test:e2e` / `npm run test:e2e:ui` — Playwright mobile smoke (`e2e/`)
 - `npm run lint` / `npm run build`
 
+**After code changes:** run the full test suite before finishing — `npm test` then `npm run test:e2e` (both must pass). Do not report work complete after unit tests only.
+
 ## Docs
 
 - Architecture overview: `README.md`
