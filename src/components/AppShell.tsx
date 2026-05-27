@@ -95,6 +95,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
         try {
           await backfillSessionDurations();
+          // Flush any pending writes BEFORE pullAll clears local tables —
+          // otherwise rows queued offline get silently dropped because
+          // pushOne can't find them after the wipe.
+          await flushDirty();
           await seedRemotePrescriptionsIfEmpty(user.id);
           await seedRemoteTemplatesIfEmpty(user.id);
           await Promise.race([

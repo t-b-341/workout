@@ -291,6 +291,7 @@ export async function seedRemoteTemplatesIfEmpty(userId: string) {
 
   const rows = TEMPLATES.map((t) => ({
     ...toRemote(t as unknown as Record<string, unknown>),
+    id: `${userId}:${t.id}`,
     user_id: userId,
   }));
   const { error: insertErr } = await supabase
@@ -312,7 +313,15 @@ async function persistRows(table: SyncPullTable, rows: RowPayload[]) {
   const db = getDb();
   switch (table) {
     case 'templates':
-      await db.templates.bulkPut(rows.map((r) => fromRemote<SessionTemplate>(r)));
+      await db.templates.bulkPut(
+        rows.map((r) => {
+          const t = fromRemote<SessionTemplate>(r);
+          if (typeof t.id === 'string' && t.id.includes(':')) {
+            t.id = t.id.split(':').slice(1).join(':') as typeof t.id;
+          }
+          return t;
+        }),
+      );
       return;
     case 'lifts':
       await db.lifts.bulkPut(rows.map((r) => fromRemote<Lift>(r)));
@@ -550,7 +559,10 @@ async function pushOne(item: DirtyRow, authUserId: string | null): Promise<Error
   const localTable = db[TABLE_TO_LOCAL[item.table]];
   // @ts-expect-error dynamic table access
   const row = await localTable.get(item.rowId);
-  if (!row) return null;
+  if (!row) {
+    console.warn(`[pushOne] local row not found: ${item.table}:${item.rowId} — skipping`);
+    return new Error(`local row not found: ${item.table}:${item.rowId}`);
+  }
   // Strip any updatedAt we cached from the server — let Supabase set it via
   // its trigger so we don't fight the canonical value.
   const { updatedAt: _ignore, ...rest } = row as Record<string, unknown>;
