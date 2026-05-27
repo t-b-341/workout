@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { format } from 'date-fns';
 import { useAllInjuryEpisodes } from '@/lib/hooks';
 import {
@@ -85,15 +85,9 @@ export function InjuryTrackingPanel() {
     );
   }, [activeBySite]);
 
-  const [collapsed, setCollapsed] = useState(true);
-  const [initialSet, setInitialSet] = useState(false);
-
-  useEffect(() => {
-    if (!initialSet && episodes !== undefined) {
-      setCollapsed(activeList.length === 0);
-      setInitialSet(true);
-    }
-  }, [episodes, activeList.length, initialSet]);
+  const defaultCollapsed = episodes === undefined || activeList.length === 0;
+  const [userCollapsed, setUserCollapsed] = useState<boolean | null>(null);
+  const collapsed = userCollapsed ?? defaultCollapsed;
 
   if (episodes === undefined) {
     return (
@@ -107,7 +101,7 @@ export function InjuryTrackingPanel() {
     <div className="rounded-2xl bg-zinc-900 border border-zinc-800 overflow-hidden">
       <button
         type="button"
-        onClick={() => setCollapsed((c) => !c)}
+        onClick={() => setUserCollapsed(!collapsed)}
         className="w-full flex items-center justify-between px-4 py-3 text-left"
       >
         <div className="flex items-center gap-2 min-w-0">
