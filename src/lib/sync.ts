@@ -126,18 +126,44 @@ function withUserIdRemote(payload: Record<string, unknown>, userId: string | nul
 }
 
 /**
- * Templates use user-scoped server primary keys so multiple users don't
- * collide on the same bare id (`L1`, `U1`, …) under RLS-blocked upserts.
- * Local Dexie keeps the bare id; the prefix is added on push and stripped
- * on pull.
+ * Tables whose local primary keys are built from non-user-scoped values
+ * (e.g. `nutrition-${date}`, `bw-${date}`, the seeded `L1` / `U1` templates).
+ *
+ * Without per-user scoping these collide across users on the server, so a
+ * second user's upsert hits `ON CONFLICT DO UPDATE` and silently no-ops
+ * because the existing row's `user_id` doesn't match `auth.uid()` under
+ * RLS. The Supabase client returns no error and the dirty queue entry is
+ * removed — every write looks successful but never lands.
+ *
+ * Local Dexie keeps the bare id; `remoteIdFor` adds `${userId}:` on push
+ * and `localIdFor` strips it on pull / realtime so call sites stay simple.
  */
-export function remoteTemplateId(localId: string, userId: string | null): string {
+const USER_SCOPED_ID_TABLES: ReadonlySet<RemoteTable> = new Set<RemoteTable>([
+  'templates',
+  'nutrition_logs',
+  'hydration_logs',
+  'bodyweight_logs',
+  'oral_health_logs',
+  'sleep_logs',
+  'stoic_checkins',
+  'relationship_checkins',
+  'body_measurement_logs',
+  'supplement_logs',
+]);
+
+export function remoteIdFor(
+  table: RemoteTable,
+  localId: string,
+  userId: string | null,
+): string {
   if (!userId) return localId;
+  if (!USER_SCOPED_ID_TABLES.has(table)) return localId;
   if (localId.startsWith(`${userId}:`)) return localId;
   return `${userId}:${localId}`;
 }
 
-export function localTemplateId(remoteId: string): string {
+export function localIdFor(table: string, remoteId: string): string {
+  if (!USER_SCOPED_ID_TABLES.has(table as RemoteTable)) return remoteId;
   const colon = remoteId.indexOf(':');
   if (colon < 0) return remoteId;
   return remoteId.slice(colon + 1);
@@ -310,7 +336,7 @@ export async function seedRemoteTemplatesIfEmpty(userId: string) {
 
   const rows = TEMPLATES.map((t) => ({
     ...toRemote(t as unknown as Record<string, unknown>),
-    id: remoteTemplateId(t.id, userId),
+    id: remoteIdFor('templates', t.id, userId),
     user_id: userId,
   }));
   const { error: insertErr } = await supabase
@@ -324,24 +350,27 @@ type RowPayload = Record<string, unknown>;
 async function mirrorDelete(table: SyncPullTable, id: string) {
   const db = getDb();
   const localTable = db[TABLE_TO_LOCAL[table]];
-  const localId = table === 'templates' ? localTemplateId(id) : id;
+  const localId = localIdFor(table, id);
   // @ts-expect-error dynamic table access
   await localTable.delete(localId);
 }
 
 async function persistRows(table: SyncPullTable, rows: RowPayload[]) {
   const db = getDb();
+  // Strip the user-scoped id prefix before persisting so local lookups
+  // continue to use the bare id (e.g. 'nutrition-2026-05-27' rather than
+  // '<uuid>:nutrition-2026-05-27'). Safe to mutate — callers pass fresh
+  // arrays from Supabase responses that aren't reused afterwards.
+  if (USER_SCOPED_ID_TABLES.has(table as RemoteTable)) {
+    for (const r of rows) {
+      if (typeof r.id === 'string') {
+        r.id = localIdFor(table, r.id);
+      }
+    }
+  }
   switch (table) {
     case 'templates':
-      await db.templates.bulkPut(
-        rows.map((r) => {
-          const t = fromRemote<SessionTemplate>(r);
-          if (typeof t.id === 'string') {
-            t.id = localTemplateId(t.id) as typeof t.id;
-          }
-          return t;
-        }),
-      );
+      await db.templates.bulkPut(rows.map((r) => fromRemote<SessionTemplate>(r)));
       return;
     case 'lifts':
       await db.lifts.bulkPut(rows.map((r) => fromRemote<Lift>(r)));
@@ -585,8 +614,7 @@ async function pushOne(item: DirtyRow, authUserId: string | null): Promise<Error
   const supabase = createClient();
   const db = getDb();
   if (item.op === 'delete') {
-    const serverId =
-      item.table === 'templates' ? remoteTemplateId(item.rowId, authUserId) : item.rowId;
+    const serverId = remoteIdFor(item.table, item.rowId, authUserId);
     const { error } = await supabase.from(item.table).delete().eq('id', serverId);
     if (error) {
       recordSyncError({
@@ -623,8 +651,8 @@ async function pushOne(item: DirtyRow, authUserId: string | null): Promise<Error
       : (toRemote(rest) as Record<string, unknown>),
     authUserId,
   );
-  if (item.table === 'templates' && typeof payload.id === 'string') {
-    payload.id = remoteTemplateId(payload.id, authUserId);
+  if (typeof payload.id === 'string') {
+    payload.id = remoteIdFor(item.table, payload.id, authUserId);
   }
   const { error } = await supabase.from(item.table).upsert(payload);
   if (error) {
