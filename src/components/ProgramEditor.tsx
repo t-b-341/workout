@@ -58,6 +58,7 @@ import {
 import { isoWeekOf, startOfWeekIso } from '@/lib/stats';
 import { liftForSnap, snapWorkingWeight } from '@/lib/progression';
 import { MesocycleInsightsSection } from './MesocycleInsightsSection';
+import { SyncDiagnostics } from './SyncDiagnostics';
 import {
   clearMesoBoundaryPromptState,
   mesocyclePosition,
@@ -587,6 +588,7 @@ export function ProgramEditor() {
           </Link>
         </div>
       </div>
+      <SyncDiagnostics />
       {exportWizardOpen && (
         <div className="fixed inset-0 z-[100] flex items-end justify-center sm:items-center p-0 sm:p-4">
           <button

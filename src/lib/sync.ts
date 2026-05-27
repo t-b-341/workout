@@ -6,6 +6,7 @@ import { offerDeleteUndo, type UndoRemoteTable } from './deleteUndoCoordinator';
 import { createClient } from './supabase/client';
 import { LIFTS, PRESCRIPTIONS, TEMPLATES } from './seed';
 import { fromRemote, toRemote } from './syncCodec';
+import { recordSyncError } from './syncDiagnostics';
 import type {
   BodyMeasurementLog,
   BodyReadinessLog,
@@ -428,6 +429,13 @@ export async function pullAll(opts: { full?: boolean } = {}) {
           continue;
         }
         console.warn(`[pullAll] ${table} error:`, error.message);
+        recordSyncError({
+          phase: 'pull',
+          table,
+          message: error.message,
+          code: (error as { code?: string }).code,
+          status: (error as { status?: number }).status,
+        });
         pullErrors.push({ table, error });
         continue;
       }
@@ -452,6 +460,11 @@ export async function pullAll(opts: { full?: boolean } = {}) {
       }
     } catch (err) {
       console.warn(`[pullAll] ${table} threw:`, err);
+      recordSyncError({
+        phase: 'pull',
+        table,
+        message: (err as Error)?.message ?? String(err),
+      });
       pullErrors.push({ table, error: err });
     }
   }
@@ -554,6 +567,16 @@ async function pushOne(item: DirtyRow, authUserId: string | null): Promise<Error
   const db = getDb();
   if (item.op === 'delete') {
     const { error } = await supabase.from(item.table).delete().eq('id', item.rowId);
+    if (error) {
+      recordSyncError({
+        phase: 'push',
+        table: item.table,
+        rowId: item.rowId,
+        message: error.message,
+        code: (error as { code?: string }).code,
+        status: (error as { status?: number }).status,
+      });
+    }
     return error ?? null;
   }
   const localTable = db[TABLE_TO_LOCAL[item.table]];
@@ -561,6 +584,12 @@ async function pushOne(item: DirtyRow, authUserId: string | null): Promise<Error
   const row = await localTable.get(item.rowId);
   if (!row) {
     console.warn(`[pushOne] local row not found: ${item.table}:${item.rowId} — skipping`);
+    recordSyncError({
+      phase: 'localMissing',
+      table: item.table,
+      rowId: item.rowId,
+      message: 'local row not found — dirty entry orphaned',
+    });
     return new Error(`local row not found: ${item.table}:${item.rowId}`);
   }
   // Strip any updatedAt we cached from the server — let Supabase set it via
@@ -574,6 +603,16 @@ async function pushOne(item: DirtyRow, authUserId: string | null): Promise<Error
     authUserId,
   );
   const { error } = await supabase.from(item.table).upsert(payload);
+  if (error) {
+    recordSyncError({
+      phase: 'push',
+      table: item.table,
+      rowId: item.rowId,
+      message: error.message,
+      code: (error as { code?: string }).code,
+      status: (error as { status?: number }).status,
+    });
+  }
   return error ?? null;
 }
 
