@@ -140,6 +140,8 @@ function withUserIdRemote(payload: Record<string, unknown>, userId: string | nul
  */
 const USER_SCOPED_ID_TABLES: ReadonlySet<RemoteTable> = new Set<RemoteTable>([
   'templates',
+  'session_logs',
+  'readiness_logs',
   'nutrition_logs',
   'hydration_logs',
   'bodyweight_logs',
@@ -149,6 +151,18 @@ const USER_SCOPED_ID_TABLES: ReadonlySet<RemoteTable> = new Set<RemoteTable>([
   'relationship_checkins',
   'body_measurement_logs',
   'supplement_logs',
+]);
+
+/**
+ * Tables whose remote rows carry a `session_log_id` FK column pointing at
+ * `session_logs.id`. Since `session_logs.id` is user-scoped on the server
+ * (USER_SCOPED_ID_TABLES above), the FK value has to be prefixed on push
+ * and stripped on pull to keep references valid.
+ */
+const TABLES_WITH_SESSION_LOG_FK: ReadonlySet<RemoteTable> = new Set<RemoteTable>([
+  'set_logs',
+  'cardio_logs',
+  'readiness_logs',
 ]);
 
 export function remoteIdFor(
@@ -365,6 +379,13 @@ async function persistRows(table: SyncPullTable, rows: RowPayload[]) {
     for (const r of rows) {
       if (typeof r.id === 'string') {
         r.id = localIdFor(table, r.id);
+      }
+    }
+  }
+  if (TABLES_WITH_SESSION_LOG_FK.has(table as RemoteTable)) {
+    for (const r of rows) {
+      if (typeof r.session_log_id === 'string') {
+        r.session_log_id = localIdFor('session_logs', r.session_log_id);
       }
     }
   }
@@ -653,6 +674,12 @@ async function pushOne(item: DirtyRow, authUserId: string | null): Promise<Error
   );
   if (typeof payload.id === 'string') {
     payload.id = remoteIdFor(item.table, payload.id, authUserId);
+  }
+  if (
+    TABLES_WITH_SESSION_LOG_FK.has(item.table) &&
+    typeof payload.session_log_id === 'string'
+  ) {
+    payload.session_log_id = remoteIdFor('session_logs', payload.session_log_id, authUserId);
   }
   const { error } = await supabase.from(item.table).upsert(payload);
   if (error) {

@@ -14,6 +14,8 @@ describe('remoteIdFor', () => {
 
   it('prefixes the other collision-prone tables', () => {
     const tables = [
+      'session_logs',
+      'readiness_logs',
       'hydration_logs',
       'bodyweight_logs',
       'oral_health_logs',
@@ -28,9 +30,10 @@ describe('remoteIdFor', () => {
     }
   });
 
-  it('leaves session_logs and other UUID-keyed tables untouched', () => {
-    const uuid = '11111111-2222-3333-4444-555555555555';
-    expect(remoteIdFor('session_logs', uuid, 'user-abc')).toBe(uuid);
+  it('leaves set_logs and cardio_logs PKs untouched (UUID/timestamp-keyed)', () => {
+    // The session_log_id FK on these tables IS transformed in pushOne,
+    // but the primary key itself stays bare because the local pattern
+    // already includes Date.now() / session-derived uniqueness.
     expect(remoteIdFor('set_logs', 'sl-xyz', 'user-abc')).toBe('sl-xyz');
     expect(remoteIdFor('cardio_logs', 'cardio-xyz', 'user-abc')).toBe('cardio-xyz');
   });
@@ -66,9 +69,10 @@ describe('localIdFor', () => {
   });
 
   it('returns the id untouched for non-affected tables, even if it contains a colon', () => {
-    expect(localIdFor('session_logs', 'user-abc:not-actually-prefixed')).toBe(
+    expect(localIdFor('set_logs', 'user-abc:not-actually-prefixed')).toBe(
       'user-abc:not-actually-prefixed',
     );
+    expect(localIdFor('cardio_logs', 'foo:bar')).toBe('foo:bar');
   });
 
   it('round-trips back to the original bare id via remoteIdFor', () => {
