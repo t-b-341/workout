@@ -124,6 +124,24 @@ function withUserIdLocal<T extends { id: string }>(row: T, userId: string | null
 function withUserIdRemote(payload: Record<string, unknown>, userId: string | null): Record<string, unknown> {
   return userId ? { ...payload, user_id: userId } : payload;
 }
+
+/**
+ * Templates use user-scoped server primary keys so multiple users don't
+ * collide on the same bare id (`L1`, `U1`, …) under RLS-blocked upserts.
+ * Local Dexie keeps the bare id; the prefix is added on push and stripped
+ * on pull.
+ */
+export function remoteTemplateId(localId: string, userId: string | null): string {
+  if (!userId) return localId;
+  if (localId.startsWith(`${userId}:`)) return localId;
+  return `${userId}:${localId}`;
+}
+
+export function localTemplateId(remoteId: string): string {
+  const colon = remoteId.indexOf(':');
+  if (colon < 0) return remoteId;
+  return remoteId.slice(colon + 1);
+}
 const FLUSH_TABLE_TIER: Record<RemoteTable, number> = {
   templates: 0,
   prescriptions: 0,
@@ -292,7 +310,7 @@ export async function seedRemoteTemplatesIfEmpty(userId: string) {
 
   const rows = TEMPLATES.map((t) => ({
     ...toRemote(t as unknown as Record<string, unknown>),
-    id: `${userId}:${t.id}`,
+    id: remoteTemplateId(t.id, userId),
     user_id: userId,
   }));
   const { error: insertErr } = await supabase
@@ -306,8 +324,9 @@ type RowPayload = Record<string, unknown>;
 async function mirrorDelete(table: SyncPullTable, id: string) {
   const db = getDb();
   const localTable = db[TABLE_TO_LOCAL[table]];
+  const localId = table === 'templates' ? localTemplateId(id) : id;
   // @ts-expect-error dynamic table access
-  await localTable.delete(id);
+  await localTable.delete(localId);
 }
 
 async function persistRows(table: SyncPullTable, rows: RowPayload[]) {
@@ -317,8 +336,8 @@ async function persistRows(table: SyncPullTable, rows: RowPayload[]) {
       await db.templates.bulkPut(
         rows.map((r) => {
           const t = fromRemote<SessionTemplate>(r);
-          if (typeof t.id === 'string' && t.id.includes(':')) {
-            t.id = t.id.split(':').slice(1).join(':') as typeof t.id;
+          if (typeof t.id === 'string') {
+            t.id = localTemplateId(t.id) as typeof t.id;
           }
           return t;
         }),
@@ -566,7 +585,9 @@ async function pushOne(item: DirtyRow, authUserId: string | null): Promise<Error
   const supabase = createClient();
   const db = getDb();
   if (item.op === 'delete') {
-    const { error } = await supabase.from(item.table).delete().eq('id', item.rowId);
+    const serverId =
+      item.table === 'templates' ? remoteTemplateId(item.rowId, authUserId) : item.rowId;
+    const { error } = await supabase.from(item.table).delete().eq('id', serverId);
     if (error) {
       recordSyncError({
         phase: 'push',
@@ -602,6 +623,9 @@ async function pushOne(item: DirtyRow, authUserId: string | null): Promise<Error
       : (toRemote(rest) as Record<string, unknown>),
     authUserId,
   );
+  if (item.table === 'templates' && typeof payload.id === 'string') {
+    payload.id = remoteTemplateId(payload.id, authUserId);
+  }
   const { error } = await supabase.from(item.table).upsert(payload);
   if (error) {
     recordSyncError({
