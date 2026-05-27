@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { format } from 'date-fns';
 import { useAllInjuryEpisodes } from '@/lib/hooks';
 import {
@@ -85,6 +85,16 @@ export function InjuryTrackingPanel() {
     );
   }, [activeBySite]);
 
+  const [collapsed, setCollapsed] = useState(true);
+  const [initialSet, setInitialSet] = useState(false);
+
+  useEffect(() => {
+    if (!initialSet && episodes !== undefined) {
+      setCollapsed(activeList.length === 0);
+      setInitialSet(true);
+    }
+  }, [episodes, activeList.length, initialSet]);
+
   if (episodes === undefined) {
     return (
       <div className="rounded-2xl bg-zinc-900 border border-zinc-800 p-4 text-sm text-zinc-500">
@@ -94,95 +104,132 @@ export function InjuryTrackingPanel() {
   }
 
   return (
-    <div className="rounded-2xl bg-zinc-900 border border-zinc-800 p-4 space-y-5">
-      <div>
-        <div className="text-sm font-medium text-zinc-100">Current injuries &amp; body state</div>
-        <p className="text-xs text-zinc-500 mt-1">
-          Checked sites stay on day to day until you turn them off — use for anything affecting training
-          (acute flare-ups or chronic / overuse).
-        </p>
-      </div>
+    <div className="rounded-2xl bg-zinc-900 border border-zinc-800 overflow-hidden">
+      <button
+        type="button"
+        onClick={() => setCollapsed((c) => !c)}
+        className="w-full flex items-center justify-between px-4 py-3 text-left"
+      >
+        <div className="flex items-center gap-2 min-w-0">
+          <span className="text-sm font-medium text-zinc-100">
+            Current injuries &amp; body state
+          </span>
+          {activeList.length > 0 && (
+            <span className="text-[10px] font-medium text-rose-400 border border-rose-800/50 rounded-full px-1.5 py-0.5 shrink-0">
+              {activeList.length} active
+            </span>
+          )}
+        </div>
+        <span className="text-zinc-600 text-xs ml-2 shrink-0">
+          {collapsed ? '▼' : '▲'}
+        </span>
+      </button>
 
-      {activeList.length > 0 && (
-        <div className="rounded-xl border border-amber-500/25 bg-amber-950/20 px-3 py-2">
-          <div className="text-[11px] uppercase tracking-wider text-amber-200/80 mb-1.5">Active now</div>
-          <ul className="flex flex-wrap gap-2">
+      {collapsed && activeList.length > 0 && (
+        <div className="px-4 pb-3 -mt-1">
+          <div className="flex flex-wrap gap-2">
             {activeList.map(([sk, ep]) => (
-              <li
+              <span
                 key={sk}
-                className="text-xs rounded-lg bg-zinc-900 border border-zinc-700 px-2 py-1 text-zinc-200"
+                className="text-xs rounded-lg bg-zinc-800 border border-rose-800/40 px-2 py-1 text-rose-300"
               >
-                {labelForSiteKey(sk as InjurySiteKey)}{' '}
-                <span className="text-zinc-500">· {ep.kind}</span>
-              </li>
+                {labelForSiteKey(sk as InjurySiteKey)}
+                <span className="text-zinc-500 ml-1">· {ep.kind}</span>
+              </span>
             ))}
-          </ul>
+          </div>
         </div>
       )}
 
-      <div className="space-y-4">
-        <div className="text-xs uppercase tracking-wider text-zinc-500">Body areas</div>
-        {INJURY_SITE_GROUPS.map((group) => (
-          <div key={group.area} className="space-y-2">
-            <div className="text-xs font-medium text-zinc-400">{group.area}</div>
-            <div className="flex flex-wrap gap-2">
-              {group.items.map(({ siteKey, label: sideLabel }) => {
-                const active = activeBySite.has(siteKey);
-                const btnLabel = group.items.length === 1 ? group.area : sideLabel;
-                return (
-                  <div key={siteKey} className="flex flex-col gap-1">
-                    <button
-                      type="button"
-                      onClick={() => void setSiteActive(siteKey, !active)}
-                      className={`h-9 min-w-[3rem] px-2 rounded-lg text-xs font-medium border transition-colors ${
-                        active
-                          ? 'border-rose-500/70 bg-rose-950/40 text-rose-100'
-                          : 'border-zinc-700 bg-zinc-800 text-zinc-400 hover:border-zinc-600'
-                      }`}
-                    >
-                      {btnLabel}
-                    </button>
-                  </div>
-                );
-              })}
-            </div>
-            {group.items.map(({ siteKey }) => {
-              const ep = activeBySite.get(siteKey);
-              if (!ep) return null;
-              return (
-                <SiteDetailRow
-                  key={ep.id}
-                  episode={ep}
-                  siteLabel={labelForSiteKey(siteKey)}
-                  onKind={(kind) => void updateKind(ep, kind)}
-                  onNotesBlur={(notes) => void updateNotes(ep, notes)}
-                />
-              );
-            })}
-          </div>
-        ))}
-      </div>
+      {!collapsed && (
+        <div className="border-t border-zinc-800 p-4 space-y-5">
+          <p className="text-xs text-zinc-500">
+            Checked sites stay on day to day until you turn them off — use for anything affecting training
+            (acute flare-ups or chronic / overuse).
+          </p>
 
-      {resolvedEpisodes.length > 0 && (
-        <div className="rounded-xl border border-zinc-800 bg-zinc-950 p-3 space-y-2">
-          <div className="text-xs uppercase tracking-wider text-zinc-500">Recent resolved</div>
-          <ul className="space-y-2 max-h-56 overflow-y-auto text-xs">
-            {resolvedEpisodes.map((e) => (
-              <li
-                key={e.id}
-                className="flex flex-col gap-0.5 border-b border-zinc-800/80 pb-2 last:border-0 last:pb-0"
-              >
-                <div className="flex justify-between gap-2 text-zinc-300">
-                  <span>{labelForSiteKey(e.siteKey as InjurySiteKey)}</span>
-                  <span className="text-zinc-500 shrink-0">{e.kind}</span>
+          {activeList.length > 0 && (
+            <div className="rounded-xl border border-amber-500/25 bg-amber-950/20 px-3 py-2">
+              <div className="text-[11px] uppercase tracking-wider text-amber-200/80 mb-1.5">Active now</div>
+              <ul className="flex flex-wrap gap-2">
+                {activeList.map(([sk, ep]) => (
+                  <li
+                    key={sk}
+                    className="text-xs rounded-lg bg-zinc-900 border border-zinc-700 px-2 py-1 text-zinc-200"
+                  >
+                    {labelForSiteKey(sk as InjurySiteKey)}{' '}
+                    <span className="text-zinc-500">· {ep.kind}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          <div className="space-y-4">
+            <div className="text-xs uppercase tracking-wider text-zinc-500">Body areas</div>
+            {INJURY_SITE_GROUPS.map((group) => (
+              <div key={group.area} className="space-y-2">
+                <div className="text-xs font-medium text-zinc-400">{group.area}</div>
+                <div className="flex flex-wrap gap-2">
+                  {group.items.map(({ siteKey, label: sideLabel }) => {
+                    const active = activeBySite.has(siteKey);
+                    const btnLabel = group.items.length === 1 ? group.area : sideLabel;
+                    return (
+                      <div key={siteKey} className="flex flex-col gap-1">
+                        <button
+                          type="button"
+                          onClick={() => void setSiteActive(siteKey, !active)}
+                          className={`h-9 min-w-[3rem] px-2 rounded-lg text-xs font-medium border transition-colors ${
+                            active
+                              ? 'border-rose-500/70 bg-rose-950/40 text-rose-100'
+                              : 'border-zinc-700 bg-zinc-800 text-zinc-400 hover:border-zinc-600'
+                          }`}
+                        >
+                          {btnLabel}
+                        </button>
+                      </div>
+                    );
+                  })}
                 </div>
-                <div className="text-zinc-500 font-mono text-[11px]">
-                  {daysBetween(e.startedAt, e.endedAt)}d · ended {format(new Date(e.endedAt!), 'MMM d')}
-                </div>
-                {e.notes && <div className="text-zinc-500 text-[11px] line-clamp-2">{e.notes}</div>}
-              </li>
+                {group.items.map(({ siteKey }) => {
+                  const ep = activeBySite.get(siteKey);
+                  if (!ep) return null;
+                  return (
+                    <SiteDetailRow
+                      key={ep.id}
+                      episode={ep}
+                      siteLabel={labelForSiteKey(siteKey)}
+                      onKind={(kind) => void updateKind(ep, kind)}
+                      onNotesBlur={(notes) => void updateNotes(ep, notes)}
+                    />
+                  );
+                })}
+              </div>
             ))}
-          </ul>
+          </div>
+
+          {resolvedEpisodes.length > 0 && (
+            <div className="rounded-xl border border-zinc-800 bg-zinc-950 p-3 space-y-2">
+              <div className="text-xs uppercase tracking-wider text-zinc-500">Recent resolved</div>
+              <ul className="space-y-2 max-h-56 overflow-y-auto text-xs">
+                {resolvedEpisodes.map((e) => (
+                  <li
+                    key={e.id}
+                    className="flex flex-col gap-0.5 border-b border-zinc-800/80 pb-2 last:border-0 last:pb-0"
+                  >
+                    <div className="flex justify-between gap-2 text-zinc-300">
+                      <span>{labelForSiteKey(e.siteKey as InjurySiteKey)}</span>
+                      <span className="text-zinc-500 shrink-0">{e.kind}</span>
+                    </div>
+                    <div className="text-zinc-500 font-mono text-[11px]">
+                      {daysBetween(e.startedAt, e.endedAt)}d · ended {format(new Date(e.endedAt!), 'MMM d')}
+                    </div>
+                    {e.notes && <div className="text-zinc-500 text-[11px] line-clamp-2">{e.notes}</div>}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
         </div>
       )}
     </div>

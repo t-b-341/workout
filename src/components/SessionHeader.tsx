@@ -3,29 +3,7 @@
 import { useState } from 'react';
 import { localUpsert } from '@/lib/sync';
 import { fmtDate } from '@/lib/time';
-import type {
-  SessionLabelType,
-  SessionLog,
-  SessionMode,
-  SessionTemplate,
-  WatchFlag,
-} from '@/lib/types';
-import { SESSION_LABEL_TYPES } from '@/lib/types';
-
-const SESSION_TYPE_LABELS: Record<SessionLabelType, string> = {
-  accumulation: 'Accumulation block',
-  deload: 'Deload week',
-  pr_test: 'PR / strength test',
-  abbreviated: 'Short session',
-  standard: 'Standard',
-  opportunistic: 'Quick / opportunistic',
-};
-
-const FLAGS: { id: WatchFlag; label: string }[] = [
-  { id: 'erectors', label: 'Erectors' },
-  { id: 'elbow', label: 'Elbow' },
-  { id: 'shoulder', label: 'Shoulder' },
-];
+import type { SessionLog, SessionTemplate } from '@/lib/types';
 
 export function SessionHeader({
   template,
@@ -41,7 +19,6 @@ export function SessionHeader({
   /** When true, session template is fixed (e.g. Sunday before early Monday unlock). */
   hideTemplatePicker?: boolean;
 }) {
-  const [showModes, setShowModes] = useState(false);
   const reasonSyncKey = `${session.id}|${session.reason ?? ''}`;
   const [reasonSyncSeen, setReasonSyncSeen] = useState(reasonSyncKey);
   const [reasonDraft, setReasonDraft] = useState(session.reason ?? '');
@@ -56,26 +33,6 @@ export function SessionHeader({
     if (next === session.reason) return;
     await localUpsert('session_logs', { ...session, reason: next });
   }
-
-  async function setMode(mode: SessionMode) {
-    await localUpsert('session_logs', { ...session, mode });
-    setShowModes(false);
-  }
-  async function toggleDeload() {
-    await localUpsert('session_logs', { ...session, deload: !session.deload });
-  }
-  async function toggleFlag(f: WatchFlag) {
-    const next = session.watchFlags.includes(f)
-      ? session.watchFlags.filter((x) => x !== f)
-      : [...session.watchFlags, f];
-    await localUpsert('session_logs', { ...session, watchFlags: next });
-  }
-  async function setSessionType(sessionType: SessionLabelType) {
-    await localUpsert('session_logs', { ...session, sessionType });
-  }
-
-  const modeLabel = session.mode === 'standard' ? 'Standard' : session.mode === 'light' ? 'Light' : 'Skipped';
-  const modeColor = session.mode === 'standard' ? 'bg-zinc-800' : session.mode === 'light' ? 'bg-amber-700' : 'bg-zinc-700';
 
   return (
     <div className="space-y-3">
@@ -104,58 +61,6 @@ export function SessionHeader({
           </span>
         )}
       </div>
-
-      <div className="flex flex-wrap items-center gap-2">
-        <button
-          onClick={() => setShowModes(!showModes)}
-          className={`h-9 px-3 rounded-lg text-sm ${modeColor}`}
-        >Mode: {modeLabel}</button>
-        <button
-          onClick={toggleDeload}
-          className={`h-9 px-3 rounded-lg text-sm ${session.deload ? 'bg-indigo-700' : 'bg-zinc-800'}`}
-        >Deload: {session.deload ? 'On' : 'Off'}</button>
-        {FLAGS.map((f) => {
-          const on = session.watchFlags.includes(f.id);
-          return (
-            <button
-              key={f.id}
-              onClick={() => toggleFlag(f.id)}
-              className={`h-9 px-3 rounded-lg text-sm ${on ? 'bg-rose-700' : 'bg-zinc-800'}`}
-            >{on ? '⚠ ' : ''}{f.label}</button>
-          );
-        })}
-      </div>
-
-      <div className="flex flex-wrap items-center gap-2">
-        <label className="text-xs text-zinc-500 shrink-0">Session focus</label>
-        <select
-          aria-label="Session type label"
-          value={session.sessionType ?? 'standard'}
-          onChange={(e) => void setSessionType(e.target.value as SessionLabelType)}
-          className="h-9 min-w-[140px] flex-1 max-w-[220px] rounded-lg bg-zinc-900 border border-zinc-800 px-2 text-sm text-zinc-200"
-        >
-          {SESSION_LABEL_TYPES.map((t) => (
-            <option key={t} value={t}>{SESSION_TYPE_LABELS[t]}</option>
-          ))}
-        </select>
-      </div>
-
-      {showModes && (
-        <div className="rounded-xl border border-zinc-800 bg-zinc-900 p-3 space-y-2">
-          <button onClick={() => setMode('standard')} className="w-full text-left p-3 rounded-lg bg-zinc-950">
-            <div className="font-medium">Standard</div>
-            <div className="text-xs text-zinc-500">Hit prescribed loads. Progression engine runs.</div>
-          </button>
-          <button onClick={() => setMode('light')} className="w-full text-left p-3 rounded-lg bg-zinc-950">
-            <div className="font-medium text-amber-400">Light day</div>
-            <div className="text-xs text-zinc-500">Suggest −20% on mains. No progression even if reps hit top.</div>
-          </button>
-          <button onClick={() => setMode('skip')} className="w-full text-left p-3 rounded-lg bg-zinc-950">
-            <div className="font-medium text-zinc-400">Skip — extra recovery</div>
-            <div className="text-xs text-zinc-500">Logs the date with reason. Don&apos;t open the lift cards.</div>
-          </button>
-        </div>
-      )}
 
       {session.mode === 'light' && (
         <div className="text-xs text-amber-400">
