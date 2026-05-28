@@ -1920,6 +1920,78 @@ function mesocycleDurationWeeks(startDate: string, endDate: string): number {
   return Math.max(1, Math.ceil(days / 7));
 }
 
+function MesocycleTimeline({ startDate, endDate }: { startDate: string; endDate: string }) {
+  const totalWeeks = mesocycleDurationWeeks(startDate, endDate);
+  const today = todayIso();
+
+  const daysSinceStart = Math.round(
+    (new Date(`${today}T00:00:00`).getTime() - new Date(`${startDate}T00:00:00`).getTime())
+      / 86400000,
+  );
+  const daysUntilStart = Math.round(
+    (new Date(`${startDate}T00:00:00`).getTime() - new Date(`${today}T00:00:00`).getTime())
+      / 86400000,
+  );
+  const daysRemaining = Math.round(
+    (new Date(`${endDate}T00:00:00`).getTime() - new Date(`${today}T00:00:00`).getTime())
+      / 86400000,
+  ) + 1;
+
+  const notStarted = today < startDate;
+  const complete = today > endDate;
+  const inProgress = !notStarted && !complete;
+
+  let currentWeekIndex: number | null = null;
+  if (inProgress) {
+    currentWeekIndex = Math.min(totalWeeks - 1, Math.max(0, Math.floor(daysSinceStart / 7)));
+  }
+
+  const capped = totalWeeks > 20;
+  const visibleCount = capped ? 19 : totalWeeks;
+  const overflowCount = capped ? totalWeeks - 19 : 0;
+
+  let contextText: string;
+  if (notStarted) {
+    contextText = `Starts in ${daysUntilStart} day${daysUntilStart === 1 ? '' : 's'}`;
+  } else if (complete) {
+    contextText = `Completed — ${totalWeeks} weeks`;
+  } else {
+    const w = (currentWeekIndex ?? 0) + 1;
+    contextText = `Week ${w} of ${totalWeeks} · ${daysRemaining} day${daysRemaining === 1 ? '' : 's'} remaining`;
+  }
+
+  function cellClass(index: number): string {
+    const base = 'flex-1 min-w-[28px] h-7 rounded-md flex items-center justify-center text-[10px]';
+    if (complete || (currentWeekIndex != null && index < currentWeekIndex)) {
+      return `${base} bg-zinc-800 text-zinc-600`;
+    }
+    if (inProgress && currentWeekIndex === index) {
+      return `${base} bg-amber-500 text-zinc-950 font-semibold ring-2 ring-amber-300`;
+    }
+    return `${base} bg-zinc-900 border border-zinc-700 text-zinc-500`;
+  }
+
+  return (
+    <div className="space-y-1">
+      <div className="flex gap-1 flex-wrap">
+        {Array.from({ length: visibleCount }, (_, i) => (
+          <div key={i} className={cellClass(i)}>
+            {i + 1}
+          </div>
+        ))}
+        {capped && (
+          <div
+            className="flex-1 min-w-[28px] h-7 rounded-md flex items-center justify-center text-[10px] bg-zinc-900 border border-zinc-700 text-zinc-500"
+          >
+            …+{overflowCount} more
+          </div>
+        )}
+      </div>
+      <div className="text-[11px] text-zinc-500 mt-1">{contextText}</div>
+    </div>
+  );
+}
+
 type MesocycleFormState = {
   id: string;
   label: string;
@@ -2051,6 +2123,7 @@ function NamedMesocyclesSection() {
                 <div className="text-[11px] text-zinc-600">
                   {mesocycleDurationWeeks(m.startDate, m.endDate)} weeks
                 </div>
+                <MesocycleTimeline startDate={m.startDate} endDate={m.endDate} />
                 {m.notes.trim() !== '' && (
                   <p className="text-xs text-zinc-400 mt-1 whitespace-pre-wrap">{m.notes}</p>
                 )}
