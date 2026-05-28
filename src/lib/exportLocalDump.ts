@@ -56,11 +56,12 @@ import {
 } from './types';
 import { TRAINING_PLAN_GOALS, type TrainingPlanGoalRow } from './trainingPlanGoals';
 import { deriveSessionStatus } from './sessionStatus';
+import { computeStrengthBalance, type RatioResult } from './strengthBalance';
 import { currentValueForGoal, isGoalAchieved } from './liftingGoals';
 import { todayIso } from './time';
 
 /** Export payload schema — bump when top-level export shape changes. */
-const FULL_LOCAL_EXPORT_SCHEMA_VERSION = 29;
+const FULL_LOCAL_EXPORT_SCHEMA_VERSION = 30;
 
 const MEANINGFUL_META_PREFIXES = [
   'workout:supplements:v1:',
@@ -81,6 +82,23 @@ export type ExportedSetLog = Omit<SetLog, 'rpe' | 'intent'> & {
   date: string | null;
   intent: SetIntent;
   rpe: number | null;
+};
+
+export type ExportedStrengthRatio = {
+  id: string;
+  label: string;
+  numeratorLiftId: string;
+  denominatorLiftId: string;
+  numeratorMode: 'working' | '1rm';
+  denominatorMode: 'working' | '1rm';
+  numeratorValue: number;
+  denominatorValue: number;
+  ratio: number;
+  targetMin: number;
+  targetMax: number;
+  status: 'above' | 'within' | 'below';
+  gapPct: number;
+  roiScore: number;
 };
 
 export type ExportedHrvLog = {
@@ -311,6 +329,8 @@ export type FullLocalExport = {
     }
   >;
   set_logs: ExportedSetLog[];
+  /** Computed lift ratios (same logic as History strength balance panel). */
+  strength_balance: ExportedStrengthRatio[];
   cardio_logs: ExportedCardioLog[];
   bodyweight_logs: BodyweightLog[];
   body_measurement_logs: BodyMeasurementLog[];
@@ -598,6 +618,25 @@ export async function buildFullLocalExport(opts?: FullLocalExportOptions): Promi
     date: sessionById.get(s.sessionLogId)?.date ?? null,
     rpe: normalizedRpeForExport(s.rpe),
   }));
+
+  const strengthBalance = computeStrengthBalance(set_logs, session_logs).map(
+    (r: RatioResult): ExportedStrengthRatio => ({
+      id: r.standard.id,
+      label: r.standard.label,
+      numeratorLiftId: r.standard.numeratorLiftId,
+      denominatorLiftId: r.standard.denominatorLiftId,
+      numeratorMode: r.standard.numeratorMode,
+      denominatorMode: r.standard.denominatorMode,
+      numeratorValue: r.numeratorValue,
+      denominatorValue: r.denominatorValue,
+      ratio: Math.round(r.ratio * 1000) / 1000,
+      targetMin: r.standard.targetMin,
+      targetMax: r.standard.targetMax,
+      status: r.status,
+      gapPct: Math.round(r.gapPct * 10) / 10,
+      roiScore: Math.round(r.roiScore * 10) / 10,
+    }),
+  );
 
   const hrv_logs = buildHrvLogsExport(readiness_logs);
 
@@ -996,6 +1035,7 @@ export async function buildFullLocalExport(opts?: FullLocalExportOptions): Promi
     prescriptions: prescriptions_out,
     session_logs: session_logs_out,
     set_logs: set_logs_out,
+    strength_balance: strengthBalance,
     cardio_logs: cardio_logs_out,
     bodyweight_logs,
     body_measurement_logs,

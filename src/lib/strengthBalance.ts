@@ -249,7 +249,7 @@ function liftValueWithSource(
       return (
         (s.liftId === liftId || s.substituteLiftId === liftId) &&
         s.status === 'completed' &&
-        (intent === 'working' || intent === 'backoff') &&
+        (intent === 'working' || intent === 'backoff' || intent === 'max_test') &&
         (s.weight ?? 0) > 0 &&
         sessionDate.has(s.sessionLogId)
       );
