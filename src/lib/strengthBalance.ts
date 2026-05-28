@@ -26,15 +26,16 @@ export const RATIO_STANDARDS: LiftRatioStandard[] = [
     denominatorLiftId: 'back_squat',
     numeratorMode: '1rm',
     denominatorMode: '1rm',
-    targetMin: 0.80,
-    targetMax: 0.85,
+    targetMin: 0.75,
+    targetMax: 0.80,
     downstreamBenefit: 2,
     description:
-      'Bench 1RM should be 80–85% of squat 1RM. '
-      + 'A large gap indicates upper body lagging lower '
-      + 'body — the most common pattern in athletes with '
-      + 'a lower body strength history. Highest priority '
-      + 'ratio to close.',
+      'Bench 1RM should be 75–80% of squat 1RM. '
+      + 'Lifters with favorable squat leverages (long torso, short femurs) '
+      + 'typically express a lower bench/squat ratio than average — '
+      + '0.75–0.80 is a realistic and balanced target for this build. '
+      + 'A large gap still indicates upper body lagging lower body '
+      + 'and is the highest priority ratio to close.',
   },
   {
     id: 'ohp_bench',
