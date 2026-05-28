@@ -1256,7 +1256,7 @@ function TrainingChecklist() {
             )}
           </button>
           <div className="flex-1 min-w-0">
-            <div className={`text-sm ${
+            <div className={`text-sm whitespace-pre-wrap ${
               item.completed
                 ? 'line-through text-zinc-600'
                 : 'text-zinc-200'
@@ -1273,7 +1273,7 @@ function TrainingChecklist() {
               <div className="mt-1 space-y-1">
                 {item.comments.map(c => (
                   <div key={c.id}
-                    className="text-xs text-zinc-500
+                    className="text-xs text-zinc-500 whitespace-pre-wrap
                       border-l-2 border-zinc-700 pl-2">
                     {c.text}
                   </div>
@@ -1330,15 +1330,26 @@ function TrainingChecklist() {
   return (
     <div className="space-y-3">
       <div className="flex gap-2">
-        <input
-          type="text"
+        <textarea
           value={newText}
           onChange={e => setNewText(e.target.value)}
-          onKeyDown={e => { if (e.key === 'Enter') void addItem(); }}
+          onKeyDown={e => {
+            if (
+              e.key === 'Enter'
+              && !e.shiftKey
+              && !e.ctrlKey
+              && !e.metaKey
+              && !e.altKey
+            ) {
+              e.preventDefault();
+              void addItem();
+            }
+          }}
           placeholder="Add a training goal or note..."
-          className="flex-1 h-10 rounded-xl bg-zinc-900
+          rows={3}
+          className="flex-1 py-2 rounded-xl bg-zinc-900
             border border-zinc-700 px-3 text-sm
-            text-zinc-200 placeholder:text-zinc-600"
+            text-zinc-200 placeholder:text-zinc-600 resize-none"
         />
         <button type="button" onClick={() => void addItem()}
           className="h-10 px-4 rounded-xl bg-amber-600
