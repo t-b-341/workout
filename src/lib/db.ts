@@ -10,6 +10,7 @@ import type {
   InjuryEpisode,
   Lift,
   MindfulnessLog,
+  MuscleGroup,
   NutritionLog,
   Prescription,
   ReadinessLog,
@@ -740,10 +741,32 @@ export class WorkoutDB extends Dexie {
     this.version(27).stores({
       named_mesocycles: 'id, userId, startDate, endDate, updatedAt',
     });
+    // v28 — backfill muscleGroups on lifts seeded before catalog metadata was added.
+    this.version(28).stores({}).upgrade(async (tx) => {
+      const MUSCLE_GROUP_BACKFILL: Record<string, MuscleGroup[]> = {
+        zercher_squat: ['quads', 'glutes', 'core', 'mid-back'],
+        barbell_wrist_curl: ['forearms'],
+        barbell_wrist_extension: ['forearms'],
+        bonk_carry: ['core', 'traps', 'glutes', 'quads'],
+      };
+      const lifts = tx.table('lifts');
+      const rows = (await lifts.toArray()) as Lift[];
+      const modified: Lift[] = [];
+      for (const row of rows) {
+        const backfill = MUSCLE_GROUP_BACKFILL[row.id];
+        if (!backfill) continue;
+        const groups = row.muscleGroups;
+        if (groups != null && groups.length > 0) continue;
+        modified.push({ ...row, muscleGroups: backfill });
+      }
+      if (modified.length > 0) {
+        await lifts.bulkPut(modified);
+      }
+    });
   }
 }
 
-export const SCHEMA_VERSION = 27;
+export const SCHEMA_VERSION = 28;
 
 let _db: WorkoutDB | null = null;
 let _dbUserId: string | null = null;

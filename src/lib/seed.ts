@@ -42,10 +42,12 @@ export const LIFTS: Lift[] = [
     pattern: 'horiz-pull', muscleGroups: ['biceps', 'forearms'] },
   { id: 'barbell_wrist_curl', name: 'Barbell Wrist Curl',
     equipment: 'barbell', loadUnit: 'lb', repUnit: 'reps',
-    increment: 5, notes: 'Forearm flexor. Palms up, wrists over bench edge.' },
+    increment: 5, notes: 'Forearm flexor. Palms up, wrists over bench edge.',
+    muscleGroups: ['forearms'] },
   { id: 'barbell_wrist_extension', name: 'Barbell Wrist Extension',
     equipment: 'barbell', loadUnit: 'lb', repUnit: 'reps',
-    increment: 5, notes: 'Forearm extensor. Palms down, wrists over bench edge.' },
+    increment: 5, notes: 'Forearm extensor. Palms down, wrists over bench edge.',
+    muscleGroups: ['forearms'] },
 
   // Upper - bodyweight pullup variants (P1). Added-load snap rules: `LIFT_IDS_PULLUP_ADDED_LOAD` in progression.ts.
   { id: 'p1_eccentric', name: 'P1 Weighted Eccentric', equipment: 'bodyweight', loadUnit: 'lb', repUnit: 'reps', increment: 2.5, notes: '5 sec eccentric, weighted (added load)',
@@ -66,7 +68,8 @@ export const LIFTS: Lift[] = [
     pattern: 'squat', muscleGroups: ['quads', 'glutes', 'low-back', 'core'] },
   { id: 'zercher_squat', name: 'Zercher Squat',
     equipment: 'barbell', loadUnit: 'lb', repUnit: 'reps',
-    increment: 5, notes: 'Bar in elbow crease. Upright torso, high elbows throughout.' },
+    increment: 5, notes: 'Bar in elbow crease. Upright torso, high elbows throughout.',
+    muscleGroups: ['quads', 'glutes', 'core', 'mid-back'] },
   { id: 'dl', name: 'Deadlift', equipment: 'barbell', loadUnit: 'lb', repUnit: 'reps', increment: 5,
     pattern: 'hinge', muscleGroups: ['hamstrings', 'glutes', 'low-back', 'traps', 'lats'] },
   { id: 'ddl', name: 'Deficit Deadlift', equipment: 'barbell', loadUnit: 'lb', repUnit: 'reps', increment: 5,
@@ -79,7 +82,8 @@ export const LIFTS: Lift[] = [
   { id: 'bonk_carry', name: 'Bonk Carry',
     equipment: 'bodyweight', loadUnit: 'lb', repUnit: 'seconds',
     increment: 5,
-    notes: 'Front-loaded carry (person as sandbag). Log load in lb and duration in seconds. Optional: note distance in feet.' },
+    notes: 'Front-loaded carry (person as sandbag). Log load in lb and duration in seconds. Optional: note distance in feet.',
+    muscleGroups: ['core', 'traps', 'glutes', 'quads'] },
 
   // Lower - dumbbell
   { id: 'planks', name: 'Planks', equipment: 'time', loadUnit: 'none', repUnit: 'seconds', increment: 5, notes: '+5 sec/wk per set',
