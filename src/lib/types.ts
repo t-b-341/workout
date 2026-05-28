@@ -574,6 +574,18 @@ export type BlockTemplate = {
   updatedAt: string;
 };
 
+export type NamedMesocycle = {
+  id: string;
+  userId: string;
+  label: string;
+  /** YYYY-MM-DD inclusive start */
+  startDate: string;
+  /** YYYY-MM-DD inclusive end */
+  endDate: string;
+  notes: string;
+  updatedAt: string;
+};
+
 export type CbtThoughtRecord = {
   id: string;
   userId: string;

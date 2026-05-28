@@ -36,7 +36,15 @@ import {
   type TrainingPhaseMode,
   type NutritionPhaseMode,
   type TrainingChecklistItem,
+  type NamedMesocycle,
 } from '@/lib/types';
+import {
+  deleteNamedMesocycle,
+  newMesocycleId,
+  saveNamedMesocycle,
+  useNamedMesocycles,
+} from '@/lib/namedMesocycles';
+import { createClient } from '@/lib/supabase/client';
 import { getDb } from '@/lib/db';
 import { defaultTemplateForLocalDate, sortTemplatesProgramOrder } from '@/lib/seed';
 import {
@@ -60,18 +68,11 @@ import { liftForSnap, snapWorkingWeight } from '@/lib/progression';
 import { MesocycleInsightsSection } from './MesocycleInsightsSection';
 import { SyncDiagnostics } from './SyncDiagnostics';
 import {
-  clearMesoBoundaryPromptState,
   mesocyclePosition,
-  saveMesoConfig,
   useMesoConfig,
   type MesocycleConfig,
   type MesocyclePosition,
 } from '@/lib/mesocycle';
-import {
-  analyzeMesoLengthRecommendation,
-  MESO_DELOAD_EXECUTION_GUIDANCE,
-  type MesoLengthRecommendation,
-} from '@/lib/mesoRecommendation';
 import {
   deriveProgramTargetText,
   loadProgramTargetsStored,
@@ -87,15 +88,6 @@ import { LooseDecimalField, LooseIntField } from './WeightStepper';
 import { PageShell } from './PageShell';
 import { ScheduleWorkoutSheet } from './ScheduleWorkoutSheet';
 import { sortLiftsWithFavoritesFirst, toggleFavoriteLift, useFavoriteLiftIds } from '@/lib/favoriteLifts';
-
-/** Editable meso fields while the form is open — numbers as strings so the
- *  user can clear the field and type a new value (controlled `number` +
- *  `parseInt(v || '1')` forces empty back to 1 and blocks editing). */
-type MesocycleFormDraft = {
-  startDate: string;
-  accumulation: string;
-  deload: string;
-};
 
 type ExportWizardStep = 1 | 2 | 3;
 
@@ -1179,7 +1171,9 @@ export function ProgramEditor() {
           </div>
         )}
       </div>
-      <MesocycleSettings />
+      <MesoBoundaryPromptCard />
+      <NamedMesocyclesSection />
+      <MesocycleLegacyInsightsPanel />
     </PageShell>
   );
 }
@@ -1906,251 +1900,289 @@ function addWeeksToIsoWeek(weekLabel: string, n: number): string {
   return isoWeekOf(shifted);
 }
 
-// ---------- Mesocycle settings ----------
+// ---------- Named mesocycles ----------
 
-function MesocycleSettings() {
+function mesocycleDurationWeeks(startDate: string, endDate: string): number {
+  const a = new Date(`${startDate}T00:00:00`);
+  const b = new Date(`${endDate}T00:00:00`);
+  const days = Math.round((b.getTime() - a.getTime()) / 86400000) + 1;
+  return Math.max(1, Math.ceil(days / 7));
+}
+
+type MesocycleFormState = {
+  id: string;
+  label: string;
+  startDate: string;
+  endDate: string;
+  notes: string;
+};
+
+function emptyMesocycleForm(today: string): MesocycleFormState {
+  const end = (() => {
+    const d = new Date(`${today}T00:00:00`);
+    d.setDate(d.getDate() + 27);
+    return d.toISOString().slice(0, 10);
+  })();
+  return {
+    id: newMesocycleId(),
+    label: '',
+    startDate: today,
+    endDate: end,
+    notes: '',
+  };
+}
+
+function NamedMesocyclesSection() {
+  const mesocycles = useNamedMesocycles();
+  const [formOpen, setFormOpen] = useState(false);
+  const [form, setForm] = useState<MesocycleFormState | null>(null);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const sorted = useMemo(
+    () => (mesocycles ?? []).slice().sort((a, b) => b.startDate.localeCompare(a.startDate)),
+    [mesocycles],
+  );
+
+  function openAdd() {
+    setForm(emptyMesocycleForm(todayIso()));
+    setFormOpen(true);
+    setConfirmDeleteId(null);
+  }
+
+  function openEdit(m: NamedMesocycle) {
+    setForm({
+      id: m.id,
+      label: m.label,
+      startDate: m.startDate,
+      endDate: m.endDate,
+      notes: m.notes,
+    });
+    setFormOpen(true);
+    setConfirmDeleteId(null);
+  }
+
+  function cancelForm() {
+    setFormOpen(false);
+    setForm(null);
+  }
+
+  async function saveForm() {
+    if (!form || !form.label.trim() || !form.startDate || !form.endDate) return;
+    if (form.startDate > form.endDate) return;
+    setBusy(true);
+    try {
+      const { data: { user } } = await createClient().auth.getUser();
+      await saveNamedMesocycle({
+        id: form.id,
+        userId: user?.id ?? '',
+        label: form.label.trim(),
+        startDate: form.startDate,
+        endDate: form.endDate,
+        notes: form.notes.trim(),
+      });
+      await flushDirty().catch(() => {});
+      cancelForm();
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function confirmDelete(id: string) {
+    setBusy(true);
+    try {
+      await deleteNamedMesocycle(id);
+      await flushDirty().catch(() => {});
+      setConfirmDeleteId(null);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="rounded-2xl bg-zinc-900 border border-zinc-800 p-4 space-y-3">
+      <div className="flex items-baseline justify-between gap-2 flex-wrap">
+        <div>
+          <div className="font-medium">Mesocycles</div>
+          <div className="text-xs text-zinc-500">
+            Named blocks with explicit date ranges — used for schedule deload hints and meso analysis.
+          </div>
+        </div>
+        {!formOpen && (
+          <button
+            type="button"
+            onClick={openAdd}
+            className="h-8 px-3 rounded-lg bg-amber-500 text-zinc-950 text-xs font-medium"
+          >
+            Add mesocycle
+          </button>
+        )}
+      </div>
+
+      {mesocycles === undefined ? (
+        <p className="text-sm text-zinc-500">Loading…</p>
+      ) : sorted.length === 0 && !formOpen ? (
+        <p className="text-xs text-zinc-600 text-center py-4">
+          No mesocycles yet. Add one to define analysis windows and track blocks.
+        </p>
+      ) : (
+        <ul className="space-y-2">
+          {sorted.map((m) => (
+            <li
+              key={m.id}
+              className="rounded-xl border border-zinc-800 bg-zinc-950 px-3 py-2.5 flex flex-wrap items-start justify-between gap-2"
+            >
+              <div className="min-w-0 space-y-0.5">
+                <div className="font-medium text-zinc-100">{m.label}</div>
+                <div className="text-xs text-zinc-500 font-mono">
+                  {m.startDate} → {m.endDate}
+                </div>
+                <div className="text-[11px] text-zinc-600">
+                  {mesocycleDurationWeeks(m.startDate, m.endDate)} weeks
+                </div>
+                {m.notes.trim() !== '' && (
+                  <p className="text-xs text-zinc-400 mt-1 whitespace-pre-wrap">{m.notes}</p>
+                )}
+              </div>
+              <div className="flex flex-wrap items-center gap-2 shrink-0">
+                <Link
+                  href="/program/meso-analysis"
+                  className="text-xs text-amber-400 hover:text-amber-300"
+                >
+                  → Analyse
+                </Link>
+                {confirmDeleteId === m.id ? (
+                  <>
+                    <span className="text-xs text-zinc-500">Confirm delete?</span>
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() => void confirmDelete(m.id)}
+                      className="h-8 px-2 rounded-lg bg-rose-900 text-rose-200 text-xs disabled:opacity-50"
+                    >
+                      Yes, delete
+                    </button>
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() => setConfirmDeleteId(null)}
+                      className="h-8 px-2 rounded-lg bg-zinc-800 text-xs disabled:opacity-50"
+                    >
+                      Cancel
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => openEdit(m)}
+                      className="h-8 px-2 rounded-lg bg-zinc-800 text-xs"
+                    >
+                      Edit
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setConfirmDeleteId(m.id)}
+                      className="h-8 px-2 rounded-lg border border-rose-900/60 text-rose-400 text-xs"
+                    >
+                      Delete
+                    </button>
+                  </>
+                )}
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {formOpen && form && (
+        <div className="border-t border-zinc-800 pt-3 space-y-3">
+          <label className="block text-xs text-zinc-500">
+            Label
+            <input
+              type="text"
+              value={form.label}
+              onChange={(e) => setForm({ ...form, label: e.target.value })}
+              placeholder="e.g. Spring accumulation"
+              className="mt-1 block w-full h-10 px-3 rounded-lg bg-zinc-950 border border-zinc-800 text-sm"
+            />
+          </label>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <label className="block text-xs text-zinc-500">
+              Start
+              <input
+                type="date"
+                value={form.startDate}
+                onChange={(e) => setForm({ ...form, startDate: e.target.value })}
+                className="mt-1 block w-full h-10 px-2 rounded-lg bg-zinc-950 border border-zinc-800 text-sm"
+              />
+            </label>
+            <label className="block text-xs text-zinc-500">
+              End
+              <input
+                type="date"
+                value={form.endDate}
+                onChange={(e) => setForm({ ...form, endDate: e.target.value })}
+                className="mt-1 block w-full h-10 px-2 rounded-lg bg-zinc-950 border border-zinc-800 text-sm"
+              />
+            </label>
+          </div>
+          <label className="block text-xs text-zinc-500">
+            Notes (optional)
+            <textarea
+              value={form.notes}
+              onChange={(e) => setForm({ ...form, notes: e.target.value })}
+              rows={2}
+              className="mt-1 block w-full rounded-lg bg-zinc-950 border border-zinc-800 px-3 py-2 text-sm resize-y min-h-[3rem]"
+            />
+          </label>
+          <div className="flex gap-2 justify-end">
+            <button
+              type="button"
+              onClick={cancelForm}
+              disabled={busy}
+              className="h-9 px-3 rounded-lg bg-zinc-800 text-sm disabled:opacity-50"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={() => void saveForm()}
+              disabled={busy || !form.label.trim() || form.startDate > form.endDate}
+              className="h-9 px-3 rounded-lg bg-amber-500 text-zinc-950 font-medium text-sm disabled:opacity-50"
+            >
+              {busy ? 'Saving…' : 'Save'}
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function MesocycleLegacyInsightsPanel() {
   const cfg = useMesoConfig();
   const lifts = useLifts();
   const sessions = useSessionsAfterReadiness();
   const sets = useAllSets();
   const readiness = useAllReadiness();
   const bodyweightLogs = useAllBodyweight();
-  const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState<MesocycleFormDraft | null>(null);
-
   const today = todayIso();
-  const recommendation = useMemo((): MesoLengthRecommendation => {
-    if (!cfg) {
-      return {
-        action: 'keep',
-        suggestedAccumulation: 4,
-        suggestedDeload: 1,
-        reason: 'Loading mesocycle settings…',
-        signalSummary: '—',
-      };
-    }
-    return analyzeMesoLengthRecommendation(cfg, sessions ?? [], sets ?? [], readiness ?? [], lifts ?? [], today);
-  }, [cfg, sessions, sets, readiness, lifts, today]);
 
   if (!cfg) return null;
-  const mesoConfig = cfg;
-  const here = mesocyclePosition(today, mesoConfig);
-  const startMonday = startOfWeekIso(isoWeekOf(mesoConfig.startDate));
-
-  function startEdit() {
-    setDraft({
-      startDate: mesoConfig.startDate,
-      accumulation: String(mesoConfig.accumulation),
-      deload: String(mesoConfig.deload),
-    });
-    setEditing(true);
-  }
-  async function save() {
-    if (!draft) return;
-    const accParsed = parseInt(draft.accumulation.trim(), 10);
-    const delParsed = parseInt(draft.deload.trim(), 10);
-    const accumulation = Math.max(
-      1,
-      Math.min(12, Number.isFinite(accParsed) ? Math.floor(accParsed) : 1),
-    );
-    const deload = Math.max(
-      0,
-      Math.min(4, Number.isFinite(delParsed) ? Math.floor(delParsed) : 0),
-    );
-    // Length edits should never silently re-anchor the cycle.
-    const keepAnchorLengthOnly: MesocycleConfig = {
-      startDate: mesoConfig.startDate,
-      accumulation,
-      deload,
-    };
-    await saveMesoConfig(keepAnchorLengthOnly);
-    setEditing(false);
-    setDraft(null);
-  }
-  async function saveAnchorOnly() {
-    if (!draft) return;
-    // Normalize anchor to Monday of selected week; leave length unchanged.
-    const normalizedAnchor = startOfWeekIso(isoWeekOf(draft.startDate));
-    await saveMesoConfig({
-      startDate: normalizedAnchor,
-      accumulation: mesoConfig.accumulation,
-      deload: mesoConfig.deload,
-    });
-    await clearMesoBoundaryPromptState();
-    setEditing(false);
-    setDraft(null);
-  }
-  async function applyLength(accumulation: number, deload: number) {
-    await saveMesoConfig({
-      startDate: mesoConfig.startDate,
-      accumulation: Math.max(1, Math.min(12, Math.floor(accumulation))),
-      deload: Math.max(0, Math.min(4, Math.floor(deload))),
-    });
-  }
-  async function applyRecommendedLength() {
-    await applyLength(recommendation.suggestedAccumulation, recommendation.suggestedDeload);
-    setEditing(false);
-    setDraft(null);
-  }
-  function cancel() {
-    setEditing(false);
-    setDraft(null);
-  }
+  const here = mesocyclePosition(today, cfg);
 
   return (
-    <div className="rounded-2xl bg-zinc-900 border border-zinc-800 p-4 space-y-3">
-      <MesoBoundaryPromptCard />
-      <div className="flex items-baseline justify-between gap-2 flex-wrap">
-        <div>
-          <div className="font-medium">Mesocycle</div>
-          <div className="text-xs text-zinc-500">
-            {here ? (
-              <>
-                Currently:{' '}
-                <span className="text-zinc-300 font-mono">
-                  Meso {here.mesoIndex} · Week {here.weekInMeso} of {here.totalWeeks}
-                </span>
-                {here.isDeload && <span className="ml-2 text-indigo-400">deload week</span>}
-              </>
-            ) : (
-              <>Anchor is in the future — Meso 1 starts {fmtDate(startMonday, 'EEE MMM d')}.</>
-            )}
-          </div>
-          <div className="text-xs text-zinc-500 mt-0.5">
-            Anchor: <span className="font-mono text-zinc-400">{fmtDate(startMonday, 'EEE MMM d, yyyy')}</span>
-            {' · '}
-            <span className="font-mono text-zinc-400">{mesoConfig.accumulation}+{mesoConfig.deload}</span>
-            {' '}({mesoConfig.accumulation + mesoConfig.deload}-week block)
-          </div>
-        </div>
-        {!editing && (
-          <button
-            onClick={startEdit}
-            className="h-8 px-3 rounded-lg bg-zinc-800 text-xs"
-          >Edit</button>
-        )}
-      </div>
-      <div className="rounded-xl border border-zinc-800 bg-zinc-950 p-3 space-y-2">
-        <div className="flex items-center justify-between gap-2 flex-wrap">
-          <div className="text-xs uppercase tracking-wider text-zinc-500">Length recommendation</div>
-          <span
-            className={`text-[10px] uppercase tracking-wider px-2 py-0.5 rounded-full font-semibold ${
-              recommendation.action === 'extend'
-                ? 'bg-emerald-700 text-emerald-100'
-                : recommendation.action === 'shorten'
-                  ? 'bg-rose-900 text-rose-200'
-                  : 'bg-zinc-800 text-zinc-300'
-            }`}
-          >
-            {recommendation.action === 'extend'
-              ? 'extend'
-              : recommendation.action === 'shorten'
-                ? 'shorten'
-                : 'keep'}
-          </span>
-        </div>
-        <div className="text-sm text-zinc-300">
-          Suggested: <span className="font-mono">{recommendation.suggestedAccumulation}+{recommendation.suggestedDeload}</span>
-          {' '}
-          ({recommendation.suggestedAccumulation + recommendation.suggestedDeload}-week block)
-        </div>
-        <div className="text-xs text-zinc-500">{recommendation.reason}</div>
-        <div className="text-[11px] text-zinc-500">
-          Signals: {recommendation.signalSummary}
-        </div>
-        <div className="flex gap-2 flex-wrap pt-1">
-          <button
-            type="button"
-            onClick={applyRecommendedLength}
-            className="h-8 px-3 rounded-lg bg-amber-500 text-zinc-950 text-xs font-medium"
-          >
-            Apply recommendation
-          </button>
-          <button
-            type="button"
-            onClick={() => applyLength(mesoConfig.accumulation - 1, mesoConfig.deload)}
-            className="h-8 px-3 rounded-lg bg-zinc-800 text-xs"
-          >
-            Shorten 1 week
-          </button>
-          <button
-            type="button"
-            onClick={() => applyLength(mesoConfig.accumulation + 1, mesoConfig.deload)}
-            className="h-8 px-3 rounded-lg bg-zinc-800 text-xs"
-          >
-            Extend 1 week
-          </button>
-        </div>
-      </div>
-
-      <div
-        className={`rounded-xl border p-3 space-y-1.5 ${
-          here?.isDeload
-            ? 'border-indigo-500/40 bg-indigo-950/25'
-            : 'border-zinc-800 bg-zinc-950/50'
-        }`}
-      >
-        <div className="text-xs uppercase tracking-wider text-zinc-500">Deload — how to run it</div>
-        <p className="text-sm text-zinc-300 leading-relaxed">{MESO_DELOAD_EXECUTION_GUIDANCE}</p>
-      </div>
-
-      <MesocycleInsightsSection
-        cfg={mesoConfig}
-        position={here}
-        sessions={sessions ?? []}
-        sets={sets ?? []}
-        readiness={readiness ?? []}
-        lifts={lifts ?? []}
-        bodyweightLogs={bodyweightLogs ?? []}
-        today={today}
-      />
-
-      {editing && draft && (
-        <div className="border-t border-zinc-800 pt-3 grid grid-cols-1 sm:grid-cols-3 gap-3">
-          <label className="flex flex-col gap-1 text-xs text-zinc-400">
-            Anchor date (Meso 1 · Week 1 Monday)
-            <input
-              type="date"
-              value={draft.startDate}
-              onChange={(e) => setDraft({ ...draft, startDate: e.target.value })}
-              className="h-10 px-2 rounded-lg bg-zinc-950 border border-zinc-800 text-sm"
-              aria-label="Mesocycle anchor date"
-            />
-          </label>
-          <label className="flex flex-col gap-1 text-xs text-zinc-400">
-            Accumulation weeks
-            <input
-              type="text"
-              inputMode="numeric"
-              pattern="[0-9]*"
-              value={draft.accumulation}
-              onChange={(e) => setDraft({ ...draft, accumulation: e.target.value.replace(/\D/g, '') })}
-              className="h-10 px-2 rounded-lg bg-zinc-950 border border-zinc-800 text-sm font-mono"
-              aria-label="Accumulation weeks per mesocycle"
-            />
-          </label>
-          <label className="flex flex-col gap-1 text-xs text-zinc-400">
-            Deload weeks
-            <input
-              type="text"
-              inputMode="numeric"
-              pattern="[0-9]*"
-              value={draft.deload}
-              onChange={(e) => setDraft({ ...draft, deload: e.target.value.replace(/\D/g, '') })}
-              className="h-10 px-2 rounded-lg bg-zinc-950 border border-zinc-800 text-sm font-mono"
-              aria-label="Deload weeks per mesocycle"
-            />
-          </label>
-          <div className="sm:col-span-3 flex gap-2 justify-end">
-            <button onClick={cancel} className="h-9 px-3 rounded-lg bg-zinc-800 text-sm">Cancel</button>
-            <button onClick={save} className="h-9 px-3 rounded-lg bg-zinc-800 text-sm">Save length only</button>
-            <button onClick={saveAnchorOnly} className="h-9 px-3 rounded-lg bg-amber-500 text-zinc-950 font-medium text-sm">
-              Save anchor date
-            </button>
-          </div>
-        </div>
-      )}
-    </div>
+    <MesocycleInsightsSection
+      cfg={cfg}
+      position={here}
+      sessions={sessions ?? []}
+      sets={sets ?? []}
+      readiness={readiness ?? []}
+      lifts={lifts ?? []}
+      bodyweightLogs={bodyweightLogs ?? []}
+      today={today}
+    />
   );
 }
 

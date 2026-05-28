@@ -29,6 +29,7 @@ import type {
   PhaseGoal,
   BlockTemplate,
   RelationshipCheckin,
+  NamedMesocycle,
 } from './types';
 
 export type DirtyRow = {
@@ -59,7 +60,8 @@ export type DirtyRow = {
     | 'caffeine_logs'
     | 'oral_health_logs'
     | 'training_checklist'
-    | 'user_goals';
+    | 'user_goals'
+    | 'named_mesocycles';
   rowId: string;
   op: 'upsert' | 'delete';
   /** Server time when last enqueued (for ordering). */
@@ -94,6 +96,7 @@ export class WorkoutDB extends Dexie {
   phase_goals!: Table<PhaseGoal, string>;
   block_templates!: Table<BlockTemplate, string>;
   relationship_checkins!: Table<RelationshipCheckin, string>;
+  named_mesocycles!: Table<NamedMesocycle, string>;
   dirty!: Table<DirtyRow, string>;
   meta!: Table<{ key: string; value: unknown }, string>;
 
@@ -733,10 +736,14 @@ export class WorkoutDB extends Dexie {
     this.version(26).stores({
       stoic_moments: 'id, userId, date, createdAt, updatedAt',
     });
+    // v27 — named mesocycle blocks (explicit date ranges, synced).
+    this.version(27).stores({
+      named_mesocycles: 'id, userId, startDate, endDate, updatedAt',
+    });
   }
 }
 
-export const SCHEMA_VERSION = 26;
+export const SCHEMA_VERSION = 27;
 
 let _db: WorkoutDB | null = null;
 let _dbUserId: string | null = null;

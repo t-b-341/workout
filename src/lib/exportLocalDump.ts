@@ -45,6 +45,7 @@ import type {
   PhaseGoal,
   BlockTemplate,
   RelationshipCheckin,
+  NamedMesocycle,
   SupplementLog,
   CaffeineLog,
   OralHealthLog,
@@ -61,7 +62,7 @@ import { currentValueForGoal, isGoalAchieved } from './liftingGoals';
 import { todayIso } from './time';
 
 /** Export payload schema — bump when top-level export shape changes. */
-const FULL_LOCAL_EXPORT_SCHEMA_VERSION = 30;
+const FULL_LOCAL_EXPORT_SCHEMA_VERSION = 31;
 
 const MEANINGFUL_META_PREFIXES = [
   'workout:supplements:v1:',
@@ -367,6 +368,7 @@ export type FullLocalExport = {
   block_templates: BlockTemplate[];
   relationship_checkins: ExportedRelationshipCheckin[];
   relationship_weekly_summaries: RelationshipWeeklySummary[];
+  named_mesocycles: NamedMesocycle[];
   meta: { key: string; value: unknown }[];
 };
 
@@ -504,6 +506,7 @@ export async function buildFullLocalExport(opts?: FullLocalExportOptions): Promi
     relationship_checkins,
     phase_goals,
     block_templates,
+    named_mesocycles,
     meta,
   ] = await Promise.all([
     db.lifts.toArray(),
@@ -527,6 +530,7 @@ export async function buildFullLocalExport(opts?: FullLocalExportOptions): Promi
     db.relationship_checkins.orderBy('date').toArray(),
     db.phase_goals.orderBy('startDate').toArray(),
     db.block_templates.orderBy('anchorDate').toArray(),
+    db.named_mesocycles.orderBy('startDate').toArray(),
     db.meta.toArray(),
   ]) as [
     Lift[],
@@ -550,6 +554,7 @@ export async function buildFullLocalExport(opts?: FullLocalExportOptions): Promi
     RelationshipCheckin[],
     PhaseGoal[],
     BlockTemplate[],
+    NamedMesocycle[],
     { key: string; value: unknown }[],
   ];
 
@@ -1065,6 +1070,7 @@ export async function buildFullLocalExport(opts?: FullLocalExportOptions): Promi
     block_templates,
     relationship_checkins: relationship_checkins_export,
     relationship_weekly_summaries,
+    named_mesocycles,
     meta: meta_filtered,
   };
 }

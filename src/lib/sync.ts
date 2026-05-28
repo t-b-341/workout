@@ -35,6 +35,7 @@ import type {
   PhaseGoal,
   BlockTemplate,
   RelationshipCheckin,
+  NamedMesocycle,
 } from './types';
 
 export type RemoteTable = DirtyRow['table'];
@@ -190,6 +191,7 @@ export function localIdFor(table: string, remoteId: string): string {
 const FLUSH_TABLE_TIER: Record<RemoteTable, number> = {
   templates: 0,
   prescriptions: 0,
+  named_mesocycles: 0,
   phase_goals: 1,
   block_templates: 1,
   training_checklist: 1,
@@ -261,6 +263,7 @@ const TABLE_TO_LOCAL: Record<SyncPullTable, keyof ReturnType<typeof getDb> & str
   phase_goals: 'phase_goals',
   block_templates: 'block_templates',
   relationship_checkins: 'relationship_checkins',
+  named_mesocycles: 'named_mesocycles',
 };
 
 /**
@@ -295,6 +298,7 @@ const ALL_TABLES: SyncPullTable[] = [
   'caffeine_logs',
   'oral_health_logs',
   'training_checklist',
+  'named_mesocycles',
 ];
 
 const WATERMARK_PREFIX = 'sync:watermark:';
@@ -475,6 +479,9 @@ async function persistRows(table: SyncPullTable, rows: RowPayload[]) {
       return;
     case 'user_goals':
       await db.user_goals.bulkPut(rows.map((r) => fromRemote<UserGoal>(r)));
+      return;
+    case 'named_mesocycles':
+      await db.named_mesocycles.bulkPut(rows.map((r) => fromRemote<NamedMesocycle>(r)));
       return;
     default: {
       // Exhaustiveness guard. If a new table is added to SyncPullTable

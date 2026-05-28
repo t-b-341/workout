@@ -2,10 +2,12 @@
 
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import Link from 'next/link';
-import { useSearchParams } from 'next/navigation';
 import type { MesoAnalysisReport } from '@/lib/exportModelSchema';
 import { buildMesoAnalysisLive } from '@/lib/exportLocalDump';
+import { useNamedMesocycles } from '@/lib/namedMesocycles';
 import { PageShell } from '@/components/PageShell';
+
+const CUSTOM_RANGE = '__custom__';
 
 function RecCard({
   r,
@@ -32,21 +34,55 @@ function RecCard({
 }
 
 export function MesoAnalysisScreen() {
-  const searchParams = useSearchParams();
-  const startQ = searchParams.get('start');
-  const endQ = searchParams.get('end');
-
+  const namedMesocycles = useNamedMesocycles();
+  const [userSelection, setUserSelection] = useState<string | null>(null);
+  const [customStart, setCustomStart] = useState('');
+  const [customEnd, setCustomEnd] = useState('');
   const [report, setReport] = useState<MesoAnalysisReport | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
+  const sortedMesos = useMemo(
+    () => (namedMesocycles ?? []).slice().sort((a, b) => b.startDate.localeCompare(a.startDate)),
+    [namedMesocycles],
+  );
+
+  const selection = useMemo(() => {
+    if (namedMesocycles === undefined) return CUSTOM_RANGE;
+    if (userSelection !== null) {
+      if (userSelection === CUSTOM_RANGE) return CUSTOM_RANGE;
+      if (sortedMesos.some((m) => m.id === userSelection)) return userSelection;
+    }
+    if (sortedMesos.length === 0) return CUSTOM_RANGE;
+    return sortedMesos[0]!.id;
+  }, [namedMesocycles, sortedMesos, userSelection]);
+
+  const selectedMeso =
+    selection === CUSTOM_RANGE
+      ? null
+      : sortedMesos.find((m) => m.id === selection) ?? null;
+
+  const resolvedStart =
+    selectedMeso?.startDate ?? (customStart.trim() || null);
+  const resolvedEnd =
+    selectedMeso?.endDate ?? (customEnd.trim() || null);
+
+  const windowLabel = selectedMeso?.label ?? 'Custom';
+  const canLoad = Boolean(resolvedStart && resolvedEnd);
+
   const load = useCallback(async () => {
+    if (!canLoad) {
+      setReport(null);
+      setLoading(false);
+      setError(null);
+      return;
+    }
     setLoading(true);
     setError(null);
     try {
       const r = await buildMesoAnalysisLive({
-        mesoStartDate: startQ?.trim() || null,
-        mesoEndDate: endQ?.trim() || null,
+        mesoStartDate: resolvedStart,
+        mesoEndDate: resolvedEnd,
       });
       setReport(r);
     } catch (e) {
@@ -54,7 +90,7 @@ export function MesoAnalysisScreen() {
     } finally {
       setLoading(false);
     }
-  }, [startQ, endQ]);
+  }, [canLoad, resolvedStart, resolvedEnd]);
 
   useEffect(() => {
     const t = window.setTimeout(() => {
@@ -62,6 +98,9 @@ export function MesoAnalysisScreen() {
     }, 0);
     return () => window.clearTimeout(t);
   }, [load]);
+
+  const showEmptyMesoHint =
+    sortedMesos.length === 0 && !canLoad;
 
   return (
     <PageShell variant="program" className="p-4 space-y-4 max-w-3xl mx-auto">
@@ -76,24 +115,84 @@ export function MesoAnalysisScreen() {
         <button
           type="button"
           onClick={() => void load()}
-          className="h-9 px-3 rounded-lg bg-zinc-800 text-sm text-zinc-200"
+          disabled={!canLoad}
+          className="h-9 px-3 rounded-lg bg-zinc-800 text-sm text-zinc-200 disabled:opacity-40"
         >
           Refresh
         </button>
       </div>
+
+      <div className="rounded-2xl bg-zinc-900 border border-zinc-800 p-4 space-y-3">
+        <label className="block text-xs text-zinc-500">
+          Analysis window
+          <select
+            value={selection}
+            onChange={(e) => setUserSelection(e.target.value)}
+            className="mt-1 block w-full h-10 px-2 rounded-lg bg-zinc-950 border border-zinc-800 text-sm text-zinc-200"
+          >
+            {sortedMesos.map((m) => (
+              <option key={m.id} value={m.id}>
+                {m.label} ({m.startDate} → {m.endDate})
+              </option>
+            ))}
+            <option value={CUSTOM_RANGE}>Custom range</option>
+          </select>
+        </label>
+
+        {selection === CUSTOM_RANGE && (
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <label className="block text-xs text-zinc-500">
+              Start
+              <input
+                type="date"
+                value={customStart}
+                onChange={(e) => setCustomStart(e.target.value)}
+                className="mt-1 block w-full h-10 px-2 rounded-lg bg-zinc-950 border border-zinc-800 text-sm"
+              />
+            </label>
+            <label className="block text-xs text-zinc-500">
+              End
+              <input
+                type="date"
+                value={customEnd}
+                onChange={(e) => setCustomEnd(e.target.value)}
+                className="mt-1 block w-full h-10 px-2 rounded-lg bg-zinc-950 border border-zinc-800 text-sm"
+              />
+            </label>
+          </div>
+        )}
+      </div>
+
+      {showEmptyMesoHint ? (
+        <p className="text-sm text-zinc-500">
+          No mesocycles defined —{' '}
+          <Link href="/program" className="text-amber-400 hover:text-amber-300 underline underline-offset-2">
+            create one on Program
+          </Link>
+          , or pick a custom date range above.
+        </p>
+      ) : null}
+
       <p className="text-xs text-zinc-500">
-        Window: <span className="font-mono text-zinc-400">{report?.windowStart}</span>
-        {' → '}
-        <span className="font-mono text-zinc-400">{report?.windowEnd}</span>
-        {startQ || endQ ? (
-          <span className="ml-2">(from URL ?start=&amp;end= or defaults to session date range)</span>
-        ) : null}
+        Block: <span className="text-zinc-300">{windowLabel}</span>
+        {canLoad ? (
+          <>
+            {' · '}
+            <span className="font-mono text-zinc-400">{resolvedStart}</span>
+            {' → '}
+            <span className="font-mono text-zinc-400">{resolvedEnd}</span>
+          </>
+        ) : (
+          <span className="ml-2 text-zinc-600">(select dates to analyse)</span>
+        )}
       </p>
 
       {loading ? (
         <div className="text-zinc-500 text-sm">Loading…</div>
       ) : error ? (
         <div className="text-rose-400 text-sm">{error}</div>
+      ) : !canLoad ? (
+        <div className="text-zinc-500 text-sm">Choose a mesocycle or enter a custom date range.</div>
       ) : report ? (
         <>
           <PrescriptionUpdatePrompt report={report} />
