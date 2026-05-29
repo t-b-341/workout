@@ -17,7 +17,16 @@ import {
 } from '@/lib/hooks';
 import { localDelete, localUpsert, flushDirty } from '@/lib/sync';
 import { fmtDate, todayIso } from '@/lib/time';
-import type { Lift, Prescription, SessionLog, SessionTemplate, SetLog, TemplateId } from '@/lib/types';
+import type {
+  Lift,
+  NutritionPhaseMode,
+  Prescription,
+  SessionLog,
+  SessionTemplate,
+  SetLog,
+  TemplateId,
+  TrainingPhaseMode,
+} from '@/lib/types';
 import { CardioBanner } from './CardioBanner';
 import { MindfulnessWeeklyBanner } from './MindfulnessWeeklyBanner';
 import { SessionHeader } from './SessionHeader';
@@ -295,7 +304,6 @@ export function TodayView() {
     !session.completedAt &&
     !recoveryRated;
 
-  const isTrainingDay = session.mode !== 'skip';
 
   const handleDismissPhaseTransition = async () => {
     if (activePhase) await dismissPhaseTransition(activePhase.id);
@@ -331,6 +339,7 @@ export function TodayView() {
         />
       )}
 
+      <PhaseSummaryCard />
       <CardioBanner />
       <MindfulnessWeeklyBanner />
 
@@ -443,39 +452,6 @@ export function TodayView() {
               border-t border-amber-800/30 pt-1.5">
               Deload in deficit — prioritize sleep and protein
               over session length targets this week.
-            </div>
-          )}
-        </div>
-      )}
-      {activePhase && (
-        <div className="rounded-xl border border-zinc-800
-          bg-zinc-900/50 px-3 py-2 flex items-center
-          justify-between">
-          <div className="text-xs text-zinc-500">
-            <span className={
-              activePhase.trainingMode === 'accumulation'
-                ? 'text-amber-400'
-                : activePhase.trainingMode === 'deload'
-                  ? 'text-sky-400'
-                  : 'text-zinc-400'
-            }>
-              {activePhase.trainingMode}
-            </span>
-            {' · '}
-            <span className={
-              activePhase.nutritionMode === 'deficit'
-                ? 'text-rose-400'
-                : activePhase.nutritionMode === 'surplus'
-                  ? 'text-emerald-400'
-                  : 'text-zinc-400'
-            }>
-              {activePhase.nutritionMode}
-            </span>
-          </div>
-          {activePhase.caloriesTraining && (
-            <div className="text-xs font-mono text-zinc-400">
-              {activePhase.caloriesTraining.toLocaleString()} kcal
-              {isTrainingDay ? ' today' : ''}
             </div>
           )}
         </div>
@@ -1168,6 +1144,101 @@ function FinishSessionButton({
           )}
         </div>
       )}
+    </div>
+  );
+}
+
+function PhaseSummaryCard() {
+  const phase = useActivePhaseGoal();
+  if (!phase) return null;
+
+  const today = todayIso();
+
+  // Days elapsed since phase start (0-based internally, display as 1-based)
+  const msPerDay = 86400000;
+  const startMs = new Date(`${phase.startDate}T00:00:00`).getTime();
+  const todayMs = new Date(`${today}T00:00:00`).getTime();
+  const endMs   = new Date(`${phase.endDate}T00:00:00`).getTime();
+
+  const daysElapsed   = Math.max(0, Math.round((todayMs - startMs) / msPerDay));
+  const daysRemaining = Math.max(0, Math.round((endMs - todayMs) / msPerDay) + 1);
+  const totalDays     = Math.max(1, Math.round((endMs - startMs) / msPerDay) + 1);
+
+  const weekNum = Math.floor(daysElapsed / 7) + 1;
+  const dayNum  = daysElapsed + 1;
+  const totalWeeks = Math.ceil(totalDays / 7);
+
+  // Progress bar percentage
+  const pct = Math.min(100, Math.round((daysElapsed / totalDays) * 100));
+
+  // Training mode label + color
+  const trainingColor: Record<TrainingPhaseMode, string> = {
+    accumulation: 'text-amber-400',
+    deload:       'text-sky-400',
+    maintenance:  'text-zinc-400',
+  };
+  const trainingLabel: Record<TrainingPhaseMode, string> = {
+    accumulation: 'Accumulation',
+    deload:       'Deload',
+    maintenance:  'Maintenance',
+  };
+
+  // Nutrition mode label + color
+  const nutritionColor: Record<NutritionPhaseMode, string> = {
+    surplus:     'text-emerald-400',
+    deficit:     'text-rose-400',
+    maintenance: 'text-zinc-400',
+  };
+  const nutritionLabel: Record<NutritionPhaseMode, string> = {
+    surplus:     'Surplus',
+    deficit:     'Deficit',
+    maintenance: 'Maintenance',
+  };
+
+  return (
+    <div className="rounded-xl bg-zinc-900 border border-zinc-800 p-3 space-y-2">
+      {/* Header row */}
+      <div className="flex items-start justify-between gap-2">
+        <div>
+          <div className="text-xs text-zinc-500 uppercase tracking-wider mb-0.5">Current phase</div>
+          <div className="text-sm font-medium text-zinc-100 leading-tight">{phase.label}</div>
+        </div>
+        <div className="text-right shrink-0">
+          <div className="text-xs text-zinc-500">
+            Week {weekNum} of {totalWeeks}
+          </div>
+          <div className="text-[11px] text-zinc-600">
+            Day {dayNum} · {daysRemaining}d remaining
+          </div>
+        </div>
+      </div>
+
+      {/* Progress bar */}
+      <div className="h-1.5 rounded-full bg-zinc-800 overflow-hidden">
+        <div
+          className="h-full bg-amber-500 rounded-full transition-all"
+          style={{ width: `${pct}%` }}
+        />
+      </div>
+
+      {/* Phase mode pills */}
+      <div className="flex items-center gap-2 flex-wrap">
+        <span className={`text-xs font-medium ${trainingColor[phase.trainingMode]}`}>
+          {trainingLabel[phase.trainingMode]}
+        </span>
+        <span className="text-zinc-700 text-xs">·</span>
+        <span className={`text-xs font-medium ${nutritionColor[phase.nutritionMode]}`}>
+          {nutritionLabel[phase.nutritionMode]}
+        </span>
+        {phase.caloriesTraining != null && (
+          <>
+            <span className="text-zinc-700 text-xs">·</span>
+            <span className="text-xs text-zinc-500 font-mono">
+              {phase.caloriesTraining.toLocaleString()} kcal
+            </span>
+          </>
+        )}
+      </div>
     </div>
   );
 }
