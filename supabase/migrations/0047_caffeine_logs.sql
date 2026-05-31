@@ -28,3 +28,5 @@ create trigger set_updated_at
 
 alter publication supabase_realtime
   add table public.caffeine_logs;
+
+grant select, insert, update, delete on public.caffeine_logs to authenticated, service_role;

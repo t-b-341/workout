@@ -32,3 +32,5 @@ create trigger set_updated_at
 
 alter publication supabase_realtime
   add table public.stoic_checkins;
+
+grant select, insert, update, delete on public.stoic_checkins to authenticated, service_role;

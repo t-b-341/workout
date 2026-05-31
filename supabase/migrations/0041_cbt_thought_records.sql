@@ -35,3 +35,5 @@ create trigger set_updated_at
 
 alter publication supabase_realtime
   add table public.cbt_thought_records;
+
+grant select, insert, update, delete on public.cbt_thought_records to authenticated, service_role;

@@ -62,7 +62,7 @@ drop policy if exists "own_modify" on public.body_readiness_logs;
 
 create policy "own_select" on public.body_readiness_logs
   for select using (user_id = auth.uid());
-create policy "own_modify" on public.body_readiness_logs
-  for all
-  using (user_id = auth.uid())
   with check (user_id = auth.uid());
+
+grant select, insert, update, delete on public.injury_episodes to authenticated, service_role;
+grant select, insert, update, delete on public.body_readiness_logs to authenticated, service_role;

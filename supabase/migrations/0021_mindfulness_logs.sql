@@ -31,7 +31,6 @@ drop policy if exists "own_modify" on public.mindfulness_logs;
 
 create policy "own_select" on public.mindfulness_logs
   for select using (user_id = auth.uid());
-create policy "own_modify" on public.mindfulness_logs
-  for all
-  using (user_id = auth.uid())
   with check (user_id = auth.uid());
+
+grant select, insert, update, delete on public.mindfulness_logs to authenticated, service_role;

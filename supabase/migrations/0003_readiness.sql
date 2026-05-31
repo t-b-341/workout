@@ -40,3 +40,5 @@ create policy "own_modify" on public.readiness_logs
   for all
   using (user_id = auth.uid())
   with check (user_id = auth.uid());
+
+grant select, insert, update, delete on public.readiness_logs to authenticated, service_role;

@@ -29,3 +29,5 @@ create trigger set_updated_at before update
 
 alter publication supabase_realtime
   add table public.oral_health_logs;
+
+grant select, insert, update, delete on public.oral_health_logs to authenticated, service_role;

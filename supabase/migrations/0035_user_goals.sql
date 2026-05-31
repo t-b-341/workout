@@ -37,3 +37,5 @@ create trigger set_updated_at
 
 alter publication supabase_realtime
   add table public.user_goals;
+
+grant select, insert, update, delete on public.user_goals to authenticated, service_role;

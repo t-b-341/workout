@@ -40,3 +40,5 @@ create trigger set_updated_at
 
 alter publication supabase_realtime
   add table public.named_mesocycles;
+
+grant select, insert, update, delete on public.named_mesocycles to authenticated, service_role;

@@ -28,3 +28,5 @@ create trigger set_updated_at before update
 
 alter publication supabase_realtime
   add table public.training_checklist;
+
+grant select, insert, update, delete on public.training_checklist to authenticated, service_role;

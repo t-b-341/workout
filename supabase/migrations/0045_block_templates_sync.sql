@@ -27,3 +27,5 @@ create trigger set_updated_at
 
 alter publication supabase_realtime
   add table public.block_templates;
+
+grant select, insert, update, delete on public.block_templates to authenticated, service_role;

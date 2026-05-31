@@ -131,3 +131,9 @@ begin
          with check (user_id = auth.uid());', t);
   end loop;
 end$$;
+
+grant select, insert, update, delete on public.prescriptions to authenticated, service_role;
+grant select, insert, update, delete on public.session_logs to authenticated, service_role;
+grant select, insert, update, delete on public.set_logs to authenticated, service_role;
+grant select, insert, update, delete on public.cardio_logs to authenticated, service_role;
+grant select, insert, update, delete on public.bodyweight_logs to authenticated, service_role;

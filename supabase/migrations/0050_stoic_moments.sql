@@ -31,3 +31,5 @@ create trigger set_updated_at
 
 alter publication supabase_realtime
   add table public.stoic_moments;
+
+grant select, insert, update, delete on public.stoic_moments to authenticated, service_role;

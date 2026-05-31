@@ -51,3 +51,5 @@ create trigger set_updated_at
 
 alter publication supabase_realtime
   add table public.relationship_checkins;
+
+grant select, insert, update, delete on public.relationship_checkins to authenticated, service_role;
