@@ -9,6 +9,8 @@ export const LIFTS: Lift[] = [
     pattern: 'vert-push', muscleGroups: ['front-delt', 'side-delt', 'triceps'] },
   { id: 'wgohp', name: 'Wide-Grip Overhead Press', equipment: 'barbell', loadUnit: 'lb', repUnit: 'reps', increment: 5, notes: 'Wide grip',
     pattern: 'vert-push', muscleGroups: ['front-delt', 'side-delt', 'triceps'] },
+  { id: 'btn_press', name: 'Behind-The-Neck Press', equipment: 'barbell', loadUnit: 'lb', repUnit: 'reps', increment: 5, notes: 'Wide grip, bar descends behind neck. Requires good shoulder mobility.',
+    pattern: 'vert-push', muscleGroups: ['front-delt', 'side-delt', 'triceps'] },
   { id: 'bp', name: 'Bench Press', equipment: 'barbell', loadUnit: 'lb', repUnit: 'reps', increment: 5,
     pattern: 'horiz-push', muscleGroups: ['chest', 'front-delt', 'triceps'] },
   { id: 'bp_paused', name: 'Bench Press (paused)', equipment: 'barbell', loadUnit: 'lb', repUnit: 'reps', increment: 5,

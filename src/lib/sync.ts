@@ -36,6 +36,7 @@ import type {
   BlockTemplate,
   RelationshipCheckin,
   NamedMesocycle,
+  QuickLoadout,
 } from './types';
 
 export type RemoteTable = DirtyRow['table'];
@@ -79,7 +80,7 @@ if (typeof window !== 'undefined') {
   });
 }
 
-async function getAuthUserId(): Promise<string | null> {
+export async function getAuthUserId(): Promise<string | null> {
   if (_cachedUserId) return _cachedUserId;
 
   const supabase = createClient();
@@ -192,6 +193,7 @@ const FLUSH_TABLE_TIER: Record<RemoteTable, number> = {
   templates: 0,
   prescriptions: 0,
   named_mesocycles: 0,
+  quick_loadouts: 0,
   phase_goals: 1,
   block_templates: 1,
   training_checklist: 1,
@@ -264,6 +266,7 @@ const TABLE_TO_LOCAL: Record<SyncPullTable, keyof ReturnType<typeof getDb> & str
   block_templates: 'block_templates',
   relationship_checkins: 'relationship_checkins',
   named_mesocycles: 'named_mesocycles',
+  quick_loadouts: 'quick_loadouts',
 };
 
 /**
@@ -299,6 +302,7 @@ const ALL_TABLES: SyncPullTable[] = [
   'oral_health_logs',
   'training_checklist',
   'named_mesocycles',
+  'quick_loadouts',
 ];
 
 const WATERMARK_PREFIX = 'sync:watermark:';
@@ -482,6 +486,9 @@ async function persistRows(table: SyncPullTable, rows: RowPayload[]) {
       return;
     case 'named_mesocycles':
       await db.named_mesocycles.bulkPut(rows.map((r) => fromRemote<NamedMesocycle>(r)));
+      return;
+    case 'quick_loadouts':
+      await db.quick_loadouts.bulkPut(rows.map((r) => fromRemote<QuickLoadout>(r)));
       return;
     default: {
       // Exhaustiveness guard. If a new table is added to SyncPullTable

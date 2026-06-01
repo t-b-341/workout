@@ -29,6 +29,8 @@ const SESSION_FOCUS_UI: Record<SessionLabelType, string> = {
   abbreviated: 'Short session',
   standard: 'Standard',
   opportunistic: 'Quick / opportunistic',
+  coffee: 'Coffee (single movement)',
+  top_set: 'Top set',
 };
 
 const STATUSES: SetStatus[] = ['completed', 'reduced', 'skipped', 'substituted'];

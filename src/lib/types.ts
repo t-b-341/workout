@@ -151,8 +151,21 @@ export const SESSION_LABEL_TYPES = [
   'abbreviated',
   'standard',
   'opportunistic',
+  'coffee',
+  'top_set',
 ] as const;
 export type SessionLabelType = (typeof SESSION_LABEL_TYPES)[number];
+
+export type QuickSessionTier = 'coffee' | 'top_set' | 'full';
+
+export type QuickLoadout = {
+  id: string;
+  userId: string;
+  tier: QuickSessionTier;
+  label: string;
+  liftIds: string[];
+  updatedAt: string;
+};
 
 export type SessionLog = {
   id: string;

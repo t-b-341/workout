@@ -31,6 +31,7 @@ import type {
   BlockTemplate,
   RelationshipCheckin,
   NamedMesocycle,
+  QuickLoadout,
 } from './types';
 
 export type DirtyRow = {
@@ -62,7 +63,8 @@ export type DirtyRow = {
     | 'oral_health_logs'
     | 'training_checklist'
     | 'user_goals'
-    | 'named_mesocycles';
+    | 'named_mesocycles'
+    | 'quick_loadouts';
   rowId: string;
   op: 'upsert' | 'delete';
   /** Server time when last enqueued (for ordering). */
@@ -98,6 +100,7 @@ export class WorkoutDB extends Dexie {
   block_templates!: Table<BlockTemplate, string>;
   relationship_checkins!: Table<RelationshipCheckin, string>;
   named_mesocycles!: Table<NamedMesocycle, string>;
+  quick_loadouts!: Table<QuickLoadout, string>;
   dirty!: Table<DirtyRow, string>;
   meta!: Table<{ key: string; value: unknown }, string>;
 
@@ -763,10 +766,31 @@ export class WorkoutDB extends Dexie {
         await lifts.bulkPut(modified);
       }
     });
+    // v29 — backfill btn_press (Behind-The-Neck Press) into live lifts catalog.
+    this.version(29).stores({}).upgrade(async (tx) => {
+      const exists = await (tx as unknown as WorkoutDB).lifts.get('btn_press');
+      if (!exists) {
+        await (tx as unknown as WorkoutDB).lifts.put({
+          id: 'btn_press',
+          name: 'Behind-The-Neck Press',
+          equipment: 'barbell',
+          loadUnit: 'lb',
+          repUnit: 'reps',
+          increment: 5,
+          notes: 'Wide grip, bar descends behind neck. Requires good shoulder mobility.',
+          pattern: 'vert-push',
+          muscleGroups: ['front-delt', 'side-delt', 'triceps'],
+        });
+      }
+    });
+    // v30 — quick session saved loadouts per tier (synced).
+    this.version(30).stores({
+      quick_loadouts: 'id, userId, tier, updatedAt',
+    });
   }
 }
 
-export const SCHEMA_VERSION = 28;
+export const SCHEMA_VERSION = 30;
 
 let _db: WorkoutDB | null = null;
 let _dbUserId: string | null = null;

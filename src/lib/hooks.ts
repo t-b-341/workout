@@ -39,6 +39,8 @@ import type {
   PhaseGoal,
   BlockTemplate,
   RelationshipCheckin,
+  QuickLoadout,
+  QuickSessionTier,
 } from './types';
 
 export function usePrescriptions(templateId?: TemplateId): Prescription[] | undefined {
@@ -302,6 +304,16 @@ export function useActivePhaseGoal(): PhaseGoal | undefined {
       b.startDate.localeCompare(a.startDate),
     )[0];
   }, []);
+}
+
+export function useQuickLoadouts(tier?: QuickSessionTier): QuickLoadout[] | undefined {
+  return useLiveQuery(
+    () => {
+      const q = getDb().quick_loadouts.orderBy('updatedAt').reverse();
+      return tier ? q.filter((l) => l.tier === tier).toArray() : q.toArray();
+    },
+    [tier],
+  );
 }
 
 export function useNutritionSummaryForDateRange(
