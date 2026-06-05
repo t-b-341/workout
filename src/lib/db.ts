@@ -787,10 +787,32 @@ export class WorkoutDB extends Dexie {
     this.version(30).stores({
       quick_loadouts: 'id, userId, tier, updatedAt',
     });
+    this.version(31).stores({}).upgrade(async (tx) => {
+      const db = tx as unknown as WorkoutDB;
+      const LIFT_CUES: Record<string, string> = {
+        bp:               'Squeeze the bar — tight hands, try to bend the bar outward.',
+        bp_paused:        'Squeeze the bar — tight hands, try to bend the bar outward.',
+        wgbp:             'Squeeze the bar — tight hands, try to bend the bar outward.',
+        cgbp:             'Squeeze the bar — tight hands, try to bend the bar outward.',
+        back_squat:       'Squeeze the bar.',
+        back_squat_paused:'Squeeze the bar.',
+        front_squat:      'Squeeze the bar.',
+        p1_bw:            'Bring the bar to you.',
+        p1_eccentric:     'Bring the bar to you.',
+        p1_assisted:      'Bring the bar to you.',
+        dl:               'Leg press the weight away — push the ground down.',
+        ddl:              'Leg press the weight away — push the ground down.',
+      };
+      const lifts = await db.lifts.toArray();
+      const updated = lifts
+        .filter((l) => LIFT_CUES[l.id] && !l.cue)
+        .map((l) => ({ ...l, cue: LIFT_CUES[l.id] }));
+      if (updated.length > 0) await db.lifts.bulkPut(updated);
+    });
   }
 }
 
-export const SCHEMA_VERSION = 30;
+export const SCHEMA_VERSION = 31;
 
 let _db: WorkoutDB | null = null;
 let _dbUserId: string | null = null;

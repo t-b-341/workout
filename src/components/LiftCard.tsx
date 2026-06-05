@@ -347,6 +347,12 @@ export function LiftCard({
               <div className="text-xs text-zinc-500 mt-1">Plates/side: <span className="font-mono">{plates}</span></div>
             ) : null;
           })()}
+          {lift.cue && (
+            <div className="text-[11px] text-amber-500/80 mt-1.5 leading-snug flex items-start gap-1">
+              <span className="text-amber-600 shrink-0 select-none">▸</span>
+              {lift.cue}
+            </div>
+          )}
         </div>
         </div>
       </div>
@@ -934,6 +940,12 @@ function SetRow({
             <> Log bodyweight in check-in or the BW tab to estimate moved load from assistance.</>
           )}
         </p>
+      )}
+      {lift.cue && !done && (
+        <div className="text-[11px] text-amber-400/80 leading-snug flex items-start gap-1 pb-1">
+          <span className="text-amber-600 shrink-0 select-none">▸</span>
+          {lift.cue}
+        </div>
       )}
       <div className="flex gap-2">
         <button

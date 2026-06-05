@@ -58,6 +58,8 @@ export type Lift = {
   lockedWeight?: boolean;
   /** Notes shown on the lift card (tempo, cues, etc). */
   notes?: string;
+  /** Short coaching cue shown in the set logging card before each set. */
+  cue?: string;
   /** Primary + secondary muscles trained. Empty for cardio. */
   muscleGroups?: MuscleGroup[];
   /** Primary movement pattern for coverage charts. */
