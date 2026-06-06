@@ -75,6 +75,7 @@ import { sortPrescriptionsWithFavoritesFirst, useFavoriteLiftIds } from '@/lib/f
 import { sortTemplatesProgramOrder } from '@/lib/seed';
 import { QuickSessionView } from './QuickSessionView';
 import { StoicMomentSheet } from './StoicMomentSheet';
+import { OverwhelmProtocol } from './OverwhelmProtocol';
 
 const MINI_TEMPLATE_IDS = new Set(['L2', 'U3', 'L3']);
 
@@ -107,6 +108,7 @@ export function TodayView() {
   const [readinessSkipped, setReadinessSkipped] = useState(false);
   const [quickMode, setQuickMode] = useState(false);
   const [showStoicMoment, setShowStoicMoment] = useState(false);
+  const [showOverwhelmProtocol, setShowOverwhelmProtocol] = useState(false);
   const [recoveryPromptSessionId, setRecoveryPromptSessionId] = useState<string | null>(null);
 
   const programTemplates = useMemo(
@@ -761,6 +763,22 @@ export function TodayView() {
           date={todayIso()}
           onClose={() => setShowStoicMoment(false)}
         />
+      )}
+      {/* Overwhelm Protocol floating trigger */}
+      <div className="fixed bottom-20 right-4 z-40">
+        <button
+          type="button"
+          onClick={() => setShowOverwhelmProtocol(true)}
+          className="h-12 w-12 rounded-full bg-rose-900 border border-rose-700 text-rose-300 text-xl shadow-lg flex items-center justify-center active:bg-rose-800"
+          aria-label="Open Overwhelm Protocol"
+          title="Overwhelm Protocol"
+        >
+          ⚡
+        </button>
+      </div>
+
+      {showOverwhelmProtocol && (
+        <OverwhelmProtocol onClose={() => setShowOverwhelmProtocol(false)} />
       )}
     </PageShell>
   );

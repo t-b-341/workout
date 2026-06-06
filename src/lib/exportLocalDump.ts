@@ -50,6 +50,7 @@ import type {
   CaffeineLog,
   OralHealthLog,
   TrainingChecklistItem,
+  OverwhelmEpisode,
 } from './types';
 import {
   SESSION_LABEL_TYPES,
@@ -62,7 +63,7 @@ import { currentValueForGoal, isGoalAchieved } from './liftingGoals';
 import { todayIso } from './time';
 
 /** Export payload schema — bump when top-level export shape changes. */
-const FULL_LOCAL_EXPORT_SCHEMA_VERSION = 32;
+const FULL_LOCAL_EXPORT_SCHEMA_VERSION = 33;
 
 const MEANINGFUL_META_PREFIXES = [
   'workout:supplements:v1:',
@@ -369,6 +370,7 @@ export type FullLocalExport = {
   relationship_checkins: ExportedRelationshipCheckin[];
   relationship_weekly_summaries: RelationshipWeeklySummary[];
   named_mesocycles: NamedMesocycle[];
+  overwhelm_episodes: OverwhelmEpisode[];
   meta: { key: string; value: unknown }[];
 };
 
@@ -507,6 +509,7 @@ export async function buildFullLocalExport(opts?: FullLocalExportOptions): Promi
     phase_goals,
     block_templates,
     named_mesocycles,
+    overwhelm_episodes,
     meta,
   ] = await Promise.all([
     db.lifts.toArray(),
@@ -531,6 +534,7 @@ export async function buildFullLocalExport(opts?: FullLocalExportOptions): Promi
     db.phase_goals.orderBy('startDate').toArray(),
     db.block_templates.orderBy('anchorDate').toArray(),
     db.named_mesocycles.orderBy('startDate').toArray(),
+    db.overwhelm_episodes.orderBy('startedAt').toArray(),
     db.meta.toArray(),
   ]) as [
     Lift[],
@@ -555,6 +559,7 @@ export async function buildFullLocalExport(opts?: FullLocalExportOptions): Promi
     PhaseGoal[],
     BlockTemplate[],
     NamedMesocycle[],
+    OverwhelmEpisode[],
     { key: string; value: unknown }[],
   ];
 
@@ -1071,6 +1076,7 @@ export async function buildFullLocalExport(opts?: FullLocalExportOptions): Promi
     relationship_checkins: relationship_checkins_export,
     relationship_weekly_summaries,
     named_mesocycles,
+    overwhelm_episodes,
     meta: meta_filtered,
   };
 }

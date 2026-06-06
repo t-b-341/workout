@@ -32,6 +32,7 @@ import type {
   RelationshipCheckin,
   NamedMesocycle,
   QuickLoadout,
+  OverwhelmEpisode,
 } from './types';
 
 export type DirtyRow = {
@@ -64,7 +65,8 @@ export type DirtyRow = {
     | 'training_checklist'
     | 'user_goals'
     | 'named_mesocycles'
-    | 'quick_loadouts';
+    | 'quick_loadouts'
+    | 'overwhelm_episodes';
   rowId: string;
   op: 'upsert' | 'delete';
   /** Server time when last enqueued (for ordering). */
@@ -101,6 +103,7 @@ export class WorkoutDB extends Dexie {
   relationship_checkins!: Table<RelationshipCheckin, string>;
   named_mesocycles!: Table<NamedMesocycle, string>;
   quick_loadouts!: Table<QuickLoadout, string>;
+  overwhelm_episodes!: Table<OverwhelmEpisode, string>;
   dirty!: Table<DirtyRow, string>;
   meta!: Table<{ key: string; value: unknown }, string>;
 
@@ -809,10 +812,14 @@ export class WorkoutDB extends Dexie {
         .map((l) => ({ ...l, cue: LIFT_CUES[l.id] }));
       if (updated.length > 0) await db.lifts.bulkPut(updated);
     });
+    // v32 — Overwhelm Protocol episode logs (synced).
+    this.version(32).stores({
+      overwhelm_episodes: 'id, userId, date, startedAt, updatedAt',
+    });
   }
 }
 
-export const SCHEMA_VERSION = 31;
+export const SCHEMA_VERSION = 32;
 
 let _db: WorkoutDB | null = null;
 let _dbUserId: string | null = null;

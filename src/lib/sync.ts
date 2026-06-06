@@ -37,6 +37,7 @@ import type {
   RelationshipCheckin,
   NamedMesocycle,
   QuickLoadout,
+  OverwhelmEpisode,
 } from './types';
 
 export type RemoteTable = DirtyRow['table'];
@@ -194,6 +195,7 @@ const FLUSH_TABLE_TIER: Record<RemoteTable, number> = {
   prescriptions: 0,
   named_mesocycles: 0,
   quick_loadouts: 0,
+  overwhelm_episodes: 0,
   phase_goals: 1,
   block_templates: 1,
   training_checklist: 1,
@@ -267,6 +269,7 @@ const TABLE_TO_LOCAL: Record<SyncPullTable, keyof ReturnType<typeof getDb> & str
   relationship_checkins: 'relationship_checkins',
   named_mesocycles: 'named_mesocycles',
   quick_loadouts: 'quick_loadouts',
+  overwhelm_episodes: 'overwhelm_episodes',
 };
 
 /**
@@ -303,6 +306,7 @@ const ALL_TABLES: SyncPullTable[] = [
   'training_checklist',
   'named_mesocycles',
   'quick_loadouts',
+  'overwhelm_episodes',
 ];
 
 const WATERMARK_PREFIX = 'sync:watermark:';
@@ -489,6 +493,11 @@ async function persistRows(table: SyncPullTable, rows: RowPayload[]) {
       return;
     case 'quick_loadouts':
       await db.quick_loadouts.bulkPut(rows.map((r) => fromRemote<QuickLoadout>(r)));
+      return;
+    case 'overwhelm_episodes':
+      await db.overwhelm_episodes.bulkPut(
+        rows.map((r) => fromRemote<OverwhelmEpisode>(r))
+      );
       return;
     default: {
       // Exhaustiveness guard. If a new table is added to SyncPullTable

@@ -634,6 +634,36 @@ export type StressLog = {
   workDay?: boolean;
 };
 
+export type OverwhelmTier = 1 | 2 | 3;
+
+export type OverwhelmEpisode = {
+  id: string;
+  userId?: string;
+  date: string;
+  /** ISO timestamp when protocol was opened. */
+  startedAt: string;
+  /** ISO timestamp when protocol was closed or completed. */
+  endedAt?: string;
+  /** Tier reached during this episode. */
+  tier: OverwhelmTier;
+  /** Distress rating before starting the protocol (1–10). */
+  distressBefore: number;
+  /** Distress rating after completing the protocol (1–10). Optional — user may close early. */
+  distressAfter?: number;
+  /** Which TIPP steps were completed in Tier 2. */
+  tippStepsCompleted?: string[];
+  /** Free-text note logged at any tier. */
+  note?: string;
+  updatedAt: string;
+};
+
+export type OverwhelmContact = {
+  id: string;
+  name: string;
+  /** Phone number, text handle, or description of how to reach them. */
+  contact: string;
+};
+
 export type RecoveryBand = 'push' | 'normal' | 'conservative' | 'recovery';
 
 export type RecoveryPlan = {
