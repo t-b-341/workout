@@ -4,7 +4,7 @@ import type { Lift, Prescription, SessionLog, SetLog } from './types';
 /** P1 pull-up variants with added load (or eccentric negatives): snap in 2.5 lb steps. */
 export const LIFT_IDS_PULLUP_ADDED_LOAD = new Set<string>(['p1_eccentric', 'p1_assisted', 'p1_bw']);
 
-const MINI_TEMPLATE_IDS: ReadonlySet<string> = new Set(['L2', 'U3', 'L3']);
+const MINI_TEMPLATE_IDS: ReadonlySet<string> = new Set(['L2', 'U3', 'L3', 'S1']);
 
 export type SnapLiftRef = Pick<Lift, 'id' | 'equipment' | 'loadUnit'>;
 

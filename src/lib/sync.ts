@@ -376,6 +376,34 @@ export async function seedRemoteTemplatesIfEmpty(userId: string) {
   if (insertErr) throw insertErr;
 }
 
+export async function ensureS1RemoteTemplate(userId: string): Promise<void> {
+  const supabase = createClient();
+  const scopedId = `${userId}:S1`;
+  const { count, error } = await supabase
+    .from('templates')
+    .select('id', { count: 'exact', head: true })
+    .or(`id.eq.${scopedId},id.eq.S1`);
+  if (error) {
+    if (isMissingRelationError(error)) return;
+    console.warn('[ensureS1RemoteTemplate] check failed:', error.message);
+    return;
+  }
+  if ((count ?? 0) > 0) return;
+  const row = toRemote({
+    id: scopedId,
+    name: 'Sunday — Optional',
+    dayOfWeek: 0,
+    group: 'lower',
+    intensity: 'light',
+  } as unknown as Record<string, unknown>);
+  const { error: insertErr } = await supabase
+    .from('templates')
+    .upsert({ ...row, user_id: userId }, { onConflict: 'id', ignoreDuplicates: true });
+  if (insertErr) {
+    console.warn('[ensureS1RemoteTemplate] insert failed:', insertErr.message);
+  }
+}
+
 type RowPayload = Record<string, unknown>;
 
 async function mirrorDelete(table: SyncPullTable, id: string) {

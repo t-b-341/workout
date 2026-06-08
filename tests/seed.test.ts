@@ -16,7 +16,7 @@ describe('defaultTemplateForLocalDate', () => {
   it('maps Saturday to L3', () => {
     expect(defaultTemplateForLocalDate(TEMPLATES, localNoon(2026, 4, 2)).id).toBe('L3');
   });
-  it('maps Sunday to next Monday (U1), not templates[0] fallback', () => {
-    expect(defaultTemplateForLocalDate(TEMPLATES, localNoon(2026, 3, 26)).id).toBe('U1');
+  it('maps Sunday to S1', () => {
+    expect(defaultTemplateForLocalDate(TEMPLATES, localNoon(2026, 3, 26)).id).toBe('S1');
   });
 });

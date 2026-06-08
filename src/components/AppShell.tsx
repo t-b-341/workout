@@ -19,6 +19,7 @@ import {
   pullAll,
   seedRemotePrescriptionsIfEmpty,
   seedRemoteTemplatesIfEmpty,
+  ensureS1RemoteTemplate,
   setCachedUserId,
   subscribeRealtime,
 } from '@/lib/sync';
@@ -106,6 +107,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           await flushDirty();
           await seedRemotePrescriptionsIfEmpty(user.id);
           await seedRemoteTemplatesIfEmpty(user.id);
+          await ensureS1RemoteTemplate(user.id);
           await Promise.race([
             pullAll({ full: true }),
             new Promise<void>((_, reject) =>

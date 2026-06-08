@@ -119,6 +119,7 @@ export const TEMPLATES: SessionTemplate[] = [
   { id: 'U1', name: 'Monday — Upper (Full)',       dayOfWeek: 1, group: 'upper', intensity: 'heavy' },
   { id: 'U2', name: 'Wednesday — Upper (Full)',    dayOfWeek: 3, group: 'upper', intensity: 'light' },
   { id: 'U3', name: 'Friday — Upper (Mini)',       dayOfWeek: 5, group: 'upper', intensity: 'moderate' },
+  { id: 'S1', name: 'Sunday — Optional',         dayOfWeek: 0, group: 'lower', intensity: 'light' },
   {
     id: 'QUICK',
     name: 'Quick Session',
@@ -137,12 +138,13 @@ export const QUICK_DEFAULT_LIFT_IDS: string[] = [
 ];
 
 /**
- * Program-tab / picker order: **U1, L1, U2, L2, U3, L3** (upper then lower
- * for each day-pair). Dexie `templates.toArray()` is otherwise sorted by id
+ * Program-tab / picker order: **U1, L1, U2, L2, U3, L3, S1** (upper then lower
+ * for each day-pair; Sunday optional last). Dexie `templates.toArray()` is otherwise sorted by id
  * (`L*` before `U*`).
  */
 export function sortTemplatesProgramOrder<T extends { id: string }>(templates: T[]): T[] {
   const rank = (id: string): number => {
+    if (id === 'S1') return 6;
     const m = /^([UL])(\d)$/.exec(id);
     if (!m) return 999;
     const n = parseInt(m[2], 10);
@@ -156,12 +158,11 @@ export function sortTemplatesProgramOrder<T extends { id: string }>(templates: T
  * Default template for "today" on the Today tab / Program picker.
  *
  * `SessionTemplate.dayOfWeek` is ISO-style **1 = Monday … 6 = Saturday**
- * (no Sunday session in this split). `Date.getDay()` is **0 = Sunday …
- * 6 = Saturday**, so we must not compare them directly.
+ * plus **0 = Sunday** (S1). `Date.getDay()` is **0 = Sunday … 6 = Saturday**,
+ * so we must not compare them directly.
  *
  * - Mon–Sat: the template whose `dayOfWeek` matches today.
- * - Sunday: the **next** training day is Monday → template with the
- *   smallest `dayOfWeek` (U1).
+ * - Sunday: S1 when present, otherwise fall back to the smallest `dayOfWeek`.
  */
 export function defaultTemplateForLocalDate(
   templates: SessionTemplate[],
@@ -181,6 +182,10 @@ export function defaultTemplateForLocalDate(
     (a, b) => a.dayOfWeek - b.dayOfWeek,
   );
   const js = at.getDay();
+  if (js === 0) {
+    const sunday = byDow.find((t) => t.dayOfWeek === 0);
+    if (sunday) return sunday;
+  }
   if (js >= 1 && js <= 6) {
     const hit = byDow.find((t) => t.dayOfWeek === js);
     if (hit) return hit;

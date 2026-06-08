@@ -77,7 +77,7 @@ import { QuickSessionView } from './QuickSessionView';
 import { StoicMomentSheet } from './StoicMomentSheet';
 import { OverwhelmProtocol } from './OverwhelmProtocol';
 
-const MINI_TEMPLATE_IDS = new Set(['L2', 'U3', 'L3']);
+const MINI_TEMPLATE_IDS = new Set(['L2', 'U3', 'L3', 'S1']);
 
 async function isPhaseTransitionDismissed(
   phaseId: string,

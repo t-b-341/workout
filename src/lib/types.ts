@@ -66,7 +66,7 @@ export type Lift = {
   pattern?: MovementPattern;
 };
 
-export type TemplateId = 'U1' | 'U2' | 'U3' | 'L1' | 'L2' | 'L3' | 'QUICK';
+export type TemplateId = 'U1' | 'U2' | 'U3' | 'L1' | 'L2' | 'L3' | 'S1' | 'QUICK';
 
 export type SessionTemplate = {
   id: TemplateId;
