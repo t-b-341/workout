@@ -30,6 +30,7 @@ import type {
   SupplementLog,
   CaffeineLog,
   OralHealthLog,
+  PullupLog,
   TrainingChecklistItem,
   UserGoal,
   PhaseGoal,
@@ -196,6 +197,7 @@ const FLUSH_TABLE_TIER: Record<RemoteTable, number> = {
   named_mesocycles: 0,
   quick_loadouts: 0,
   overwhelm_episodes: 0,
+  pullup_logs: 0,
   phase_goals: 1,
   block_templates: 1,
   training_checklist: 1,
@@ -261,6 +263,7 @@ const TABLE_TO_LOCAL: Record<SyncPullTable, keyof ReturnType<typeof getDb> & str
   body_readiness_logs: 'body_readiness_logs',
   supplement_logs: 'supplement_logs',
   caffeine_logs: 'caffeine_logs',
+  pullup_logs: 'pullup_logs',
   oral_health_logs: 'oral_health_logs',
   training_checklist: 'training_checklist',
   user_goals: 'user_goals',
@@ -302,6 +305,7 @@ const ALL_TABLES: SyncPullTable[] = [
   'block_templates',
   'relationship_checkins',
   'caffeine_logs',
+  'pullup_logs',
   'oral_health_logs',
   'training_checklist',
   'named_mesocycles',
@@ -485,6 +489,9 @@ async function persistRows(table: SyncPullTable, rows: RowPayload[]) {
       return;
     case 'caffeine_logs':
       await db.caffeine_logs.bulkPut(rows.map((r) => fromRemote<CaffeineLog>(r)));
+      return;
+    case 'pullup_logs':
+      await db.pullup_logs.bulkPut(rows.map((r) => fromRemote<PullupLog>(r)));
       return;
     case 'cbt_thought_records':
       await db.cbt_thought_records.bulkPut(rows.map((r) => fromRemote<CbtThoughtRecord>(r)));

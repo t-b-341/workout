@@ -11,16 +11,19 @@ import {
   useActivePhaseGoal,
   useMacroTrendAdvice,
   usePrescriptions,
+  usePullupLogsForDate,
   useReadinessForSession,
   useTemplates,
+  useThisWeekPullups,
   useTodaySession,
 } from '@/lib/hooks';
-import { localDelete, localUpsert, flushDirty } from '@/lib/sync';
+import { getAuthUserId, localDelete, localUpsert, flushDirty } from '@/lib/sync';
 import { fmtDate, todayIso } from '@/lib/time';
 import type {
   Lift,
   NutritionPhaseMode,
   Prescription,
+  PullupLog,
   SessionLog,
   SessionTemplate,
   SetLog,
@@ -343,6 +346,7 @@ export function TodayView() {
 
       <PhaseSummaryCard />
       <CardioBanner />
+      <PullupTracker />
       <MindfulnessWeeklyBanner />
 
       {!session.startedAt && !session.completedAt && !sundayGateActive && (
@@ -1257,6 +1261,135 @@ function PhaseSummaryCard() {
           </>
         )}
       </div>
+    </div>
+  );
+}
+
+function PullupTracker() {
+  const today = todayIso();
+  const logs = usePullupLogsForDate(today);
+  const wk = useThisWeekPullups();
+  const [expanded, setExpanded] = useState(false);
+  const [reps, setReps] = useState(5);
+  const [timeHm, setTimeHm] = useState(() =>
+    new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false }).slice(0, 5),
+  );
+  const [saving, setSaving] = useState(false);
+
+  async function add() {
+    setSaving(true);
+    try {
+      const authUserId = await getAuthUserId();
+      const [h, m] = timeHm.split(':').map(Number);
+      const loggedAt = new Date();
+      loggedAt.setHours(h, m, 0, 0);
+      const row: PullupLog = {
+        id: `pullup-${Date.now()}`,
+        userId: authUserId ?? '',
+        date: today,
+        loggedAt: loggedAt.toISOString(),
+        reps,
+        updatedAt: new Date().toISOString(),
+      };
+      await localUpsert('pullup_logs', row);
+      setReps(5);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function remove(log: PullupLog) {
+    await localDelete('pullup_logs', log.id, { undoLabel: 'Pullup set' });
+  }
+
+  const todayTotal = (logs ?? []).reduce((s, l) => s + l.reps, 0);
+  const weekPct = wk ? Math.min(100, Math.round((wk.total / wk.target) * 100)) : 0;
+
+  return (
+    <div className="rounded-xl bg-zinc-900 border border-zinc-800 overflow-hidden">
+      <button
+        type="button"
+        className="w-full p-3 flex items-center justify-between text-left"
+        onClick={() => setExpanded((v) => !v)}
+      >
+        <div className="space-y-1 flex-1 mr-3">
+          <div className="flex items-center justify-between text-sm">
+            <span className="text-zinc-400">Pull-ups this week</span>
+            <span className="font-mono text-zinc-200">
+              {wk?.total ?? 0} / {wk?.target ?? 50} reps
+            </span>
+          </div>
+          <div className="h-2 rounded-full bg-zinc-800 overflow-hidden">
+            <div
+              className={`h-full transition-all ${weekPct >= 100 ? 'bg-emerald-500' : 'bg-sky-500'}`}
+              style={{ width: `${weekPct}%` }}
+            />
+          </div>
+        </div>
+        <span className="text-zinc-500 text-sm shrink-0">{expanded ? '▲' : '▼'}</span>
+      </button>
+
+      {expanded && (
+        <div className="border-t border-zinc-800 p-3 space-y-3">
+          <div className="flex items-center gap-2 flex-wrap">
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                onClick={() => setReps((r) => Math.max(1, r - 1))}
+                className="h-8 w-8 rounded-lg bg-zinc-800 text-zinc-300 text-lg flex items-center justify-center active:bg-zinc-700"
+              >
+                −
+              </button>
+              <span className="w-10 text-center font-mono text-zinc-100 text-sm">{reps}</span>
+              <button
+                type="button"
+                onClick={() => setReps((r) => Math.min(50, r + 1))}
+                className="h-8 w-8 rounded-lg bg-zinc-800 text-zinc-300 text-lg flex items-center justify-center active:bg-zinc-700"
+              >
+                +
+              </button>
+            </div>
+            <span className="text-zinc-500 text-xs">reps at</span>
+            <input
+              type="time"
+              value={timeHm}
+              onChange={(e) => setTimeHm(e.target.value)}
+              className="h-8 px-2 rounded-lg bg-zinc-800 text-zinc-200 text-sm font-mono border-0 outline-none"
+            />
+            <button
+              type="button"
+              onClick={add}
+              disabled={saving}
+              className="h-8 px-4 rounded-lg bg-sky-700 text-white text-sm font-medium disabled:opacity-50 active:bg-sky-600"
+            >
+              {saving ? '…' : 'Log'}
+            </button>
+          </div>
+
+          {(logs ?? []).length > 0 && (
+            <div className="space-y-1">
+              <div className="text-[11px] text-zinc-500 uppercase tracking-wider">
+                Today — {todayTotal} reps
+              </div>
+              {[...(logs ?? [])].reverse().map((log) => (
+                <div key={log.id} className="flex items-center justify-between text-sm">
+                  <span className="text-zinc-300 font-mono">{log.reps} reps</span>
+                  <span className="text-zinc-600 text-xs">
+                    {new Date(log.loggedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => remove(log)}
+                    className="text-zinc-600 hover:text-rose-400 text-xs px-2 py-0.5"
+                  >
+                    ✕
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

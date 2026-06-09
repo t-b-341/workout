@@ -433,6 +433,18 @@ export type CaffeineLog = {
   updatedAt: string;
 };
 
+export type PullupLog = {
+  id: string;
+  userId: string;
+  /** YYYY-MM-DD */
+  date: string;
+  /** ISO timestamp when logged */
+  loggedAt: string;
+  reps: number;
+  notes?: string;
+  updatedAt: string;
+};
+
 export type OralHealthLog = {
   id: string;
   userId: string;

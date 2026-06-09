@@ -33,6 +33,7 @@ import type {
   SupplementLog,
   CaffeineLog,
   OralHealthLog,
+  PullupLog,
   TrainingChecklistItem,
   TemplateId,
   UserGoal,
@@ -434,6 +435,33 @@ export function useAllCaffeineLogs(): CaffeineLog[] | undefined {
       .orderBy('loggedAt').reverse().toArray(),
     [],
   );
+}
+
+export function usePullupLogsForDate(date: string): PullupLog[] | undefined {
+  return useLiveQuery(
+    () => getDb().pullup_logs.where('date').equals(date).sortBy('loggedAt'),
+    [date],
+  );
+}
+
+export function useThisWeekPullups(): { total: number; target: number } | undefined {
+  return useLiveQuery(async () => {
+    const db = getDb();
+    const today = new Date();
+    const dayOfWeek = today.getDay();
+    const monday = new Date(today);
+    monday.setDate(today.getDate() - ((dayOfWeek + 6) % 7));
+    const mondayIso = monday.toISOString().slice(0, 10);
+    const sunday = new Date(monday);
+    sunday.setDate(monday.getDate() + 6);
+    const sundayIso = sunday.toISOString().slice(0, 10);
+    const logs = await db.pullup_logs
+      .where('date')
+      .between(mondayIso, sundayIso, true, true)
+      .toArray();
+    const total = logs.reduce((sum, l) => sum + l.reps, 0);
+    return { total, target: 50 };
+  }, []);
 }
 
 export function useAllSupplementLogs(): SupplementLog[] | undefined {

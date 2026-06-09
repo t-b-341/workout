@@ -49,6 +49,7 @@ import type {
   SupplementLog,
   CaffeineLog,
   OralHealthLog,
+  PullupLog,
   TrainingChecklistItem,
   OverwhelmEpisode,
 } from './types';
@@ -63,7 +64,7 @@ import { currentValueForGoal, isGoalAchieved } from './liftingGoals';
 import { todayIso } from './time';
 
 /** Export payload schema — bump when top-level export shape changes. */
-const FULL_LOCAL_EXPORT_SCHEMA_VERSION = 33;
+const FULL_LOCAL_EXPORT_SCHEMA_VERSION = 34;
 
 const MEANINGFUL_META_PREFIXES = [
   'workout:supplements:v1:',
@@ -361,6 +362,7 @@ export type FullLocalExport = {
   /** Supplement checklist rows from synced `supplement_logs` Dexie table. */
   supplement_logs: SupplementLogExport[];
   caffeine_logs: CaffeineLog[];
+  pullup_logs: PullupLog[];
   oral_health_logs: OralHealthLog[];
   training_checklist: TrainingChecklistItem[];
   /** Current mesocycle block mirror (aligned with Program tab / meso week stats). */
@@ -510,6 +512,7 @@ export async function buildFullLocalExport(opts?: FullLocalExportOptions): Promi
     block_templates,
     named_mesocycles,
     overwhelm_episodes,
+    pullup_logs,
     meta,
   ] = await Promise.all([
     db.lifts.toArray(),
@@ -535,6 +538,7 @@ export async function buildFullLocalExport(opts?: FullLocalExportOptions): Promi
     db.block_templates.orderBy('anchorDate').toArray(),
     db.named_mesocycles.orderBy('startDate').toArray(),
     db.overwhelm_episodes.orderBy('startedAt').toArray(),
+    db.pullup_logs.orderBy('loggedAt').toArray(),
     db.meta.toArray(),
   ]) as [
     Lift[],
@@ -560,6 +564,7 @@ export async function buildFullLocalExport(opts?: FullLocalExportOptions): Promi
     BlockTemplate[],
     NamedMesocycle[],
     OverwhelmEpisode[],
+    PullupLog[],
     { key: string; value: unknown }[],
   ];
 
@@ -1068,6 +1073,7 @@ export async function buildFullLocalExport(opts?: FullLocalExportOptions): Promi
     workday_logs,
     supplement_logs,
     caffeine_logs,
+    pullup_logs,
     oral_health_logs,
     training_checklist,
     mesocycle,

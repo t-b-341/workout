@@ -25,6 +25,7 @@ import type {
   SupplementLog,
   CaffeineLog,
   OralHealthLog,
+  PullupLog,
   TrainingChecklistItem,
   UserGoal,
   PhaseGoal,
@@ -61,6 +62,7 @@ export type DirtyRow = {
     | 'body_readiness_logs'
     | 'supplement_logs'
     | 'caffeine_logs'
+    | 'pullup_logs'
     | 'oral_health_logs'
     | 'training_checklist'
     | 'user_goals'
@@ -95,6 +97,7 @@ export class WorkoutDB extends Dexie {
   body_readiness_logs!: Table<BodyReadinessLog, string>;
   supplement_logs!: Table<SupplementLog, string>;
   caffeine_logs!: Table<CaffeineLog, string>;
+  pullup_logs!: Table<PullupLog, string>;
   oral_health_logs!: Table<OralHealthLog, string>;
   training_checklist!: Table<TrainingChecklistItem, string>;
   user_goals!: Table<UserGoal, string>;
@@ -816,10 +819,14 @@ export class WorkoutDB extends Dexie {
     this.version(32).stores({
       overwhelm_episodes: 'id, userId, date, startedAt, updatedAt',
     });
+    // v33 — pull-up tracker logs (synced).
+    this.version(33).stores({
+      pullup_logs: 'id, userId, date, loggedAt, updatedAt',
+    });
   }
 }
 
-export const SCHEMA_VERSION = 32;
+export const SCHEMA_VERSION = 33;
 
 let _db: WorkoutDB | null = null;
 let _dbUserId: string | null = null;
