@@ -16,12 +16,9 @@ create unique index if not exists oral_health_logs_user_date
 
 alter table public.oral_health_logs enable row level security;
 
-create policy "own_select" on public.oral_health_logs
-  for select using (user_id = auth.uid());
+create policy "own_select" on public.oral_health_logs for select using (user_id = auth.uid());
 
-create policy "own_modify" on public.oral_health_logs
-  for all using (user_id = auth.uid())
-  with check (user_id = auth.uid());
+create policy "own_modify" on public.oral_health_logs for all using (user_id = auth.uid()) with check (user_id = auth.uid());
 
 create trigger set_updated_at before update
   on public.oral_health_logs

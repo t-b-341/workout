@@ -26,12 +26,9 @@ alter table public.named_mesocycles enable row level security;
 drop policy if exists "own_select" on public.named_mesocycles;
 drop policy if exists "own_modify" on public.named_mesocycles;
 
-create policy "own_select" on public.named_mesocycles
-  for select using (user_id = auth.uid());
+create policy "own_select" on public.named_mesocycles for select using (user_id = auth.uid());
 
-create policy "own_modify" on public.named_mesocycles
-  for all using (user_id = auth.uid())
-  with check (user_id = auth.uid());
+create policy "own_modify" on public.named_mesocycles for all using (user_id = auth.uid()) with check (user_id = auth.uid());
 
 drop trigger if exists set_updated_at on public.named_mesocycles;
 create trigger set_updated_at

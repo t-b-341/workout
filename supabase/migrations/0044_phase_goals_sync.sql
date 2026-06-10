@@ -27,12 +27,9 @@ create index if not exists phase_goals_updated_at_idx
 
 alter table public.phase_goals enable row level security;
 
-create policy "own_select" on public.phase_goals
-  for select using (user_id = auth.uid());
+create policy "own_select" on public.phase_goals for select using (user_id = auth.uid());
 
-create policy "own_modify" on public.phase_goals
-  for all using (user_id = auth.uid())
-  with check (user_id = auth.uid());
+create policy "own_modify" on public.phase_goals for all using (user_id = auth.uid()) with check (user_id = auth.uid());
 
 create trigger set_updated_at
   before update on public.phase_goals

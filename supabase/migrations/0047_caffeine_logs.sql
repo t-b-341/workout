@@ -15,12 +15,9 @@ create index if not exists caffeine_logs_user_date_idx
 
 alter table public.caffeine_logs enable row level security;
 
-create policy "own_select" on public.caffeine_logs
-  for select using (user_id = auth.uid());
+create policy "own_select" on public.caffeine_logs for select using (user_id = auth.uid());
 
-create policy "own_modify" on public.caffeine_logs
-  for all using (user_id = auth.uid())
-  with check (user_id = auth.uid());
+create policy "own_modify" on public.caffeine_logs for all using (user_id = auth.uid()) with check (user_id = auth.uid());
 
 create trigger set_updated_at
   before update on public.caffeine_logs

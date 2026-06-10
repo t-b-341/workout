@@ -20,12 +20,9 @@ alter table public.pullup_logs enable row level security;
 drop policy if exists "own_select" on public.pullup_logs;
 drop policy if exists "own_modify" on public.pullup_logs;
 
-create policy "own_select" on public.pullup_logs
-  for select using (user_id = auth.uid());
+create policy "own_select" on public.pullup_logs for select using (user_id = auth.uid());
 
-create policy "own_modify" on public.pullup_logs
-  for all using (user_id = auth.uid())
-  with check (user_id = auth.uid());
+create policy "own_modify" on public.pullup_logs for all using (user_id = auth.uid()) with check (user_id = auth.uid());
 
 drop trigger if exists set_updated_at on public.pullup_logs;
 create trigger set_updated_at

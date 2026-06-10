@@ -26,8 +26,7 @@ alter table public.stress_logs enable row level security;
 drop policy if exists "own_select" on public.stress_logs;
 drop policy if exists "own_modify" on public.stress_logs;
 
-create policy "own_select" on public.stress_logs
-  for select using (user_id = auth.uid());
-  with check (user_id = auth.uid());
+create policy "own_select" on public.stress_logs for select using (user_id = auth.uid());
+create policy "own_modify" on public.stress_logs for all using (user_id = auth.uid()) with check (user_id = auth.uid());
 
 grant select, insert, update, delete on public.stress_logs to authenticated, service_role;

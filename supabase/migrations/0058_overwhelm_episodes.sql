@@ -29,12 +29,9 @@ alter table public.overwhelm_episodes enable row level security;
 drop policy if exists "own_select" on public.overwhelm_episodes;
 drop policy if exists "own_modify" on public.overwhelm_episodes;
 
-create policy "own_select" on public.overwhelm_episodes
-  for select using (user_id = auth.uid());
+create policy "own_select" on public.overwhelm_episodes for select using (user_id = auth.uid());
 
-create policy "own_modify" on public.overwhelm_episodes
-  for all using (user_id = auth.uid())
-  with check (user_id = auth.uid());
+create policy "own_modify" on public.overwhelm_episodes for all using (user_id = auth.uid()) with check (user_id = auth.uid());
 
 drop trigger if exists set_updated_at on public.overwhelm_episodes;
 create trigger set_updated_at

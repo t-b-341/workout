@@ -22,12 +22,9 @@ create index if not exists cbt_thought_records_user_date_idx
 alter table public.cbt_thought_records
   enable row level security;
 
-create policy "own_select" on public.cbt_thought_records
-  for select using (user_id = auth.uid());
+create policy "own_select" on public.cbt_thought_records for select using (user_id = auth.uid());
 
-create policy "own_modify" on public.cbt_thought_records
-  for all using (user_id = auth.uid())
-  with check (user_id = auth.uid());
+create policy "own_modify" on public.cbt_thought_records for all using (user_id = auth.uid()) with check (user_id = auth.uid());
 
 create trigger set_updated_at
   before update on public.cbt_thought_records

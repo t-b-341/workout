@@ -30,12 +30,8 @@ alter table public.injury_episodes enable row level security;
 drop policy if exists "own_select" on public.injury_episodes;
 drop policy if exists "own_modify" on public.injury_episodes;
 
-create policy "own_select" on public.injury_episodes
-  for select using (user_id = auth.uid());
-create policy "own_modify" on public.injury_episodes
-  for all
-  using (user_id = auth.uid())
-  with check (user_id = auth.uid());
+create policy "own_select" on public.injury_episodes for select using (user_id = auth.uid());
+create policy "own_modify" on public.injury_episodes for all using (user_id = auth.uid()) with check (user_id = auth.uid());
 
 create table if not exists public.body_readiness_logs (
   id          text primary key,
@@ -60,9 +56,8 @@ alter table public.body_readiness_logs enable row level security;
 drop policy if exists "own_select" on public.body_readiness_logs;
 drop policy if exists "own_modify" on public.body_readiness_logs;
 
-create policy "own_select" on public.body_readiness_logs
-  for select using (user_id = auth.uid());
-  with check (user_id = auth.uid());
+create policy "own_select" on public.body_readiness_logs for select using (user_id = auth.uid());
+create policy "own_modify" on public.body_readiness_logs for all using (user_id = auth.uid()) with check (user_id = auth.uid());
 
 grant select, insert, update, delete on public.injury_episodes to authenticated, service_role;
 grant select, insert, update, delete on public.body_readiness_logs to authenticated, service_role;
