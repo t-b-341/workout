@@ -76,33 +76,32 @@ export const RATIO_STANDARDS: LiftRatioStandard[] = [
     label: 'Row / Bench',
     numeratorLiftId: 'bbr',
     denominatorLiftId: 'bp',
-    numeratorMode: 'working',
+    numeratorMode: '1rm',
     denominatorMode: '1rm',
     targetMin: 0.85,
     targetMax: 0.95,
     downstreamBenefit: 3,
     description:
-      'Barbell row working weight should be 85–95% of '
-      + 'bench 1RM. Gap indicates horizontal pull lagging '
-      + 'horizontal push — long-term shoulder health risk '
-      + 'and a direct limiter of bench stability and '
-      + 'upper back thickness.',
+      'Barbell row 1RM should be 85–95% of bench 1RM. '
+      + 'Gap indicates horizontal pull lagging horizontal '
+      + 'push — long-term shoulder health risk and a direct '
+      + 'limiter of bench stability and upper back thickness.',
   },
   {
     id: 'row_dl',
     label: 'Row / Deadlift',
     numeratorLiftId: 'bbr',
     denominatorLiftId: 'dl',
-    numeratorMode: 'working',
+    numeratorMode: '1rm',
     denominatorMode: '1rm',
     targetMin: 0.55,
     targetMax: 0.65,
     downstreamBenefit: 3,
     description:
-      'Barbell row working weight (best set) should be '
-      + '55–65% of deadlift 1RM. Gap indicates upper '
-      + 'back and lat strength deficit — directly limits '
-      + 'deadlift lat engagement and row progression rate.',
+      'Barbell row 1RM should be 55–65% of deadlift 1RM. '
+      + 'Gap indicates upper back and lat strength deficit '
+      + '— directly limits deadlift lat engagement and '
+      + 'row progression rate.',
   },
   {
     id: 'dl_squat',
