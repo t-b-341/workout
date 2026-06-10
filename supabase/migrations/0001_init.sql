@@ -86,6 +86,15 @@ create table if not exists public.bodyweight_logs (
   bodyweight  numeric not null,
   updated_at  timestamptz not null default now()
 );
+-- Deduplicate before creating the unique index so this migration is safe
+-- to run against existing data that may have multiple rows per week.
+-- Migration 0006 drops this index anyway in favour of per-day uniqueness.
+delete from public.bodyweight_logs a
+using public.bodyweight_logs b
+where a.user_id = b.user_id
+  and a.iso_week = b.iso_week
+  and a.updated_at < b.updated_at;
+
 create unique index if not exists bodyweight_logs_user_week_unique
   on public.bodyweight_logs (user_id, iso_week);
 
