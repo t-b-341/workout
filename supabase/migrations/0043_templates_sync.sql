@@ -25,6 +25,7 @@ create policy "own_select" on public.templates for select using (user_id = auth.
 drop policy if exists "own_modify" on public.templates;
 create policy "own_modify" on public.templates for all using (user_id = auth.uid()) with check (user_id = auth.uid());
 
+drop trigger if exists set_updated_at on public.templates;
 create trigger set_updated_at
   before update on public.templates
   for each row execute function public.tg_set_updated_at();

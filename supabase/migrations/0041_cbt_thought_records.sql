@@ -28,6 +28,7 @@ create policy "own_select" on public.cbt_thought_records for select using (user_
 drop policy if exists "own_modify" on public.cbt_thought_records;
 create policy "own_modify" on public.cbt_thought_records for all using (user_id = auth.uid()) with check (user_id = auth.uid());
 
+drop trigger if exists set_updated_at on public.cbt_thought_records;
 create trigger set_updated_at
   before update on public.cbt_thought_records
   for each row execute function public.tg_set_updated_at();

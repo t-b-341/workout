@@ -112,9 +112,7 @@ begin
     select unnest(array['prescriptions','session_logs','set_logs','cardio_logs','bodyweight_logs'])
   loop
     execute format(
-      'drop trigger if exists set_updated_at on public.%I;
-       create trigger set_updated_at before update on public.%I
-       for each row execute function public.tg_set_updated_at();', t, t);
+      'drop trigger if exists set_updated_at on public.%I; create trigger set_updated_at before update on public.%I for each row execute function public.tg_set_updated_at();', t, t);
   end loop;
 end$$;
 

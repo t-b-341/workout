@@ -25,6 +25,7 @@ create policy "own_select" on public.stoic_checkins for select using (user_id = 
 drop policy if exists "own_modify" on public.stoic_checkins;
 create policy "own_modify" on public.stoic_checkins for all using (user_id = auth.uid()) with check (user_id = auth.uid());
 
+drop trigger if exists set_updated_at on public.stoic_checkins;
 create trigger set_updated_at
   before update on public.stoic_checkins
   for each row execute function public.tg_set_updated_at();

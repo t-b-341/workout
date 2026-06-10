@@ -21,6 +21,7 @@ create policy "own_select" on public.training_checklist for select using (user_i
 drop policy if exists "own_modify" on public.training_checklist;
 create policy "own_modify" on public.training_checklist for all using (user_id = auth.uid()) with check (user_id = auth.uid());
 
+drop trigger if exists set_updated_at on public.training_checklist;
 create trigger set_updated_at before update
   on public.training_checklist
   for each row execute function public.tg_set_updated_at();

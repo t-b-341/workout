@@ -22,6 +22,7 @@ create policy "own_select" on public.oral_health_logs for select using (user_id 
 drop policy if exists "own_modify" on public.oral_health_logs;
 create policy "own_modify" on public.oral_health_logs for all using (user_id = auth.uid()) with check (user_id = auth.uid());
 
+drop trigger if exists set_updated_at on public.oral_health_logs;
 create trigger set_updated_at before update
   on public.oral_health_logs
   for each row execute function public.tg_set_updated_at();

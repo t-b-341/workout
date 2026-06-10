@@ -44,6 +44,7 @@ create policy "own_select" on public.relationship_checkins for select using (use
 drop policy if exists "own_modify" on public.relationship_checkins;
 create policy "own_modify" on public.relationship_checkins for all using (user_id = auth.uid()) with check (user_id = auth.uid());
 
+drop trigger if exists set_updated_at on public.relationship_checkins;
 create trigger set_updated_at
   before update on public.relationship_checkins
   for each row execute function public.tg_set_updated_at();
