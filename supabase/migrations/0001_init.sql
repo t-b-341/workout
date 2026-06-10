@@ -125,22 +125,45 @@ alter table public.set_logs         enable row level security;
 alter table public.cardio_logs      enable row level security;
 alter table public.bodyweight_logs  enable row level security;
 
-do $$
-declare t text;
-begin
-  for t in
-    select unnest(array['prescriptions','session_logs','set_logs','cardio_logs','bodyweight_logs'])
-  loop
-    execute format('drop policy if exists "own_select" on public.%I;', t);
-    execute format('drop policy if exists "own_modify" on public.%I;', t);
-    execute format(
-      'create policy "own_select" on public.%I for select using (user_id = auth.uid());', t);
-    execute format(
-      'create policy "own_modify" on public.%I for all
-         using (user_id = auth.uid())
-         with check (user_id = auth.uid());', t);
-  end loop;
-end$$;
+drop policy if exists "own_select" on public.prescriptions;
+drop policy if exists "own_modify" on public.prescriptions;
+create policy "own_select" on public.prescriptions
+  for select using (user_id = auth.uid());
+create policy "own_modify" on public.prescriptions
+  for all using (user_id = auth.uid())
+  with check (user_id = auth.uid());
+
+drop policy if exists "own_select" on public.session_logs;
+drop policy if exists "own_modify" on public.session_logs;
+create policy "own_select" on public.session_logs
+  for select using (user_id = auth.uid());
+create policy "own_modify" on public.session_logs
+  for all using (user_id = auth.uid())
+  with check (user_id = auth.uid());
+
+drop policy if exists "own_select" on public.set_logs;
+drop policy if exists "own_modify" on public.set_logs;
+create policy "own_select" on public.set_logs
+  for select using (user_id = auth.uid());
+create policy "own_modify" on public.set_logs
+  for all using (user_id = auth.uid())
+  with check (user_id = auth.uid());
+
+drop policy if exists "own_select" on public.cardio_logs;
+drop policy if exists "own_modify" on public.cardio_logs;
+create policy "own_select" on public.cardio_logs
+  for select using (user_id = auth.uid());
+create policy "own_modify" on public.cardio_logs
+  for all using (user_id = auth.uid())
+  with check (user_id = auth.uid());
+
+drop policy if exists "own_select" on public.bodyweight_logs;
+drop policy if exists "own_modify" on public.bodyweight_logs;
+create policy "own_select" on public.bodyweight_logs
+  for select using (user_id = auth.uid());
+create policy "own_modify" on public.bodyweight_logs
+  for all using (user_id = auth.uid())
+  with check (user_id = auth.uid());
 
 grant select, insert, update, delete on public.prescriptions to authenticated, service_role;
 grant select, insert, update, delete on public.session_logs to authenticated, service_role;
