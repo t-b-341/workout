@@ -30,7 +30,13 @@ create trigger set_updated_at
   before update on public.templates
   for each row execute function public.tg_set_updated_at();
 
-alter publication supabase_realtime
-  add table public.templates;
+do $$ begin
+  if not exists (
+    select 1 from pg_publication_tables
+    where pubname = 'supabase_realtime' and tablename = 'templates'
+  ) then
+    alter publication supabase_realtime add table public.templates;
+  end if;
+end $$;
 
 grant select, insert, update, delete on public.templates to authenticated, service_role;

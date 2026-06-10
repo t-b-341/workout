@@ -49,7 +49,13 @@ create trigger set_updated_at
   before update on public.relationship_checkins
   for each row execute function public.tg_set_updated_at();
 
-alter publication supabase_realtime
-  add table public.relationship_checkins;
+do $$ begin
+  if not exists (
+    select 1 from pg_publication_tables
+    where pubname = 'supabase_realtime' and tablename = 'relationship_checkins'
+  ) then
+    alter publication supabase_realtime add table public.relationship_checkins;
+  end if;
+end $$;
 
 grant select, insert, update, delete on public.relationship_checkins to authenticated, service_role;

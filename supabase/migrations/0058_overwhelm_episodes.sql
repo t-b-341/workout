@@ -40,7 +40,13 @@ create trigger set_updated_at
   before update on public.overwhelm_episodes
   for each row execute function public.tg_set_updated_at();
 
-alter publication supabase_realtime
-  add table public.overwhelm_episodes;
+do $$ begin
+  if not exists (
+    select 1 from pg_publication_tables
+    where pubname = 'supabase_realtime' and tablename = 'overwhelm_episodes'
+  ) then
+    alter publication supabase_realtime add table public.overwhelm_episodes;
+  end if;
+end $$;
 
 grant select, insert, update, delete on public.overwhelm_episodes to authenticated, service_role;

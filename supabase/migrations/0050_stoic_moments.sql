@@ -29,7 +29,13 @@ create trigger set_updated_at
   before update on public.stoic_moments
   for each row execute function public.tg_set_updated_at();
 
-alter publication supabase_realtime
-  add table public.stoic_moments;
+do $$ begin
+  if not exists (
+    select 1 from pg_publication_tables
+    where pubname = 'supabase_realtime' and tablename = 'stoic_moments'
+  ) then
+    alter publication supabase_realtime add table public.stoic_moments;
+  end if;
+end $$;
 
 grant select, insert, update, delete on public.stoic_moments to authenticated, service_role;

@@ -38,7 +38,13 @@ create trigger set_updated_at
   before update on public.phase_goals
   for each row execute function public.tg_set_updated_at();
 
-alter publication supabase_realtime
-  add table public.phase_goals;
+do $$ begin
+  if not exists (
+    select 1 from pg_publication_tables
+    where pubname = 'supabase_realtime' and tablename = 'phase_goals'
+  ) then
+    alter publication supabase_realtime add table public.phase_goals;
+  end if;
+end $$;
 
 grant select, insert, update, delete on public.phase_goals to authenticated, service_role;

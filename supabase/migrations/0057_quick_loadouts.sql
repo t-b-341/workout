@@ -35,7 +35,13 @@ create trigger set_updated_at
   before update on public.quick_loadouts
   for each row execute function public.tg_set_updated_at();
 
-alter publication supabase_realtime
-  add table public.quick_loadouts;
+do $$ begin
+  if not exists (
+    select 1 from pg_publication_tables
+    where pubname = 'supabase_realtime' and tablename = 'quick_loadouts'
+  ) then
+    alter publication supabase_realtime add table public.quick_loadouts;
+  end if;
+end $$;
 
 grant select, insert, update, delete on public.quick_loadouts to authenticated, service_role;

@@ -26,7 +26,13 @@ create trigger set_updated_at before update
   on public.training_checklist
   for each row execute function public.tg_set_updated_at();
 
-alter publication supabase_realtime
-  add table public.training_checklist;
+do $$ begin
+  if not exists (
+    select 1 from pg_publication_tables
+    where pubname = 'supabase_realtime' and tablename = 'training_checklist'
+  ) then
+    alter publication supabase_realtime add table public.training_checklist;
+  end if;
+end $$;
 
 grant select, insert, update, delete on public.training_checklist to authenticated, service_role;

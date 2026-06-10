@@ -37,7 +37,13 @@ create trigger set_updated_at
   before update on public.named_mesocycles
   for each row execute function public.tg_set_updated_at();
 
-alter publication supabase_realtime
-  add table public.named_mesocycles;
+do $$ begin
+  if not exists (
+    select 1 from pg_publication_tables
+    where pubname = 'supabase_realtime' and tablename = 'named_mesocycles'
+  ) then
+    alter publication supabase_realtime add table public.named_mesocycles;
+  end if;
+end $$;
 
 grant select, insert, update, delete on public.named_mesocycles to authenticated, service_role;

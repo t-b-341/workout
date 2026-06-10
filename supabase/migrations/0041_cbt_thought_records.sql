@@ -33,7 +33,13 @@ create trigger set_updated_at
   before update on public.cbt_thought_records
   for each row execute function public.tg_set_updated_at();
 
-alter publication supabase_realtime
-  add table public.cbt_thought_records;
+do $$ begin
+  if not exists (
+    select 1 from pg_publication_tables
+    where pubname = 'supabase_realtime' and tablename = 'cbt_thought_records'
+  ) then
+    alter publication supabase_realtime add table public.cbt_thought_records;
+  end if;
+end $$;
 
 grant select, insert, update, delete on public.cbt_thought_records to authenticated, service_role;

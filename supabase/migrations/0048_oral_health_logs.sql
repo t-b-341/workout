@@ -27,7 +27,13 @@ create trigger set_updated_at before update
   on public.oral_health_logs
   for each row execute function public.tg_set_updated_at();
 
-alter publication supabase_realtime
-  add table public.oral_health_logs;
+do $$ begin
+  if not exists (
+    select 1 from pg_publication_tables
+    where pubname = 'supabase_realtime' and tablename = 'oral_health_logs'
+  ) then
+    alter publication supabase_realtime add table public.oral_health_logs;
+  end if;
+end $$;
 
 grant select, insert, update, delete on public.oral_health_logs to authenticated, service_role;
