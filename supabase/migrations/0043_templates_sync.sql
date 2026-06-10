@@ -19,8 +19,10 @@ create index if not exists templates_updated_at_idx
 
 alter table public.templates enable row level security;
 
+drop policy if exists "own_select" on public.templates;
 create policy "own_select" on public.templates for select using (user_id = auth.uid());
 
+drop policy if exists "own_modify" on public.templates;
 create policy "own_modify" on public.templates for all using (user_id = auth.uid()) with check (user_id = auth.uid());
 
 create trigger set_updated_at

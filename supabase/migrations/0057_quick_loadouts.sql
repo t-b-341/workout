@@ -24,8 +24,10 @@ alter table public.quick_loadouts enable row level security;
 drop policy if exists "own_select" on public.quick_loadouts;
 drop policy if exists "own_modify" on public.quick_loadouts;
 
+drop policy if exists "own_select" on public.quick_loadouts;
 create policy "own_select" on public.quick_loadouts for select using (user_id = auth.uid());
 
+drop policy if exists "own_modify" on public.quick_loadouts;
 create policy "own_modify" on public.quick_loadouts for all using (user_id = auth.uid()) with check (user_id = auth.uid());
 
 drop trigger if exists set_updated_at on public.quick_loadouts;

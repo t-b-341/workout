@@ -38,8 +38,10 @@ create index if not exists rel_checkins_updated_at_idx
 alter table public.relationship_checkins
   enable row level security;
 
+drop policy if exists "own_select" on public.relationship_checkins;
 create policy "own_select" on public.relationship_checkins for select using (user_id = auth.uid());
 
+drop policy if exists "own_modify" on public.relationship_checkins;
 create policy "own_modify" on public.relationship_checkins for all using (user_id = auth.uid()) with check (user_id = auth.uid());
 
 create trigger set_updated_at

@@ -127,27 +127,37 @@ alter table public.bodyweight_logs  enable row level security;
 
 drop policy if exists "own_select" on public.prescriptions;
 drop policy if exists "own_modify" on public.prescriptions;
+drop policy if exists "own_select" on public.prescriptions;
 create policy "own_select" on public.prescriptions for select using (user_id = auth.uid());
+drop policy if exists "own_modify" on public.prescriptions;
 create policy "own_modify" on public.prescriptions for all using (user_id = auth.uid()) with check (user_id = auth.uid());
 
 drop policy if exists "own_select" on public.session_logs;
 drop policy if exists "own_modify" on public.session_logs;
+drop policy if exists "own_select" on public.session_logs;
 create policy "own_select" on public.session_logs for select using (user_id = auth.uid());
+drop policy if exists "own_modify" on public.session_logs;
 create policy "own_modify" on public.session_logs for all using (user_id = auth.uid()) with check (user_id = auth.uid());
 
 drop policy if exists "own_select" on public.set_logs;
 drop policy if exists "own_modify" on public.set_logs;
+drop policy if exists "own_select" on public.set_logs;
 create policy "own_select" on public.set_logs for select using (user_id = auth.uid());
+drop policy if exists "own_modify" on public.set_logs;
 create policy "own_modify" on public.set_logs for all using (user_id = auth.uid()) with check (user_id = auth.uid());
 
 drop policy if exists "own_select" on public.cardio_logs;
 drop policy if exists "own_modify" on public.cardio_logs;
+drop policy if exists "own_select" on public.cardio_logs;
 create policy "own_select" on public.cardio_logs for select using (user_id = auth.uid());
+drop policy if exists "own_modify" on public.cardio_logs;
 create policy "own_modify" on public.cardio_logs for all using (user_id = auth.uid()) with check (user_id = auth.uid());
 
 drop policy if exists "own_select" on public.bodyweight_logs;
 drop policy if exists "own_modify" on public.bodyweight_logs;
+drop policy if exists "own_select" on public.bodyweight_logs;
 create policy "own_select" on public.bodyweight_logs for select using (user_id = auth.uid());
+drop policy if exists "own_modify" on public.bodyweight_logs;
 create policy "own_modify" on public.bodyweight_logs for all using (user_id = auth.uid()) with check (user_id = auth.uid());
 
 grant select, insert, update, delete on public.prescriptions to authenticated, service_role;
