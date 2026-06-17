@@ -40,6 +40,7 @@ export type MovementPattern =
   | 'horiz-pull'
   | 'hinge'
   | 'squat'
+  | 'olympic'
   | 'carry'
   | 'core'
   | 'cardio';

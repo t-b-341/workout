@@ -823,10 +823,29 @@ export class WorkoutDB extends Dexie {
     this.version(33).stores({
       pullup_logs: 'id, userId, date, loggedAt, updatedAt',
     });
+    // v34 — backfill Olympic weightlifting lifts (competition + teaching progressions) into live catalog.
+    this.version(34).stores({}).upgrade(async (tx) => {
+      const db = tx as unknown as WorkoutDB;
+      const OLY_LIFTS = [
+        'sn','cj','cl','jk','power_snatch','muscle_snatch','hang_snatch','drop_snatch',
+        'snatch_balance','oh_squat','power_clean','muscle_clean','hang_clean',
+        'push_jerk','split_jerk','btn_jerk',
+      ];
+      const seedLifts = (await import('./seed')).LIFTS;
+      const toAdd: Lift[] = [];
+      for (const id of OLY_LIFTS) {
+        const existing = await db.lifts.get(id);
+        if (!existing) {
+          const fromSeed = seedLifts.find((l) => l.id === id);
+          if (fromSeed) toAdd.push(fromSeed);
+        }
+      }
+      if (toAdd.length > 0) await db.lifts.bulkPut(toAdd);
+    });
   }
 }
 
-export const SCHEMA_VERSION = 33;
+export const SCHEMA_VERSION = 34;
 
 let _db: WorkoutDB | null = null;
 let _dbUserId: string | null = null;

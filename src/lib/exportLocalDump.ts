@@ -64,7 +64,7 @@ import { currentValueForGoal, isGoalAchieved } from './liftingGoals';
 import { todayIso } from './time';
 
 /** Export payload schema — bump when top-level export shape changes. */
-const FULL_LOCAL_EXPORT_SCHEMA_VERSION = 34;
+const FULL_LOCAL_EXPORT_SCHEMA_VERSION = 35;
 
 const MEANINGFUL_META_PREFIXES = [
   'workout:supplements:v1:',

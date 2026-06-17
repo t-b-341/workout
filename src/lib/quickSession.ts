@@ -24,6 +24,12 @@ export const TIER_DEFAULTS: Record<QuickSessionTier, { sets: number; repMin: num
   full:    { sets: QUICK_SETS, repMin: QUICK_REP_MIN, repMax: QUICK_REP_MAX },
 };
 
+export const OLYMPIC_LIFT_IDS = new Set<string>([
+  'sn','cj','cl','jk','power_snatch','muscle_snatch','hang_snatch','drop_snatch',
+  'snatch_balance','oh_squat','power_clean','muscle_clean','hang_clean',
+  'push_jerk','split_jerk','btn_jerk',
+]);
+
 /**
  * Build synthetic Prescription objects for a quick session.
  * Weight comes from mostRecentWorkingWeight(); falls back to
@@ -41,6 +47,9 @@ export function buildQuickPrescriptions(
   return liftIds.map((liftId, i) => {
     const recent = mostRecentWorkingWeight(liftId, allSets, allSessions);
     const weight = recent ?? prescriptionFallback.get(liftId) ?? 0;
+    const olympic = OLYMPIC_LIFT_IDS.has(liftId);
+    const repMin = olympic ? 1 : defaults.repMin;
+    const repMax = olympic ? 3 : defaults.repMax;
     return {
       id: `quick-${liftId}`,
       templateId: 'QUICK',
@@ -48,9 +57,9 @@ export function buildQuickPrescriptions(
       order: i,
       weight,
       sets: defaults.sets,
-      repMin: defaults.repMin,
-      repMax: defaults.repMax,
-      notes: 'Quick session — singles or doubles',
+      repMin,
+      repMax,
+      notes: olympic ? 'Quick session — singles to triples' : 'Quick session — singles or doubles',
     };
   });
 }
@@ -80,6 +89,17 @@ export const QUICK_PRESETS: QuickPreset[] = [
   { label: 'Upper — Full Press Day', tier: 'full', liftIds: ['bp', 'ohp', 'bbr'] },
   { label: 'Lower — Full Lower Day', tier: 'full', liftIds: ['back_squat', 'dl', 'rdl'] },
   { label: 'Default', tier: 'full', liftIds: [...QUICK_DEFAULT_LIFT_IDS] },
+  // Weightlifting presets
+  { label: 'Weightlifting — SN, CJ, Front Squat', tier: 'top_set', liftIds: ['sn', 'cj', 'front_squat'] },
+  { label: 'Classic Lift — SN, CJ', tier: 'top_set', liftIds: ['sn', 'cj'] },
+  { label: 'Snatch only', tier: 'coffee', liftIds: ['sn'] },
+  { label: 'Clean and Jerk only', tier: 'coffee', liftIds: ['cj'] },
+  // Technique / position work (light)
+  { label: 'Snatch Technique — OHSQ, Muscle SN, Drop SN', tier: 'coffee', liftIds: ['oh_squat', 'muscle_snatch', 'drop_snatch'] },
+  { label: 'Clean Technique — Front Squat, Muscle CL, Hang CL', tier: 'coffee', liftIds: ['front_squat', 'muscle_clean', 'hang_clean'] },
+  // Predefined complexes (each movement logged as a separate slot)
+  { label: 'Clean Complex — Clean + Front Squat + Jerk', tier: 'top_set', liftIds: ['cl', 'front_squat', 'jk'] },
+  { label: 'Snatch Complex — Power SN + OHSQ + Snatch', tier: 'top_set', liftIds: ['power_snatch', 'oh_squat', 'sn'] },
 ];
 
 // Movement families — variant picker shows only family members for that lift.
@@ -108,6 +128,26 @@ export const MOVEMENT_FAMILIES: Record<string, string[]> = {
   bbr:          ['bbr', 'pendlay_row', 'deficit_bbr'],
   pendlay_row:  ['bbr', 'pendlay_row', 'deficit_bbr'],
   deficit_bbr:  ['bbr', 'pendlay_row', 'deficit_bbr'],
+  // Snatch family — competition lift + teaching progressions
+  sn:             ['sn', 'power_snatch', 'hang_snatch', 'muscle_snatch', 'drop_snatch', 'snatch_balance', 'oh_squat'],
+  power_snatch:   ['sn', 'power_snatch', 'hang_snatch', 'muscle_snatch', 'drop_snatch', 'snatch_balance', 'oh_squat'],
+  hang_snatch:    ['sn', 'power_snatch', 'hang_snatch', 'muscle_snatch', 'drop_snatch', 'snatch_balance', 'oh_squat'],
+  muscle_snatch:  ['sn', 'power_snatch', 'hang_snatch', 'muscle_snatch', 'drop_snatch', 'snatch_balance', 'oh_squat'],
+  drop_snatch:    ['sn', 'power_snatch', 'hang_snatch', 'muscle_snatch', 'drop_snatch', 'snatch_balance', 'oh_squat'],
+  snatch_balance: ['sn', 'power_snatch', 'hang_snatch', 'muscle_snatch', 'drop_snatch', 'snatch_balance', 'oh_squat'],
+  oh_squat:       ['sn', 'power_snatch', 'hang_snatch', 'muscle_snatch', 'drop_snatch', 'snatch_balance', 'oh_squat'],
+  // Clean family
+  cl:             ['cl', 'power_clean', 'hang_clean', 'muscle_clean'],
+  power_clean:    ['cl', 'power_clean', 'hang_clean', 'muscle_clean'],
+  hang_clean:     ['cl', 'power_clean', 'hang_clean', 'muscle_clean'],
+  muscle_clean:   ['cl', 'power_clean', 'hang_clean', 'muscle_clean'],
+  // Jerk family
+  jk:             ['jk', 'split_jerk', 'push_jerk', 'btn_jerk'],
+  split_jerk:     ['jk', 'split_jerk', 'push_jerk', 'btn_jerk'],
+  push_jerk:      ['jk', 'split_jerk', 'push_jerk', 'btn_jerk'],
+  btn_jerk:       ['jk', 'split_jerk', 'push_jerk', 'btn_jerk'],
+  // Clean and jerk maps to the clean family for variant swapping
+  cj:             ['cj', 'cl', 'power_clean', 'hang_clean'],
 };
 
 export async function saveQuickLoadout(
