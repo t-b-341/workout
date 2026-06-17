@@ -849,10 +849,14 @@ export class WorkoutDB extends Dexie {
     this.version(35).stores({
       complexes: 'id, userId, updatedAt',
     });
+    // v36 — optional complexId on set_logs (not indexed).
+    this.version(36).stores({}).upgrade(async () => {
+      // complexId added to set_logs (not indexed). Old rows have it undefined. No data migration needed.
+    });
   }
 }
 
-export const SCHEMA_VERSION = 35;
+export const SCHEMA_VERSION = 36;
 
 let _db: WorkoutDB | null = null;
 let _dbUserId: string | null = null;

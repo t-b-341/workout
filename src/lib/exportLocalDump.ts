@@ -64,7 +64,7 @@ import { currentValueForGoal, isGoalAchieved } from './liftingGoals';
 import { todayIso } from './time';
 
 /** Export payload schema — bump when top-level export shape changes. */
-const FULL_LOCAL_EXPORT_SCHEMA_VERSION = 35;
+const FULL_LOCAL_EXPORT_SCHEMA_VERSION = 36;
 
 const MEANINGFUL_META_PREFIXES = [
   'workout:supplements:v1:',
@@ -85,6 +85,7 @@ export type ExportedSetLog = Omit<SetLog, 'rpe' | 'intent'> & {
   date: string | null;
   intent: SetIntent;
   rpe: number | null;
+  complexId: string | null;
 };
 
 export type ExportedStrengthRatio = {
@@ -632,6 +633,7 @@ export async function buildFullLocalExport(opts?: FullLocalExportOptions): Promi
     intent: intentOf(s, opts?.setIntentOverrides),
     date: sessionById.get(s.sessionLogId)?.date ?? null,
     rpe: normalizedRpeForExport(s.rpe),
+    complexId: s.complexId ?? null,
   }));
 
   const strengthBalance = computeStrengthBalance(set_logs, session_logs).map(

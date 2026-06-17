@@ -137,6 +137,8 @@ export type SetLog = {
   speedMph?: number;
   /** LISS cardio: incline when logged (% grade). */
   gradePct?: number;
+  /** When set as part of a weightlifting complex, the Complex.id it belongs to. */
+  complexId?: string;
 };
 
 export type SessionMode = 'standard' | 'light' | 'skip';
