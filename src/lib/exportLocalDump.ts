@@ -81,7 +81,7 @@ const KNOWN_LOCALSTORAGE_KEYS = [
 ] as const;
 
 /** Set row as written to export JSON (parent session date copied; intent always present; RPE clamped 1–10 or null). */
-export type ExportedSetLog = Omit<SetLog, 'rpe' | 'intent'> & {
+export type ExportedSetLog = Omit<SetLog, 'rpe' | 'intent' | 'complexId'> & {
   date: string | null;
   intent: SetIntent;
   rpe: number | null;
