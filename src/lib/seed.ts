@@ -112,6 +112,12 @@ export const LIFTS: Lift[] = [
   { id: 'jk', name: 'Jerk', equipment: 'barbell', loadUnit: 'lb', repUnit: 'reps', increment: 5, lockedWeight: true,
     cue: 'Vertical dip, drive through the legs, punch under into the split.',
     pattern: 'olympic', muscleGroups: ['front-delt', 'side-delt', 'triceps', 'quads', 'glutes', 'core'] },
+  { id: 'snatch_pull', name: 'Snatch Pull', equipment: 'barbell', loadUnit: 'lb', repUnit: 'reps', increment: 5,
+    notes: 'Snatch-grip pull to full extension, no turnover. Builds pull strength and speed.',
+    pattern: 'olympic', muscleGroups: ['quads', 'glutes', 'hamstrings', 'low-back', 'traps'] },
+  { id: 'clean_pull', name: 'Clean Pull', equipment: 'barbell', loadUnit: 'lb', repUnit: 'reps', increment: 5,
+    notes: 'Clean-grip pull to full extension, no turnover. Builds pull strength and speed.',
+    pattern: 'olympic', muscleGroups: ['quads', 'glutes', 'hamstrings', 'low-back', 'traps'] },
   // Snatch teaching progressions
   { id: 'power_snatch', name: 'Power Snatch', equipment: 'barbell', loadUnit: 'lb', repUnit: 'reps', increment: 5, lockedWeight: true,
     notes: 'Caught above parallel. Builds pull height and turnover speed.',

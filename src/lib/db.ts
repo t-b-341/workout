@@ -853,10 +853,25 @@ export class WorkoutDB extends Dexie {
     this.version(36).stores({}).upgrade(async () => {
       // complexId added to set_logs (not indexed). Old rows have it undefined. No data migration needed.
     });
+    // v37 — backfill snatch pull and clean pull into live catalog.
+    this.version(37).stores({}).upgrade(async (tx) => {
+      const db = tx as unknown as WorkoutDB;
+      const NEW_LIFTS = ['snatch_pull', 'clean_pull'];
+      const seedLifts = (await import('./seed')).LIFTS;
+      const toAdd: Lift[] = [];
+      for (const id of NEW_LIFTS) {
+        const existing = await db.lifts.get(id);
+        if (!existing) {
+          const fromSeed = seedLifts.find((l) => l.id === id);
+          if (fromSeed) toAdd.push(fromSeed);
+        }
+      }
+      if (toAdd.length > 0) await db.lifts.bulkPut(toAdd);
+    });
   }
 }
 
-export const SCHEMA_VERSION = 36;
+export const SCHEMA_VERSION = 37;
 
 let _db: WorkoutDB | null = null;
 let _dbUserId: string | null = null;

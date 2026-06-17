@@ -63,6 +63,25 @@ const QUICK_SWAP_LIFT_IDS = [
   'p1_eccentric',
   'front_squat',
   'btn_press',
+  // Olympic lifts
+  'sn',
+  'cj',
+  'cl',
+  'jk',
+  'snatch_pull',
+  'clean_pull',
+  'power_snatch',
+  'hang_snatch',
+  'muscle_snatch',
+  'drop_snatch',
+  'snatch_balance',
+  'oh_squat',
+  'power_clean',
+  'hang_clean',
+  'muscle_clean',
+  'push_jerk',
+  'split_jerk',
+  'btn_jerk',
 ] as const;
 
 /** Family display name per lift id; absent → no family ('Swap'). */
@@ -72,6 +91,9 @@ const FAMILY_LABEL_BY_LIFT: Record<string, string> = {
   back_squat: 'Squat', pause_squat: 'Squat', front_squat: 'Squat', bss: 'Squat',
   dl: 'Hinge', deficit_dl: 'Hinge', rdl: 'Hinge',
   bbr: 'Row', pendlay_row: 'Row', deficit_bbr: 'Row',
+  sn: 'Snatch', power_snatch: 'Snatch', hang_snatch: 'Snatch', muscle_snatch: 'Snatch', drop_snatch: 'Snatch', snatch_balance: 'Snatch', oh_squat: 'Snatch', snatch_pull: 'Snatch',
+  cl: 'Clean', power_clean: 'Clean', hang_clean: 'Clean', muscle_clean: 'Clean', clean_pull: 'Clean',
+  cj: 'Clean', jk: 'Jerk', split_jerk: 'Jerk', push_jerk: 'Jerk', btn_jerk: 'Jerk',
 };
 
 const TIER_HEADINGS: Record<QuickSessionTier, string> = {
