@@ -26,6 +26,7 @@ import {
   useAllSupplementLogs,
 } from '@/lib/hooks';
 import { getDb } from '@/lib/db';
+import { useComplexesById } from '@/lib/complexes';
 import { currentValueForGoal } from '@/lib/liftingGoals';
 import { sortSetLogsForSession } from '@/lib/sessionFilters';
 import { cancelPendingDirtyDelete, localDelete, localUpsert } from '@/lib/sync';
@@ -272,6 +273,7 @@ function SessionsList({
   readiness: ReadinessLog[];
 }) {
   const [editing, setEditing] = useState<{ session: SessionLog; sets: SetLog[] } | null>(null);
+  const complexesById = useComplexesById();
   const liftName = (id: string) => lifts.find((l) => l.id === id)?.name ?? id;
   if (sessions.length === 0) return <div className="text-zinc-500 text-sm">No sessions logged yet.</div>;
 
@@ -310,8 +312,19 @@ function SessionsList({
       <div className="space-y-3">
       {sessions.map((s) => {
         const ss = (setsBySession.get(s.id) ?? []).sort((a, b) => a.setIndex - b.setIndex);
-        const grouped = new Map<string, SetLog[]>();
+        const complexGroups = new Map<string, SetLog[]>();
+        const regularSets: SetLog[] = [];
         for (const x of ss) {
+          if (x.complexId) {
+            const arr = complexGroups.get(x.complexId) ?? [];
+            arr.push(x);
+            complexGroups.set(x.complexId, arr);
+          } else {
+            regularSets.push(x);
+          }
+        }
+        const grouped = new Map<string, SetLog[]>();
+        for (const x of regularSets) {
           const arr = grouped.get(x.liftId) ?? [];
           arr.push(x);
           grouped.set(x.liftId, arr);
@@ -355,6 +368,24 @@ function SessionsList({
               </div>
             )}
             <div className="mt-3 space-y-1">
+              {Array.from(complexGroups.entries()).map(([complexId, cs]) => {
+                const complex = complexesById?.get(complexId);
+                const label = complex?.label ?? 'Complex';
+                const sharedWeight = cs[0]?.weight ?? 0;
+                const orderedSets = [...cs].sort((a, b) => a.setIndex - b.setIndex);
+                const sequence = orderedSets
+                  .map((x) => `${x.reps} ${liftName(x.liftId)}${x.status === 'completed' ? '' : '*'}`)
+                  .join(' + ');
+                return (
+                  <div key={complexId} className="text-sm rounded-lg border border-amber-900/40 bg-amber-950/10 px-2.5 py-2 space-y-0.5">
+                    <div className="flex items-baseline justify-between gap-2">
+                      <span className="text-amber-300 font-medium">⛓ {label}</span>
+                      <span className="font-mono text-zinc-400">{sharedWeight} lb</span>
+                    </div>
+                    <div className="text-xs text-zinc-400 font-mono">{sequence}</div>
+                  </div>
+                );
+              })}
               {Array.from(grouped.entries()).map(([liftId, ls]) => (
                 <div key={liftId} className="text-sm flex items-baseline justify-between gap-2">
                   <Link href={`/lifts/${liftId}`} className="text-zinc-300 hover:text-amber-400">
@@ -365,9 +396,9 @@ function SessionsList({
                   </span>
                 </div>
               ))}
-              {[...grouped.values()].flat().some((x) => x.reason) && (
+              {[...grouped.values(), ...complexGroups.values()].flat().some((x) => x.reason) && (
                 <div className="mt-2 text-xs text-zinc-500 border-t border-zinc-800 pt-2 space-y-1">
-                  {[...grouped.values()].flat().filter((x) => x.reason).map((x) => (
+                  {[...grouped.values(), ...complexGroups.values()].flat().filter((x) => x.reason).map((x) => (
                     <div key={x.id}>
                       <span className="text-zinc-400">{liftName(x.liftId)}</span>: {x.reason}
                     </div>

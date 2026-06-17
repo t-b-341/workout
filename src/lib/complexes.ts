@@ -12,6 +12,13 @@ export function useComplexes(): Complex[] | undefined {
   );
 }
 
+export function useComplexesById(): Map<string, Complex> | undefined {
+  return useLiveQuery(async () => {
+    const all = await getDb().complexes.toArray();
+    return new Map(all.map((c) => [c.id, c]));
+  }, []);
+}
+
 export async function saveComplex(c: Omit<Complex, 'updatedAt'>): Promise<void> {
   await localUpsert('complexes', {
     ...c,
