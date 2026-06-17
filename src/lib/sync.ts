@@ -37,6 +37,7 @@ import type {
   BlockTemplate,
   RelationshipCheckin,
   NamedMesocycle,
+  Complex,
   QuickLoadout,
   OverwhelmEpisode,
 } from './types';
@@ -195,6 +196,7 @@ const FLUSH_TABLE_TIER: Record<RemoteTable, number> = {
   templates: 0,
   prescriptions: 0,
   named_mesocycles: 0,
+  complexes: 0,
   quick_loadouts: 0,
   overwhelm_episodes: 0,
   pullup_logs: 0,
@@ -271,6 +273,7 @@ const TABLE_TO_LOCAL: Record<SyncPullTable, keyof ReturnType<typeof getDb> & str
   block_templates: 'block_templates',
   relationship_checkins: 'relationship_checkins',
   named_mesocycles: 'named_mesocycles',
+  complexes: 'complexes',
   quick_loadouts: 'quick_loadouts',
   overwhelm_episodes: 'overwhelm_episodes',
 };
@@ -309,6 +312,7 @@ const ALL_TABLES: SyncPullTable[] = [
   'oral_health_logs',
   'training_checklist',
   'named_mesocycles',
+  'complexes',
   'quick_loadouts',
   'overwhelm_episodes',
 ];
@@ -525,6 +529,9 @@ async function persistRows(table: SyncPullTable, rows: RowPayload[]) {
       return;
     case 'named_mesocycles':
       await db.named_mesocycles.bulkPut(rows.map((r) => fromRemote<NamedMesocycle>(r)));
+      return;
+    case 'complexes':
+      await db.complexes.bulkPut(rows.map((r) => fromRemote<Complex>(r)));
       return;
     case 'quick_loadouts':
       await db.quick_loadouts.bulkPut(rows.map((r) => fromRemote<QuickLoadout>(r)));

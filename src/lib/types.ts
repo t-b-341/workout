@@ -614,6 +614,23 @@ export type NamedMesocycle = {
   updatedAt: string;
 };
 
+export type ComplexElement = {
+  /** Lift id from the catalog (e.g. 'cl', 'front_squat', 'jk'). */
+  liftId: string;
+  /** Reps for this element within one round of the complex. */
+  reps: number;
+};
+
+export type Complex = {
+  id: string;
+  userId: string;
+  label: string;
+  /** Ordered sequence of movements performed without dropping the bar. */
+  elements: ComplexElement[];
+  notes: string;
+  updatedAt: string;
+};
+
 export type CbtThoughtRecord = {
   id: string;
   userId: string;

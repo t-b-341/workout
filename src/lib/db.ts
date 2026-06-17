@@ -32,6 +32,7 @@ import type {
   BlockTemplate,
   RelationshipCheckin,
   NamedMesocycle,
+  Complex,
   QuickLoadout,
   OverwhelmEpisode,
 } from './types';
@@ -67,6 +68,7 @@ export type DirtyRow = {
     | 'training_checklist'
     | 'user_goals'
     | 'named_mesocycles'
+    | 'complexes'
     | 'quick_loadouts'
     | 'overwhelm_episodes';
   rowId: string;
@@ -105,6 +107,7 @@ export class WorkoutDB extends Dexie {
   block_templates!: Table<BlockTemplate, string>;
   relationship_checkins!: Table<RelationshipCheckin, string>;
   named_mesocycles!: Table<NamedMesocycle, string>;
+  complexes!: Table<Complex, string>;
   quick_loadouts!: Table<QuickLoadout, string>;
   overwhelm_episodes!: Table<OverwhelmEpisode, string>;
   dirty!: Table<DirtyRow, string>;
@@ -842,10 +845,14 @@ export class WorkoutDB extends Dexie {
       }
       if (toAdd.length > 0) await db.lifts.bulkPut(toAdd);
     });
+    // v35 — weightlifting complexes (saved ordered movement sequences).
+    this.version(35).stores({
+      complexes: 'id, userId, updatedAt',
+    });
   }
 }
 
-export const SCHEMA_VERSION = 34;
+export const SCHEMA_VERSION = 35;
 
 let _db: WorkoutDB | null = null;
 let _dbUserId: string | null = null;
