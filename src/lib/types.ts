@@ -96,6 +96,8 @@ export type Prescription = {
   tempo?: string;
   /** Free-text guidance ("shoot for 3x10", "blood flow / practice"). */
   notes?: string;
+  /** Runtime-only (quick session complexes): tags resulting set logs with this Complex.id. */
+  complexId?: string;
 };
 
 export type SetStatus = 'completed' | 'reduced' | 'skipped' | 'substituted';

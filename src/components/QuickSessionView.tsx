@@ -10,6 +10,7 @@ import {
 } from '@/lib/hooks';
 import {
   buildQuickPrescriptions,
+  buildComplexPrescriptions,
   deleteQuickLoadout,
   MOVEMENT_FAMILIES,
   newLoadoutId,
@@ -20,17 +21,20 @@ import {
   saveQuickLoadout,
   TIER_DEFAULTS,
 } from '@/lib/quickSession';
+import { useComplexes, complexSummary } from '@/lib/complexes';
 import { liftForSnap, snapWorkingWeight } from '@/lib/progression';
 import { getAuthUserId, localUpsert, flushDirty } from '@/lib/sync';
 import {
   finalizeWorkoutPauseAtCompletion,
   fmtDurationShort,
+  mostRecentWorkingWeight,
   sessionDurationMs,
   sessionFinishHighlights,
   sessionRecapPRs,
 } from '@/lib/stats';
 import { todayIso } from '@/lib/time';
 import type {
+  Complex,
   Lift,
   Prescription,
   QuickLoadout,
@@ -176,12 +180,15 @@ export function QuickSessionView({ onBack }: Props) {
   const allSets = useAllSets();
   const allSessions = useAllSessions();
   const allPrescriptions = usePrescriptions();
+  const complexes = useComplexes();
 
   const [step, setStep] = useState<Step>('tier');
   const [selectedTier, setSelectedTier] = useState<QuickSessionTier | null>(null);
   const savedLoadouts = useQuickLoadouts(selectedTier ?? undefined);
 
   const [liftIds, setLiftIds] = useState<string[]>([]);
+  const [activeComplex, setActiveComplex] = useState<Complex | null>(null);
+  const [complexWeight, setComplexWeight] = useState<number>(0);
   const [variantIndex, setVariantIndex] = useState<number | null>(null);
   const [addingSlot, setAddingSlot] = useState(false);
   const [confirmDeleteLoadoutId, setConfirmDeleteLoadoutId] = useState<string | null>(null);
@@ -208,6 +215,9 @@ export function QuickSessionView({ onBack }: Props) {
   }, [allPrescriptions]);
 
   const syntheticPrescriptions = useMemo(() => {
+    if (activeComplex) {
+      return buildComplexPrescriptions(activeComplex, complexWeight);
+    }
     if (!allSets || !allSessions) return [];
     return buildQuickPrescriptions(
       liftIds,
@@ -216,17 +226,20 @@ export function QuickSessionView({ onBack }: Props) {
       prescriptionFallback,
       selectedTier ?? 'full',
     );
-  }, [liftIds, allSets, allSessions, prescriptionFallback, selectedTier]);
+  }, [activeComplex, complexWeight, liftIds, allSets, allSessions, prescriptionFallback, selectedTier]);
 
   const liftById = useMemo(() => new Map((lifts ?? []).map((l) => [l.id, l])), [lifts]);
 
   const displayPrescriptions = useMemo(() => {
     return syntheticPrescriptions.map((p, i) => ({
       ...p,
-      sets: setsOverride[i] ?? p.sets,
-      weight: snapWorkingWeight(p.weight, liftForSnap(p.liftId)),
+      sets: activeComplex ? p.sets : (setsOverride[i] ?? p.sets),
+      weight: snapWorkingWeight(
+        activeComplex ? complexWeight : p.weight,
+        liftForSnap(p.liftId),
+      ),
     }));
-  }, [syntheticPrescriptions, setsOverride]);
+  }, [syntheticPrescriptions, setsOverride, activeComplex, complexWeight]);
 
   const variantOptions = useMemo(() => {
     if (variantIndex == null) return [];
@@ -251,12 +264,32 @@ export function QuickSessionView({ onBack }: Props) {
 
   function resetCustomizeState(nextLiftIds: string[]) {
     setLiftIds(nextLiftIds);
+    setActiveComplex(null);
+    setComplexWeight(0);
     setSetsOverride({});
     setExtraSets({});
     setVariantIndex(null);
     setAddingSlot(false);
     setSavingLoadout(false);
     setLoadoutLabel('');
+  }
+
+  function selectComplex(c: Complex) {
+    const firstLiftId = c.elements[0]?.liftId;
+    const recent = firstLiftId
+      ? mostRecentWorkingWeight(firstLiftId, allSets ?? [], allSessions ?? [])
+      : undefined;
+    setLiftIds([]);
+    setSetsOverride({});
+    setExtraSets({});
+    setVariantIndex(null);
+    setAddingSlot(false);
+    setSavingLoadout(false);
+    setLoadoutLabel('');
+    setActiveComplex(c);
+    setComplexWeight(recent ?? 0);
+    setSelectedTier('top_set');
+    setStep('customize');
   }
 
   function chooseTier(tier: QuickSessionTier) {
@@ -384,7 +417,7 @@ export function QuickSessionView({ onBack }: Props) {
         </button>
         <div>
           <h1 className="text-2xl font-semibold text-zinc-100">
-            {TIER_HEADINGS[selectedTier ?? 'full']}
+            {activeComplex?.label ?? TIER_HEADINGS[selectedTier ?? 'full']}
           </h1>
           <p className="text-xs text-zinc-500 mt-1">Opportunistic · no progression</p>
         </div>
@@ -394,7 +427,7 @@ export function QuickSessionView({ onBack }: Props) {
           {displayPrescriptions.map((p, i) => {
             const lift = liftById.get(p.liftId);
             if (!lift) return null;
-            const extra = extraSets[p.liftId] ?? 0;
+            const extra = extraSets[activeComplex ? p.id : p.liftId] ?? 0;
             return (
               <QuickLiftBlock
                 key={`quick-active-${i}`}
@@ -405,7 +438,7 @@ export function QuickSessionView({ onBack }: Props) {
                 onAddSet={() =>
                   setExtraSets((prev) => ({
                     ...prev,
-                    [p.liftId]: (prev[p.liftId] ?? 0) + 1,
+                    [activeComplex ? p.id : p.liftId]: (prev[activeComplex ? p.id : p.liftId] ?? 0) + 1,
                   }))
                 }
               />
@@ -567,6 +600,25 @@ export function QuickSessionView({ onBack }: Props) {
           </div>
         )}
 
+        {(complexes ?? []).length > 0 && (
+          <div className="space-y-2">
+            <div className="text-xs text-zinc-500 uppercase tracking-wider">Complexes</div>
+            {(complexes ?? []).map((c) => (
+              <button
+                key={c.id}
+                type="button"
+                onClick={() => selectComplex(c)}
+                className="w-full text-left rounded-xl border border-zinc-800 bg-zinc-950 px-3 py-2.5 active:bg-zinc-900"
+              >
+                <div className="font-medium text-zinc-100">{c.label}</div>
+                <div className="text-xs text-zinc-400 font-mono">
+                  {complexSummary(c.elements, (id) => (lifts ?? []).find((l) => l.id === id)?.name ?? id)}
+                </div>
+              </button>
+            ))}
+          </div>
+        )}
+
         <button
           type="button"
           onClick={() => {
@@ -583,11 +635,17 @@ export function QuickSessionView({ onBack }: Props) {
 
   // ----- Screen 3: customize (pre-start) -----
   const tierDefaults = TIER_DEFAULTS[tier];
+  const complexSnapLift = activeComplex?.elements[0]?.liftId;
+  const complexSnappedWeight = complexSnapLift
+    ? snapWorkingWeight(complexWeight, liftForSnap(complexSnapLift))
+    : complexWeight;
+
   return (
     <PageShell className="p-4 space-y-4">
       <button
         type="button"
         onClick={() => {
+          setActiveComplex(null);
           setStep('preset');
           setVariantIndex(null);
           setAddingSlot(false);
@@ -598,16 +656,69 @@ export function QuickSessionView({ onBack }: Props) {
         ← Back
       </button>
       <div>
-        <h1 className="text-2xl font-semibold text-zinc-100">{TIER_HEADINGS[tier]}</h1>
+        <h1 className="text-2xl font-semibold text-zinc-100">
+          {activeComplex?.label ?? TIER_HEADINGS[tier]}
+        </h1>
         <p className="text-sm text-zinc-500 mt-1">
-          Off-program, no progression.
+          {activeComplex ? 'Complex · shared bar weight · no progression' : 'Off-program, no progression.'}
         </p>
-        <p className="text-xs text-zinc-600 mt-0.5">
-          {liftIds.length} movement{liftIds.length !== 1 ? 's' : ''} · max {QUICK_MAX_LIFTS} ·{' '}
-          {tierDefaults.sets}×{tierDefaults.repMin}–{tierDefaults.repMax} default
-        </p>
+        {!activeComplex && (
+          <p className="text-xs text-zinc-600 mt-0.5">
+            {liftIds.length} movement{liftIds.length !== 1 ? 's' : ''} · max {QUICK_MAX_LIFTS} ·{' '}
+            {tierDefaults.sets}×{tierDefaults.repMin}–{tierDefaults.repMax} default
+          </p>
+        )}
       </div>
 
+      {activeComplex ? (
+        <>
+          <div className="rounded-2xl border border-zinc-800 bg-zinc-900 p-4 space-y-3">
+            <div className="text-xs text-zinc-500">Bar weight</div>
+            <div className="flex items-center justify-center gap-3">
+              <button
+                type="button"
+                onClick={() => setComplexWeight((w) => Math.max(0, w - 5))}
+                disabled={complexWeight <= 0}
+                aria-label="Decrease bar weight"
+                className="h-10 w-10 rounded-lg bg-zinc-800 border border-zinc-700 text-zinc-300 text-lg flex items-center justify-center disabled:opacity-30"
+              >
+                −
+              </button>
+              <span className="font-mono text-lg text-zinc-100 w-16 text-center">
+                {complexSnappedWeight}
+              </span>
+              <button
+                type="button"
+                onClick={() => setComplexWeight((w) => w + 5)}
+                aria-label="Increase bar weight"
+                className="h-10 w-10 rounded-lg bg-zinc-800 border border-zinc-700 text-zinc-300 text-lg flex items-center justify-center"
+              >
+                +
+              </button>
+              <span className="text-xs text-zinc-500">lb</span>
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            {displayPrescriptions.map((p, i) => {
+              const lift = liftById.get(p.liftId);
+              if (!lift) return null;
+              return (
+                <div
+                  key={`complex-prestart-${i}`}
+                  className="rounded-xl border border-zinc-800 bg-zinc-950 px-3 py-2.5 flex items-center justify-between gap-2"
+                >
+                  <div className="font-medium text-zinc-100">{lift.name}</div>
+                  <div className="text-sm text-zinc-500 font-mono">
+                    × {p.repMin} @ {p.weight} lb
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </>
+      ) : (
+        <>
       <div className="space-y-3">
         {displayPrescriptions.map((p, i) => {
           const lift = liftById.get(p.liftId);
@@ -758,6 +869,8 @@ export function QuickSessionView({ onBack }: Props) {
         >
           Save loadout
         </button>
+      )}
+        </>
       )}
 
       <button

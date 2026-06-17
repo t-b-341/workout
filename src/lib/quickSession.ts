@@ -2,6 +2,7 @@ import { QUICK_DEFAULT_LIFT_IDS } from './seed';
 import { mostRecentWorkingWeight } from './stats';
 import { localDelete, localUpsert } from './sync';
 import type {
+  Complex,
   Prescription,
   QuickLoadout,
   QuickSessionTier,
@@ -62,6 +63,24 @@ export function buildQuickPrescriptions(
       notes: olympic ? 'Quick session — singles to triples' : 'Quick session — singles or doubles',
     };
   });
+}
+
+export function buildComplexPrescriptions(
+  complex: Complex,
+  sharedWeight: number,
+): Prescription[] {
+  return complex.elements.map((el, i) => ({
+    id: `quick-complex-${complex.id}-${i}`,
+    templateId: 'QUICK' as const,
+    liftId: el.liftId,
+    order: i,
+    weight: sharedWeight,
+    sets: 1,
+    repMin: el.reps,
+    repMax: el.reps,
+    complexId: complex.id,
+    notes: `Complex: ${complex.label} (step ${i + 1})`,
+  }));
 }
 
 export type QuickPreset = {

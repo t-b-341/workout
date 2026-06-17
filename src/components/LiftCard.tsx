@@ -231,6 +231,7 @@ export function LiftCard({
       rpe: shouldTrackRpeForReps(args.reps) && args.rir != null ? rpeFromRir(args.rir) : undefined,
       status,
       substituteLiftId: args.substituteLiftId,
+      complexId: prescription.complexId,
       reason: args.reason,
       side: args.side,
       loggedAt: new Date().toISOString(),
