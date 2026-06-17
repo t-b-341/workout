@@ -37,6 +37,8 @@ import {
   type NutritionPhaseMode,
   type TrainingChecklistItem,
   type NamedMesocycle,
+  type Complex,
+  type ComplexElement,
 } from '@/lib/types';
 import {
   deleteNamedMesocycle,
@@ -44,6 +46,13 @@ import {
   saveNamedMesocycle,
   useNamedMesocycles,
 } from '@/lib/namedMesocycles';
+import {
+  useComplexes,
+  saveComplex,
+  deleteComplex,
+  newComplexId,
+  complexSummary,
+} from '@/lib/complexes';
 import { createClient } from '@/lib/supabase/client';
 import { getDb } from '@/lib/db';
 import { defaultTemplateForLocalDate, sortTemplatesProgramOrder } from '@/lib/seed';
@@ -1173,6 +1182,7 @@ export function ProgramEditor() {
       </div>
       <MesoBoundaryPromptCard />
       <NamedMesocyclesSection />
+      <ComplexesSection />
       <MesocycleLegacyInsightsPanel />
     </PageShell>
   );
@@ -2237,6 +2247,238 @@ function NamedMesocyclesSection() {
             >
               {busy ? 'Saving…' : 'Save'}
             </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+type ComplexFormState = {
+  id: string;
+  label: string;
+  elements: ComplexElement[];
+  notes: string;
+};
+
+function ComplexesSection() {
+  const complexes = useComplexes();
+  const lifts = useLifts();
+  const [formOpen, setFormOpen] = useState(false);
+  const [form, setForm] = useState<ComplexFormState | null>(null);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const liftName = (id: string) =>
+    (lifts ?? []).find((l) => l.id === id)?.name ?? id;
+
+  const sortedLifts = useMemo(
+    () => (lifts ?? []).slice().sort((a, b) => a.name.localeCompare(b.name)),
+    [lifts],
+  );
+
+  const sorted = useMemo(
+    () => (complexes ?? []).slice(),
+    [complexes],
+  );
+
+  function openAdd() {
+    setForm({ id: newComplexId(), label: '', elements: [], notes: '' });
+    setFormOpen(true);
+    setConfirmDeleteId(null);
+  }
+
+  function openEdit(c: Complex) {
+    setForm({ id: c.id, label: c.label, elements: c.elements.map((e) => ({ ...e })), notes: c.notes });
+    setFormOpen(true);
+    setConfirmDeleteId(null);
+  }
+
+  function cancelForm() {
+    setFormOpen(false);
+    setForm(null);
+  }
+
+  function addElement() {
+    if (!form) return;
+    const defaultLiftId = sortedLifts[0]?.id ?? '';
+    setForm({ ...form, elements: [...form.elements, { liftId: defaultLiftId, reps: 1 }] });
+  }
+
+  function updateElement(idx: number, patch: Partial<ComplexElement>) {
+    if (!form) return;
+    const next = form.elements.map((e, i) => (i === idx ? { ...e, ...patch } : e));
+    setForm({ ...form, elements: next });
+  }
+
+  function removeElement(idx: number) {
+    if (!form) return;
+    setForm({ ...form, elements: form.elements.filter((_, i) => i !== idx) });
+  }
+
+  function moveElement(idx: number, dir: -1 | 1) {
+    if (!form) return;
+    const next = [...form.elements];
+    const target = idx + dir;
+    if (target < 0 || target >= next.length) return;
+    [next[idx], next[target]] = [next[target], next[idx]];
+    setForm({ ...form, elements: next });
+  }
+
+  async function saveForm() {
+    if (!form || !form.label.trim() || form.elements.length === 0) return;
+    setBusy(true);
+    try {
+      const { data: { user } } = await createClient().auth.getUser();
+      await saveComplex({
+        id: form.id,
+        userId: user?.id ?? '',
+        label: form.label.trim(),
+        elements: form.elements,
+        notes: form.notes.trim(),
+      });
+      await flushDirty().catch(() => {});
+      cancelForm();
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function confirmDelete(id: string) {
+    setBusy(true);
+    try {
+      await deleteComplex(id);
+      await flushDirty().catch(() => {});
+      setConfirmDeleteId(null);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="rounded-2xl bg-zinc-900 border border-zinc-800 p-4 space-y-3">
+      <div className="flex items-baseline justify-between gap-2 flex-wrap">
+        <div>
+          <div className="font-medium">Complexes</div>
+          <div className="text-xs text-zinc-500">
+            Saved movement sequences performed at one weight (e.g. 1 Clean + 2 Front Squat + 1 Jerk).
+          </div>
+        </div>
+        {!formOpen && (
+          <button
+            type="button"
+            onClick={openAdd}
+            className="h-8 px-3 rounded-lg bg-amber-500 text-zinc-950 text-xs font-medium"
+          >
+            Add complex
+          </button>
+        )}
+      </div>
+
+      {complexes === undefined ? (
+        <p className="text-sm text-zinc-500">Loading…</p>
+      ) : sorted.length === 0 && !formOpen ? (
+        <p className="text-xs text-zinc-600 text-center py-4">
+          No complexes yet. Add one to save a movement sequence.
+        </p>
+      ) : (
+        <ul className="space-y-2">
+          {sorted.map((c) => (
+            <li
+              key={c.id}
+              className="rounded-xl border border-zinc-800 bg-zinc-950 px-3 py-2.5 flex flex-wrap items-start justify-between gap-2"
+            >
+              <div className="min-w-0 space-y-0.5">
+                <div className="font-medium text-zinc-100">{c.label}</div>
+                <div className="text-xs text-zinc-400 font-mono">
+                  {complexSummary(c.elements, liftName)}
+                </div>
+                {c.notes.trim() !== '' && (
+                  <p className="text-xs text-zinc-400 mt-1 whitespace-pre-wrap">{c.notes}</p>
+                )}
+              </div>
+              <div className="flex flex-wrap items-center gap-2 shrink-0">
+                {confirmDeleteId === c.id ? (
+                  <>
+                    <span className="text-xs text-zinc-500">Confirm delete?</span>
+                    <button type="button" disabled={busy} onClick={() => void confirmDelete(c.id)} className="h-8 px-2 rounded-lg bg-rose-900 text-rose-200 text-xs disabled:opacity-50">Yes, delete</button>
+                    <button type="button" disabled={busy} onClick={() => setConfirmDeleteId(null)} className="h-8 px-2 rounded-lg bg-zinc-800 text-xs disabled:opacity-50">Cancel</button>
+                  </>
+                ) : (
+                  <>
+                    <button type="button" onClick={() => openEdit(c)} className="h-8 px-2 rounded-lg bg-zinc-800 text-xs">Edit</button>
+                    <button type="button" onClick={() => setConfirmDeleteId(c.id)} className="h-8 px-2 rounded-lg border border-rose-900/60 text-rose-400 text-xs">Delete</button>
+                  </>
+                )}
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {formOpen && form && (
+        <div className="border-t border-zinc-800 pt-3 space-y-3">
+          <label className="block text-xs text-zinc-500">
+            Label
+            <input
+              type="text"
+              value={form.label}
+              onChange={(e) => setForm({ ...form, label: e.target.value })}
+              placeholder="e.g. Clean Complex"
+              className="mt-1 block w-full h-10 px-3 rounded-lg bg-zinc-950 border border-zinc-800 text-sm"
+            />
+          </label>
+
+          <div className="space-y-2">
+            <div className="text-xs text-zinc-500">Movements (in order)</div>
+            {form.elements.length === 0 && (
+              <p className="text-[11px] text-zinc-600">No movements yet. Add one below.</p>
+            )}
+            {form.elements.map((el, idx) => (
+              <div key={idx} className="flex items-center gap-2">
+                <span className="text-xs text-zinc-600 w-5 text-center">{idx + 1}</span>
+                <select
+                  value={el.liftId}
+                  onChange={(e) => updateElement(idx, { liftId: e.target.value })}
+                  className="flex-1 h-9 px-2 rounded-lg bg-zinc-950 border border-zinc-800 text-sm"
+                >
+                  {sortedLifts.map((l) => (
+                    <option key={l.id} value={l.id}>{l.name}</option>
+                  ))}
+                </select>
+                <div className="flex items-center gap-1">
+                  <button type="button" onClick={() => updateElement(idx, { reps: Math.max(1, el.reps - 1) })} className="h-8 w-8 rounded-lg bg-zinc-800 text-zinc-300 text-lg flex items-center justify-center">−</button>
+                  <span className="w-8 text-center font-mono text-sm">{el.reps}</span>
+                  <button type="button" onClick={() => updateElement(idx, { reps: Math.min(20, el.reps + 1) })} className="h-8 w-8 rounded-lg bg-zinc-800 text-zinc-300 text-lg flex items-center justify-center">+</button>
+                </div>
+                <button type="button" onClick={() => moveElement(idx, -1)} disabled={idx === 0} className="h-8 w-7 rounded-lg bg-zinc-800 text-xs disabled:opacity-30">↑</button>
+                <button type="button" onClick={() => moveElement(idx, 1)} disabled={idx === form.elements.length - 1} className="h-8 w-7 rounded-lg bg-zinc-800 text-xs disabled:opacity-30">↓</button>
+                <button type="button" onClick={() => removeElement(idx)} className="h-8 w-7 rounded-lg border border-rose-900/60 text-rose-400 text-xs">✕</button>
+              </div>
+            ))}
+            <button type="button" onClick={addElement} className="h-8 px-3 rounded-lg bg-zinc-800 text-xs">+ Add movement</button>
+          </div>
+
+          <label className="block text-xs text-zinc-500">
+            Notes (optional)
+            <textarea
+              value={form.notes}
+              onChange={(e) => setForm({ ...form, notes: e.target.value })}
+              rows={2}
+              className="mt-1 block w-full px-3 py-2 rounded-lg bg-zinc-950 border border-zinc-800 text-sm resize-none"
+            />
+          </label>
+
+          <div className="flex gap-2">
+            <button
+              type="button"
+              disabled={busy || !form.label.trim() || form.elements.length === 0}
+              onClick={() => void saveForm()}
+              className="h-9 px-4 rounded-lg bg-amber-500 text-zinc-950 text-sm font-medium disabled:opacity-50"
+            >
+              {busy ? 'Saving…' : 'Save complex'}
+            </button>
+            <button type="button" onClick={cancelForm} className="h-9 px-4 rounded-lg bg-zinc-800 text-sm">Cancel</button>
           </div>
         </div>
       )}
