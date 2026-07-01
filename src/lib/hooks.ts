@@ -140,7 +140,19 @@ export function useSetsForSession(sessionId?: string): SetLog[] | undefined {
 export function useLastSessionsForLift(liftId: string, limit = 3) {
   return useLiveQuery(async () => {
     const db = getDb();
-    const sets = await db.set_logs.where('liftId').equals(liftId).toArray();
+    // substituteLiftId is NOT indexed on set_logs, so we can't `.where()` on it.
+    // Load by the indexed liftId, then scan all rows in memory for substitutes.
+    const byLift = await db.set_logs.where('liftId').equals(liftId).toArray();
+    const all = await db.set_logs.toArray();
+    const bySub = all.filter((s) => s.substituteLiftId === liftId);
+    const seen = new Set<string>();
+    const sets: SetLog[] = [];
+    for (const s of [...byLift, ...bySub]) {
+      if (!seen.has(s.id)) {
+        seen.add(s.id);
+        sets.push(s);
+      }
+    }
     if (sets.length === 0) return [];
     const bySession = new Map<string, SetLog[]>();
     for (const s of sets) {
