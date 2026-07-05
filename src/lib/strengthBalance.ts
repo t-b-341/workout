@@ -120,7 +120,61 @@ export const RATIO_STANDARDS: LiftRatioStandard[] = [
       + 'mechanics (short femurs, high bar, upright '
       + 'torso). A ratio well above range may indicate '
       + 'hamstring dominance or squat expression being '
-      + 'limited by technique rather than strength.',
+      +       'limited by technique rather than strength.',
+  },
+  {
+    id: 'front_back_squat',
+    label: 'Front Squat / Back Squat',
+    numeratorLiftId: 'front_squat',
+    denominatorLiftId: 'back_squat',
+    numeratorMode: '1rm',
+    denominatorMode: '1rm',
+    targetMin: 0.80,
+    targetMax: 0.85,
+    downstreamBenefit: 2,
+    description:
+      'Front squat 1RM should be 80–85% of back squat 1RM. '
+      + 'A ratio below range indicates the front rack position, '
+      + 'upper back, or quad strength is limiting — and directly '
+      + 'caps the clean, since every clean is recovered from a '
+      + 'front squat. Weightlifting-focused lifters often sit at '
+      + 'the top of this range or above.',
+  },
+  {
+    id: 'clean_front_squat',
+    label: 'Clean / Front Squat',
+    numeratorLiftId: 'cl',
+    denominatorLiftId: 'front_squat',
+    numeratorMode: '1rm',
+    denominatorMode: '1rm',
+    targetMin: 0.85,
+    targetMax: 0.90,
+    downstreamBenefit: 2,
+    description:
+      'Clean 1RM should be 85–90% of front squat 1RM. '
+      + 'A ratio below range means leg strength is NOT the '
+      + 'limiter — the gap is technical: pull timing, turnover '
+      + 'speed, or receiving position. Closing it is technique '
+      + 'volume, not strength work.',
+  },
+  {
+    id: 'snatch_cj',
+    label: 'Snatch / Clean & Jerk',
+    numeratorLiftId: 'sn',
+    denominatorLiftId: 'cj',
+    numeratorMode: '1rm',
+    denominatorMode: '1rm',
+    targetMin: 0.78,
+    targetMax: 0.83,
+    downstreamBenefit: 3,
+    description:
+      'Snatch 1RM should be 78–83% of clean & jerk 1RM — the '
+      + 'classic efficiency relationship between the two lifts. '
+      + 'A ratio well below range indicates the snatch is '
+      + 'technique- and mobility-limited relative to overall '
+      + 'strength: prioritize receiving-position work (overhead '
+      + 'squat, drop snatch, snatch balance) and turnover speed '
+      + 'over pulling strength.',
   },
 ];
 
