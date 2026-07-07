@@ -54,6 +54,7 @@ import { PageShell } from './PageShell';
 import { SupplementsCard } from './SupplementsCard';
 import { TrackerReminderCard } from './TrackerReminderCard';
 import { WellnessTargetsCard } from './WellnessTargetsCard';
+import { TodayPrescribedPrefCard } from './TodayPrescribedPrefCard';
 import { MindfulnessEntriesSection } from './MindfulnessEntriesSection';
 
 function clamp(n: number, min: number, max: number): number {
@@ -533,6 +534,8 @@ export function RecoveryView() {
       <TrackerReminderCard />
 
       <WellnessTargetsCard />
+
+      <TodayPrescribedPrefCard />
 
       <BodyweightQuickLog date={date} />
       <HydrationSection date={date} existing={hydration} prefs={prefs} />

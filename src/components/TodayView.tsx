@@ -79,6 +79,7 @@ import { sortTemplatesProgramOrder } from '@/lib/seed';
 import { QuickSessionView } from './QuickSessionView';
 import { StoicMomentSheet } from './StoicMomentSheet';
 import { OverwhelmProtocol } from './OverwhelmProtocol';
+import { useHidePrescribed } from '@/lib/todayPrefs';
 
 const MINI_TEMPLATE_IDS = new Set(['L2', 'U3', 'L3', 'S1']);
 
@@ -113,6 +114,7 @@ export function TodayView() {
   const [showStoicMoment, setShowStoicMoment] = useState(false);
   const [showOverwhelmProtocol, setShowOverwhelmProtocol] = useState(false);
   const [recoveryPromptSessionId, setRecoveryPromptSessionId] = useState<string | null>(null);
+  const hidePrescribed = useHidePrescribed();
 
   const programTemplates = useMemo(
     () => (templates ?? []).filter((t) => t.id !== 'QUICK'),
@@ -323,7 +325,7 @@ export function TodayView() {
   }
 
   return (
-    <PageShell className={`p-4 space-y-4 ${showSessionDock ? 'pb-24' : ''}`}>
+    <PageShell className={`p-4 space-y-4 ${showSessionDock && !hidePrescribed ? 'pb-24' : ''}`}>
       <SyncStatusBar />
       <MesoBoundaryPromptCard />
       <MacroTrendTodayBanner />
@@ -349,50 +351,55 @@ export function TodayView() {
       <PullupTracker />
       <MindfulnessWeeklyBanner />
 
-      {!session.startedAt && !session.completedAt && !sundayGateActive && (
+      {!session.startedAt && !session.completedAt && (hidePrescribed || !sundayGateActive) && (
         <div className="rounded-2xl border border-zinc-800 bg-zinc-900 p-4 space-y-3">
-          <div className="text-xs text-zinc-500 uppercase tracking-wider">Today&apos;s workout</div>
-          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-            {sortTemplatesProgramOrder(programTemplates).map((t) => (
-              <button
-                key={t.id}
-                type="button"
-                onClick={() => {
-                  setChosenTemplateId(t.id);
-                  writeTodayPlanPreference({ date: todayIso(), templateId: t.id });
-                }}
-                className={`py-2.5 px-3 rounded-xl text-sm font-medium border ${
-                  activeId === t.id
-                    ? 'bg-amber-500/15 border-amber-500/50 text-amber-100'
-                    : 'bg-zinc-950 border-zinc-800 text-zinc-300'
-                }`}
-              >
-                {t.id}
-              </button>
-            ))}
-          </div>
-          <div className="border-t border-zinc-800 pt-3">
-            <button
-              type="button"
-              onClick={() => setQuickMode(true)}
-              className="w-full py-3 rounded-xl bg-zinc-800 border border-zinc-700 text-zinc-300 text-sm"
-            >
-              ⚡ Quick Session — singles &amp; doubles
-            </button>
-          </div>
+          {!hidePrescribed && (
+            <>
+              <div className="text-xs text-zinc-500 uppercase tracking-wider">Today&apos;s workout</div>
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                {sortTemplatesProgramOrder(programTemplates).map((t) => (
+                  <button
+                    key={t.id}
+                    type="button"
+                    onClick={() => {
+                      setChosenTemplateId(t.id);
+                      writeTodayPlanPreference({ date: todayIso(), templateId: t.id });
+                    }}
+                    className={`py-2.5 px-3 rounded-xl text-sm font-medium border ${
+                      activeId === t.id
+                        ? 'bg-amber-500/15 border-amber-500/50 text-amber-100'
+                        : 'bg-zinc-950 border-zinc-800 text-zinc-300'
+                    }`}
+                  >
+                    {t.id}
+                  </button>
+                ))}
+              </div>
+              <div className="border-t border-zinc-800 pt-3" />
+            </>
+          )}
+          <button
+            type="button"
+            onClick={() => setQuickMode(true)}
+            className="w-full py-3 rounded-xl bg-zinc-800 border border-zinc-700 text-zinc-300 text-sm"
+          >
+            ⚡ Quick Session — singles &amp; doubles
+          </button>
         </div>
       )}
 
-      <SessionHeader
-        template={activeTemplate}
-        session={session}
-        templates={programTemplates}
-        hideTemplatePicker={sundayGateActive}
-        onTemplateChange={(t) => {
-          setChosenTemplateId(t.id);
-          writeTodayPlanPreference({ date: todayIso(), templateId: t.id });
-        }}
-      />
+      {!hidePrescribed && (
+        <SessionHeader
+          template={activeTemplate}
+          session={session}
+          templates={programTemplates}
+          hideTemplatePicker={sundayGateActive}
+          onTemplateChange={(t) => {
+            setChosenTemplateId(t.id);
+            writeTodayPlanPreference({ date: todayIso(), templateId: t.id });
+          }}
+        />
+      )}
       <MindfulnessTodayCard session={session} />
       <WorkdayCard date={todayIso()} />
       {isNewPhaseDay && !phaseTransitionDismissed && activePhase && (
@@ -522,7 +529,7 @@ export function TodayView() {
         />
       )}
 
-      {needsReadiness ? (
+      {!hidePrescribed && (needsReadiness ? (
         <>
           <ReadinessForm
             session={session}
@@ -712,9 +719,10 @@ export function TodayView() {
             </button>
           )}
         </div>
-      )}
+      ))}
 
-      {!needsReadiness &&
+      {!hidePrescribed &&
+        !needsReadiness &&
         !needsPerceivedRecovery &&
         session.mode !== 'skip' &&
         !sundayGateActive && (
@@ -745,7 +753,7 @@ export function TodayView() {
           />
         </>
       )}
-      {showSessionDock && allSets && (
+      {!hidePrescribed && showSessionDock && allSets && (
         <SessionContextDock session={session} prescriptions={displayPrescriptions ?? []} allSets={allSets} />
       )}
       {sessionRecap && (
