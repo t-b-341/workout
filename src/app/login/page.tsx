@@ -6,6 +6,10 @@ import { createClient } from '@/lib/supabase/client';
 export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const initialError =
+    typeof window !== 'undefined'
+      ? new URLSearchParams(window.location.search).get('error')
+      : null;
 
   async function signIn() {
     setLoading(true);
@@ -41,6 +45,12 @@ export default function LoginPage() {
           </svg>
           {loading ? 'Redirecting…' : 'Sign in with GitHub'}
         </button>
+        {initialError === 'not_allowed' && (
+          <p className="text-red-400 text-sm">This account is not authorized for this app.</p>
+        )}
+        {initialError === 'auth' && (
+          <p className="text-red-400 text-sm">Sign-in failed. Please try again.</p>
+        )}
         {error && <p className="text-red-400 text-sm">{error}</p>}
       </div>
     </main>

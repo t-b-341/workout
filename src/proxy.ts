@@ -1,5 +1,6 @@
 import { createServerClient } from '@supabase/ssr';
 import { NextResponse, type NextRequest } from 'next/server';
+import { isUserAllowed } from '@/lib/authAllowlist';
 
 const PUBLIC_PATHS = ['/login', '/auth/callback', '/_next', '/favicon.ico', '/manifest.webmanifest', '/icons'];
 
@@ -35,6 +36,15 @@ export async function proxy(request: NextRequest) {
     loginUrl.pathname = '/login';
     loginUrl.searchParams.set('next', url.pathname);
     return NextResponse.redirect(loginUrl);
+  }
+
+  // Defense-in-depth: authenticated but not on the allowlist → sign-out redirect.
+  if (user && !isPublic && !isUserAllowed(user.id)) {
+    const denyUrl = url.clone();
+    denyUrl.pathname = '/login';
+    denyUrl.search = '';
+    denyUrl.searchParams.set('error', 'not_allowed');
+    return NextResponse.redirect(denyUrl);
   }
 
   return response;
