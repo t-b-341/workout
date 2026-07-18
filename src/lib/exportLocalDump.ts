@@ -64,7 +64,7 @@ import { currentValueForGoal, isGoalAchieved } from './liftingGoals';
 import { todayIso } from './time';
 
 /** Export payload schema — bump when top-level export shape changes. */
-const FULL_LOCAL_EXPORT_SCHEMA_VERSION = 37;
+const FULL_LOCAL_EXPORT_SCHEMA_VERSION = 38;
 
 const MEANINGFUL_META_PREFIXES = [
   'workout:supplements:v1:',
@@ -86,6 +86,11 @@ export type ExportedSetLog = Omit<SetLog, 'rpe' | 'intent' | 'complexId'> & {
   intent: SetIntent;
   rpe: number | null;
   complexId: string | null;
+};
+
+export type ExportedBodyMeasurementLog = Omit<BodyMeasurementLog, 'bicep' | 'thigh'> & {
+  bicep: number | null;
+  thigh: number | null;
 };
 
 export type ExportedStrengthRatio = {
@@ -337,7 +342,7 @@ export type FullLocalExport = {
   strength_balance: ExportedStrengthRatio[];
   cardio_logs: ExportedCardioLog[];
   bodyweight_logs: BodyweightLog[];
-  body_measurement_logs: BodyMeasurementLog[];
+  body_measurement_logs: ExportedBodyMeasurementLog[];
   readiness_logs: ReadinessLog[];
   nutrition_logs: ExportedNutritionLog[];
   hydration_logs: HydrationLog[];
@@ -1037,6 +1042,14 @@ export async function buildFullLocalExport(opts?: FullLocalExportOptions): Promi
     mesoEndDate: opts?.mesoEndDate,
   });
 
+  const body_measurement_logs_out: ExportedBodyMeasurementLog[] = body_measurement_logs.map(
+    (m) => ({
+      ...m,
+      bicep: m.bicep ?? null,
+      thigh: m.thigh ?? null,
+    }),
+  );
+
   return {
     kind: 'workout-full-local-v1',
     schemaVersion: FULL_LOCAL_EXPORT_SCHEMA_VERSION,
@@ -1055,7 +1068,7 @@ export async function buildFullLocalExport(opts?: FullLocalExportOptions): Promi
     strength_balance: strengthBalance,
     cardio_logs: cardio_logs_out,
     bodyweight_logs,
-    body_measurement_logs,
+    body_measurement_logs: body_measurement_logs_out,
     readiness_logs,
     nutrition_logs: nutrition_logs_out,
     hydration_logs,

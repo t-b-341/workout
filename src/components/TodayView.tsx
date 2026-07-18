@@ -79,7 +79,7 @@ import { sortTemplatesProgramOrder } from '@/lib/seed';
 import { QuickSessionView } from './QuickSessionView';
 import { StoicMomentSheet } from './StoicMomentSheet';
 import { OverwhelmProtocol } from './OverwhelmProtocol';
-import { useHidePrescribed } from '@/lib/todayPrefs';
+import { useHidePrescribed, useDisabledTemplateIds } from '@/lib/todayPrefs';
 
 const MINI_TEMPLATE_IDS = new Set(['L2', 'U3', 'L3', 'S1']);
 
@@ -115,11 +115,14 @@ export function TodayView() {
   const [showOverwhelmProtocol, setShowOverwhelmProtocol] = useState(false);
   const [recoveryPromptSessionId, setRecoveryPromptSessionId] = useState<string | null>(null);
   const hidePrescribed = useHidePrescribed();
+  const disabledTemplateIds = useDisabledTemplateIds();
 
-  const programTemplates = useMemo(
-    () => (templates ?? []).filter((t) => t.id !== 'QUICK'),
-    [templates],
-  );
+  const programTemplates = useMemo(() => {
+    const base = (templates ?? []).filter((t) => t.id !== 'QUICK');
+    const filtered = base.filter((t) => !disabledTemplateIds.includes(t.id));
+    // Guard: never allow the disable filter to empty the list.
+    return filtered.length > 0 ? filtered : base;
+  }, [templates, disabledTemplateIds]);
 
   const suggested: SessionTemplate | undefined = useMemo(() => {
     if (!programTemplates.length) return undefined;
@@ -329,12 +332,14 @@ export function TodayView() {
       <SyncStatusBar />
       <MesoBoundaryPromptCard />
       <MacroTrendTodayBanner />
-      <GhostSessionPromptCard
-        onLogNow={(templateId) => {
-          setChosenTemplateId(templateId);
-          writeTodayPlanPreference({ date: todayIso(), templateId });
-        }}
-      />
+      {!hidePrescribed && (
+        <GhostSessionPromptCard
+          onLogNow={(templateId) => {
+            setChosenTemplateId(templateId);
+            writeTodayPlanPreference({ date: todayIso(), templateId });
+          }}
+        />
+      )}
       <WeekActivityStrip />
       {session.completedAt && (
         <SessionCompleteBanner

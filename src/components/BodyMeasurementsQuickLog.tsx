@@ -19,6 +19,8 @@ export function BodyMeasurementsQuickLog({ date }: Props) {
       waist: todayRow?.waist ?? latest?.waist ?? 38,
       abdomen: todayRow?.abdomen ?? latest?.abdomen ?? 40,
       hips: todayRow?.hips ?? latest?.hips ?? 41,
+      bicep: todayRow?.bicep ?? latest?.bicep,
+      thigh: todayRow?.thigh ?? latest?.thigh,
       protocol: todayRow?.protocol ?? latest?.protocol ?? '',
       timeOfDay: todayRow?.timeOfDay ?? latest?.timeOfDay ?? null,
     };
@@ -26,7 +28,7 @@ export function BodyMeasurementsQuickLog({ date }: Props) {
 
   const formKey = useMemo(
     () =>
-      `measure:${date}:${todayRow?.waist ?? seed.waist}:${todayRow?.abdomen ?? seed.abdomen}:${todayRow?.hips ?? seed.hips}:${todayRow?.protocol ?? seed.protocol}:${todayRow?.timeOfDay ?? seed.timeOfDay ?? ''}`,
+      `measure:${date}:${todayRow?.waist ?? seed.waist}:${todayRow?.abdomen ?? seed.abdomen}:${todayRow?.hips ?? seed.hips}:${todayRow?.bicep ?? ''}:${todayRow?.thigh ?? ''}:${todayRow?.protocol ?? seed.protocol}:${todayRow?.timeOfDay ?? seed.timeOfDay ?? ''}`,
     [date, todayRow, seed],
   );
 
@@ -43,6 +45,8 @@ function BodyMeasurementsQuickLogForm({
     waist: number;
     abdomen: number;
     hips: number;
+    bicep?: number;
+    thigh?: number;
     protocol: string;
     timeOfDay: MeasurementTimeOfDay | null;
   };
@@ -51,6 +55,12 @@ function BodyMeasurementsQuickLogForm({
   const [waist, setWaist] = useState(initial.waist);
   const [abdomen, setAbdomen] = useState(initial.abdomen);
   const [hips, setHips] = useState(initial.hips);
+  const [bicepStr, setBicepStr] = useState(
+    initial.bicep != null ? String(initial.bicep) : '',
+  );
+  const [thighStr, setThighStr] = useState(
+    initial.thigh != null ? String(initial.thigh) : '',
+  );
   const [protocol, setProtocol] = useState(initial.protocol);
   const [timeOfDay, setTimeOfDay] = useState<MeasurementTimeOfDay | null>(initial.timeOfDay ?? null);
 
@@ -61,6 +71,8 @@ function BodyMeasurementsQuickLogForm({
       waist,
       abdomen,
       hips,
+      bicep: bicepStr.trim() === '' ? undefined : Number(bicepStr),
+      thigh: thighStr.trim() === '' ? undefined : Number(thighStr),
     };
     const p = protocol.trim();
     if (p) row.protocol = p;
@@ -79,6 +91,30 @@ function BodyMeasurementsQuickLogForm({
         <MeasureInput label="Waist (narrowest)" value={waist} onChange={setWaist} />
         <MeasureInput label="Abdomen (navel)" value={abdomen} onChange={setAbdomen} />
         <MeasureInput label="Hips (widest)" value={hips} onChange={setHips} />
+      </div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+        <label className="text-xs text-zinc-500">
+          Bicep (flexed)
+          <input
+            type="number"
+            inputMode="decimal"
+            step="0.1"
+            value={bicepStr}
+            onChange={(e) => setBicepStr(e.target.value)}
+            className="mt-1 h-10 w-full rounded-lg bg-zinc-950 border border-zinc-800 px-3 text-center font-mono text-sm"
+          />
+        </label>
+        <label className="text-xs text-zinc-500">
+          Thigh (mid, relaxed)
+          <input
+            type="number"
+            inputMode="decimal"
+            step="0.1"
+            value={thighStr}
+            onChange={(e) => setThighStr(e.target.value)}
+            className="mt-1 h-10 w-full rounded-lg bg-zinc-950 border border-zinc-800 px-3 text-center font-mono text-sm"
+          />
+        </label>
       </div>
       <label className="block text-xs text-zinc-500">
         Protocol (optional)

@@ -267,6 +267,10 @@ export type BodyMeasurementLog = {
   abdomen: number;
   /** Widest point. */
   hips: number;
+  /** Flexed, largest point. Optional (added later). */
+  bicep?: number;
+  /** Mid-thigh, relaxed. Optional (added later). */
+  thigh?: number;
   /**
    * Free-text conditions for apples-to-apples deltas (e.g. fasted, after bathroom, posture).
    * Omit when unknown; meso analysis requires a consistent non-null protocol across the window for reliable deltas.

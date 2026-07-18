@@ -20,3 +20,29 @@ export function useHidePrescribed(): boolean {
     [],
   ) ?? false;
 }
+
+const DISABLED_TEMPLATES_KEY = 'today:disabledTemplates:v1';
+
+export async function getDisabledTemplateIds(): Promise<string[]> {
+  const row = await getDb().meta.get(DISABLED_TEMPLATES_KEY);
+  return Array.isArray(row?.value) ? (row.value as string[]) : [];
+}
+
+export async function setDisabledTemplateIds(ids: string[]): Promise<void> {
+  await getDb().meta.put({ key: DISABLED_TEMPLATES_KEY, value: ids });
+}
+
+export async function toggleTemplateDisabled(id: string): Promise<void> {
+  const current = await getDisabledTemplateIds();
+  const next = current.includes(id)
+    ? current.filter((x) => x !== id)
+    : [...current, id];
+  await setDisabledTemplateIds(next);
+}
+
+export function useDisabledTemplateIds(): string[] {
+  return useLiveQuery(async () => {
+    const row = await getDb().meta.get(DISABLED_TEMPLATES_KEY);
+    return Array.isArray(row?.value) ? (row.value as string[]) : [];
+  }, []) ?? [];
+}

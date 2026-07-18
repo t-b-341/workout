@@ -868,10 +868,14 @@ export class WorkoutDB extends Dexie {
       }
       if (toAdd.length > 0) await db.lifts.bulkPut(toAdd);
     });
+    // v38 — optional bicep/thigh on body_measurement_logs (not indexed).
+    this.version(38).stores({}).upgrade(async () => {
+      // bicep/thigh added to body_measurement_logs (not indexed). Old rows have them undefined.
+    });
   }
 }
 
-export const SCHEMA_VERSION = 37;
+export const SCHEMA_VERSION = 38;
 
 let _db: WorkoutDB | null = null;
 let _dbUserId: string | null = null;
