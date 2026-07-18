@@ -46,3 +46,29 @@ export function useDisabledTemplateIds(): string[] {
     return Array.isArray(row?.value) ? (row.value as string[]) : [];
   }, []) ?? [];
 }
+
+const DISABLED_MEASURE_FIELDS_KEY = 'measure:disabledFields:v1';
+
+export async function getDisabledMeasureFields(): Promise<string[]> {
+  const row = await getDb().meta.get(DISABLED_MEASURE_FIELDS_KEY);
+  return Array.isArray(row?.value) ? (row.value as string[]) : [];
+}
+
+export async function setDisabledMeasureFields(fields: string[]): Promise<void> {
+  await getDb().meta.put({ key: DISABLED_MEASURE_FIELDS_KEY, value: fields });
+}
+
+export async function toggleMeasureFieldDisabled(field: string): Promise<void> {
+  const current = await getDisabledMeasureFields();
+  const next = current.includes(field)
+    ? current.filter((x) => x !== field)
+    : [...current, field];
+  await setDisabledMeasureFields(next);
+}
+
+export function useDisabledMeasureFields(): string[] {
+  return useLiveQuery(async () => {
+    const row = await getDb().meta.get(DISABLED_MEASURE_FIELDS_KEY);
+    return Array.isArray(row?.value) ? (row.value as string[]) : [];
+  }, []) ?? [];
+}

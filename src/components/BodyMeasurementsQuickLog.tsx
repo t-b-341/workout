@@ -5,6 +5,7 @@ import { useAllBodyMeasurements, useBodyMeasurementsForDate } from '@/lib/hooks'
 import { flushDirty, localUpsert } from '@/lib/sync';
 import { MEASUREMENT_TIME_OF_DAY } from '@/lib/types';
 import type { BodyMeasurementLog, MeasurementTimeOfDay } from '@/lib/types';
+import { useDisabledMeasureFields } from '@/lib/todayPrefs';
 
 type Props = {
   date: string;
@@ -63,6 +64,8 @@ function BodyMeasurementsQuickLogForm({
   );
   const [protocol, setProtocol] = useState(initial.protocol);
   const [timeOfDay, setTimeOfDay] = useState<MeasurementTimeOfDay | null>(initial.timeOfDay ?? null);
+  const disabledFields = useDisabledMeasureFields();
+  const showField = (key: string) => !disabledFields.includes(key);
 
   async function save() {
     const row: BodyMeasurementLog = {
@@ -87,35 +90,49 @@ function BodyMeasurementsQuickLogForm({
         <div className="text-xs uppercase tracking-wider text-zinc-500">Body measurements</div>
         <div className="text-sm font-medium text-zinc-200 mt-0.5">Weekly tracker</div>
       </div>
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-        <MeasureInput label="Waist (narrowest)" value={waist} onChange={setWaist} />
-        <MeasureInput label="Abdomen (navel)" value={abdomen} onChange={setAbdomen} />
-        <MeasureInput label="Hips (widest)" value={hips} onChange={setHips} />
-      </div>
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-        <label className="text-xs text-zinc-500">
-          Bicep (flexed)
-          <input
-            type="number"
-            inputMode="decimal"
-            step="0.1"
-            value={bicepStr}
-            onChange={(e) => setBicepStr(e.target.value)}
-            className="mt-1 h-10 w-full rounded-lg bg-zinc-950 border border-zinc-800 px-3 text-center font-mono text-sm"
-          />
-        </label>
-        <label className="text-xs text-zinc-500">
-          Thigh (mid, relaxed)
-          <input
-            type="number"
-            inputMode="decimal"
-            step="0.1"
-            value={thighStr}
-            onChange={(e) => setThighStr(e.target.value)}
-            className="mt-1 h-10 w-full rounded-lg bg-zinc-950 border border-zinc-800 px-3 text-center font-mono text-sm"
-          />
-        </label>
-      </div>
+      {(showField('waist') || showField('abdomen') || showField('hips')) && (
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+          {showField('waist') && (
+            <MeasureInput label="Waist (narrowest)" value={waist} onChange={setWaist} />
+          )}
+          {showField('abdomen') && (
+            <MeasureInput label="Abdomen (navel)" value={abdomen} onChange={setAbdomen} />
+          )}
+          {showField('hips') && (
+            <MeasureInput label="Hips (widest)" value={hips} onChange={setHips} />
+          )}
+        </div>
+      )}
+      {(showField('bicep') || showField('thigh')) && (
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+          {showField('bicep') && (
+            <label className="text-xs text-zinc-500">
+              Bicep (flexed)
+              <input
+                type="number"
+                inputMode="decimal"
+                step="0.1"
+                value={bicepStr}
+                onChange={(e) => setBicepStr(e.target.value)}
+                className="mt-1 h-10 w-full rounded-lg bg-zinc-950 border border-zinc-800 px-3 text-center font-mono text-sm"
+              />
+            </label>
+          )}
+          {showField('thigh') && (
+            <label className="text-xs text-zinc-500">
+              Thigh (mid, relaxed)
+              <input
+                type="number"
+                inputMode="decimal"
+                step="0.1"
+                value={thighStr}
+                onChange={(e) => setThighStr(e.target.value)}
+                className="mt-1 h-10 w-full rounded-lg bg-zinc-950 border border-zinc-800 px-3 text-center font-mono text-sm"
+              />
+            </label>
+          )}
+        </div>
+      )}
       <label className="block text-xs text-zinc-500">
         Protocol (optional)
         <input
