@@ -1,6 +1,14 @@
 import type { NextConfig } from "next";
 
+if (process.env.NEXT_PUBLIC_E2E_STUB === '1' && process.env.NODE_ENV === 'production') {
+  throw new Error(
+    'Refusing to build: NEXT_PUBLIC_E2E_STUB=1 is set while NODE_ENV is production. The E2E auth stub must never ship.',
+  );
+}
+
 const nextConfig: NextConfig = {
+  // The dev-tools badge sits on the bottom-left and swallows taps on the Today tab.
+  devIndicators: false,
   // Playwright uses 127.0.0.1 while the dev server may print localhost — avoids HMR cross-origin noise.
   allowedDevOrigins: ["127.0.0.1"],
   async headers() {

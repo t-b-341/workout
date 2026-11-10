@@ -14,7 +14,7 @@ export default defineConfig({
   workers: process.env.CI ? 1 : undefined,
   reporter: process.env.CI ? 'github' : 'list',
   use: {
-    baseURL: 'http://127.0.0.1:3000',
+    baseURL: 'http://127.0.0.1:3100',
     trace: 'on-first-retry',
   },
   projects: [
@@ -22,9 +22,16 @@ export default defineConfig({
     { name: 'Mobile Safari', use: { ...devices['iPhone 12'] } },
   ],
   webServer: {
-    command: 'npm run dev',
-    url: 'http://127.0.0.1:3000',
+    // Port 3100 so a normal dev server on 3000 is never reused.
+    command: 'npm run dev -- --hostname 127.0.0.1 --port 3100',
+    url: 'http://127.0.0.1:3100',
     reuseExistingServer: !process.env.CI,
     timeout: 120_000,
+    env: {
+      ...process.env,
+      NEXT_PUBLIC_E2E_STUB: '1',
+      NEXT_PUBLIC_SUPABASE_URL: 'http://127.0.0.1:54321',
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: 'e2e-anon-key',
+    },
   },
 });

@@ -17,6 +17,10 @@ Personal strength + cardio tracker: **Next.js 16** (App Router), **TypeScript**,
 - **Layout**: `LayoutModeProvider` (`src/lib/layoutMode.tsx`, wired in `src/app/providers.tsx`) persists `workout:layout-mode` in `localStorage` — default **phone** (`mobile`); **wide** (`desktop`) widens `PageShell` max-widths. Bottom nav has a **Wide / Phone** toggle.
 - **Macro trend hints**: `src/lib/macroTrend.ts` + `useMacroTrendAdvice` scan **nutrition/hydration logs for the 7 calendar days before** a reference date (excludes that day). Shown on **Today** (dismissible) and **Daily Check-In** — text only; **never** changes prescriptions or progression.
 
+## E2E stub
+
+Playwright boots the dev server with `NEXT_PUBLIC_E2E_STUB=1` (and `NODE_ENV` is not production). `src/lib/supabase/e2eStub.ts` then replaces the browser Supabase client, and `src/proxy.ts` skips the real auth call. The stub signs in only when the `e2e-user=1` cookie is present. Table rows are stored in `localStorage` under `e2e:db:<table>`. Set `localStorage` key `e2e:fail` to a comma-separated list of table names to make `upsert` and `delete` on those tables fail. A production build throws if `NEXT_PUBLIC_E2E_STUB=1`.
+
 ## Commands
 
 - `npm run dev` — dev server
