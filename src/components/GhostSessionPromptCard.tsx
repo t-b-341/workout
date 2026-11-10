@@ -41,8 +41,10 @@ export function GhostSessionPromptCard({
       }
       if (dismissed.has(s.id)) continue;
       // A workout that has started and not finished has no sets yet, so it
-      // derives to ghost. Keep the prompt for stored ghosts only.
+      // derives to ghost. The same is true right after Skip readiness check:
+      // that row is today's plan, not a workout the user forgot to log.
       if (s.startedAt && !s.completedAt) continue;
+      if (s.readinessCompletedAt) continue;
       const sets = allSets.filter((st) => st.sessionLogId === s.id);
       if (deriveSessionStatus(s, prescriptions, sets) !== 'ghost') continue;
       out.push(s);

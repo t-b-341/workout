@@ -48,11 +48,7 @@ export function StartWorkoutButton({
 
   return (
     <div className="rounded-2xl border border-amber-500/35 bg-gradient-to-br from-amber-950/60 to-zinc-900 p-4 shadow-lg shadow-amber-950/10">
-      <div className="text-sm font-medium text-zinc-100 mb-1">Ready to lift?</div>
-      <p className="text-xs text-zinc-500 mb-3">
-        Starts the session stopwatch (active time until you finish — use Pause on the timer bar for breaks).
-        Your first logged set also starts the timer if you haven&apos;t pressed this yet.
-      </p>
+      <div className="text-sm font-medium text-zinc-100 mb-3">Ready to lift?</div>
       <button
         type="button"
         disabled={busy}
@@ -61,6 +57,10 @@ export function StartWorkoutButton({
       >
         {busy ? 'Starting…' : 'Start workout'}
       </button>
+      <p className="text-xs text-zinc-500 mt-3">
+        Starts the session stopwatch (active time until you finish — use Pause on the timer bar for breaks).
+        Your first logged set also starts the timer if you haven&apos;t pressed this yet.
+      </p>
     </div>
   );
 }

@@ -78,6 +78,7 @@ const KNOWN_LOCALSTORAGE_KEYS = [
   'workout:layout-mode',
   'workout:todayPlan:v1',
   'workout:sundayMondayEarlyUnlock:v1',
+  'workout:todaySections:v1',
 ] as const;
 
 /** Set row as written to export JSON (parent session date copied; intent always present; RPE clamped 1–10 or null). */

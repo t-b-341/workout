@@ -210,8 +210,8 @@ test.describe('signed-in app (Pixel 5)', () => {
     const errors = collectPageErrors(page);
     await page.goto('/');
     await expect(page.getByRole('button', { name: 'L1', exact: true })).toBeVisible();
-    await expect(page.getByRole('checkbox', { name: 'ZMA' })).toBeVisible();
-    // The old supplement effect wrote an all-false row about 300ms after paint.
+    // Collapsed trackers do not mount, so viewing Today cannot write a supplement row.
+    await expect(page.getByRole('checkbox', { name: 'ZMA' })).toHaveCount(0);
     await page.waitForTimeout(500);
     expect(await countDexieRows(page, 'supplement_logs')).toBe(0);
 
@@ -231,6 +231,10 @@ test.describe('signed-in app (Pixel 5)', () => {
     await expect(page.getByText('Did you train')).toHaveCount(0);
     await expect(page.getByText('Up next:')).toHaveCount(0);
 
+    await page.getByRole('button', { name: /^Supplements\b/ }).click();
+    await expect(page.getByRole('checkbox', { name: 'ZMA' })).toBeVisible();
+    await page.waitForTimeout(500);
+    expect(await countDexieRows(page, 'supplement_logs')).toBe(0);
     await page.getByRole('checkbox', { name: 'ZMA' }).check();
     await expect.poll(() => countDexieRows(page, 'supplement_logs')).toBe(1);
     expect(errors.pageErrors, errors.pageErrors.join('\n')).toEqual([]);
@@ -373,6 +377,71 @@ test.describe('signed-in app (Pixel 5)', () => {
     expect(errors.pageErrors, errors.pageErrors.join('\n')).toEqual([]);
   });
 
+  test('keeps the workout in the first viewport and remembers an open tracker', async ({ page }) => {
+    const errors = collectPageErrors(page);
+    await page.goto('/');
+
+    const readiness = page.getByText('How are you walking in?', { exact: true });
+    await expect(readiness).toBeVisible();
+    const readinessBox = await documentBox(readiness);
+    expect(readinessBox.scrollY).toBe(0);
+    expect(readinessBox.top).toBeGreaterThanOrEqual(0);
+    expect(readinessBox.top).toBeLessThan(readinessBox.viewportHeight);
+
+    const trackerNames = [
+      /^Cardio this week/,
+      /^Pull-ups this week/,
+      /^Mindfulness\b/,
+      /^Work day\b/,
+      /^Supplements\b/,
+      /^Day's notes/,
+      /^Bodyweight ·/,
+      /^Body measurements/,
+      /^Weekly tracking reminder/,
+      /^Macro trend hint/,
+    ];
+    for (const name of trackerNames) {
+      const row = page.getByRole('button', { name });
+      await expect(row).toHaveCount(1);
+      await expect(row).toHaveAttribute('aria-expanded', 'false');
+      await expect(row).toHaveAttribute('aria-controls', /.+/);
+    }
+    const cardioHeight = await page.getByRole('button', { name: /^Cardio this week/ }).evaluate((el) => {
+      return el.getBoundingClientRect().height;
+    });
+    expect(cardioHeight).toBeGreaterThanOrEqual(44);
+
+    await page.getByRole('button', { name: 'Skip readiness check' }).click();
+    const start = page.getByRole('button', { name: 'Start workout' });
+    await expect(start).toBeVisible();
+    const startBox = await documentBox(start);
+    expect(startBox.top).toBeGreaterThanOrEqual(0);
+    expect(startBox.bottom).toBeLessThanOrEqual(startBox.viewportHeight);
+
+    await start.click();
+    await expect(page.getByText('How recovered do you feel right now?')).toBeVisible();
+    await page.getByRole('button', { name: '5', exact: true }).click();
+    const logSet = page.getByRole('button', { name: 'Log set' }).first();
+    await expect(logSet).toBeVisible();
+    const logBox = await documentBox(logSet);
+    expect(logBox.top).toBeLessThan(1200);
+
+    const supplements = page.getByRole('button', { name: /^Supplements\b/ });
+    await supplements.click();
+    for (const name of ['ZMA', 'D3 + K2', 'Multivitamin', 'Creatine']) {
+      await expect(page.getByRole('checkbox', { name })).toBeVisible();
+    }
+    await expect(supplements).toHaveAttribute('aria-expanded', 'true');
+
+    await page.reload();
+    await expect(page.getByRole('navigation').getByRole('link', { name: 'Today' })).toBeVisible();
+    await expect(page.getByRole('checkbox', { name: 'ZMA' })).toBeVisible();
+    await expect(page.getByRole('button', { name: /^Supplements\b/ })).toHaveAttribute('aria-expanded', 'true');
+    await expect.poll(() => page.evaluate(() => localStorage.getItem('workout:todaySections:v1'))).toContain('"supplements":true');
+
+    expect(errors.pageErrors, errors.pageErrors.join('\n')).toEqual([]);
+  });
+
   test('overwhelm trigger stays clear of the session Jump button', async ({ page }) => {
     const errors = collectPageErrors(page);
     await page.goto('/');
@@ -392,6 +461,19 @@ test.describe('signed-in app (Pixel 5)', () => {
     expect(errors.pageErrors, errors.pageErrors.join('\n')).toEqual([]);
   });
 });
+
+/** Document position of an element, plus the layout viewport height. */
+async function documentBox(locator: ReturnType<Page['locator']>) {
+  return locator.evaluate((el) => {
+    const rect = el.getBoundingClientRect();
+    return {
+      top: rect.top + window.scrollY,
+      bottom: rect.bottom + window.scrollY,
+      viewportHeight: window.innerHeight,
+      scrollY: window.scrollY,
+    };
+  });
+}
 
 /** Jump and the overwhelm trigger must each win a hit-test at their centres, and stay at least 8px apart. */
 async function expectOverwhelmClearOfJump(page: Page) {
