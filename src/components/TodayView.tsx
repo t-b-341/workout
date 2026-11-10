@@ -297,6 +297,9 @@ export function TodayView() {
     session.mode !== 'skip' &&
     (prescriptions?.length ?? 0) > 0 &&
     !session.completedAt;
+  // Same condition that mounts SessionContextDock. The dock is ~3.6rem tall
+  // on top of the 4rem nav; 5rem leaves at least 8px above it.
+  const sessionDockVisible = !hidePrescribed && showSessionDock && Boolean(allSets);
 
   const recoveryRated =
     session.perceivedRecovery !== undefined ||
@@ -772,8 +775,16 @@ export function TodayView() {
           onClose={() => setShowStoicMoment(false)}
         />
       )}
-      {/* Overwhelm Protocol floating trigger */}
-      <div className="fixed bottom-20 right-4 z-40">
+      {/* Overwhelm Protocol floating trigger. Hidden dock: 5rem above the
+          viewport bottom (bottom-20) plus the home-indicator inset, so it
+          stays above the nav. Open dock: another 4rem clears the dock. */}
+      <div
+        className={`fixed right-4 z-40 ${
+          sessionDockVisible
+            ? 'bottom-[calc(4rem+max(env(safe-area-inset-bottom),0px)+5rem)]'
+            : 'bottom-[calc(5rem+max(env(safe-area-inset-bottom),0px))]'
+        }`}
+      >
         <button
           type="button"
           onClick={() => setShowOverwhelmProtocol(true)}

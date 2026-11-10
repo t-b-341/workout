@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test, type Page } from '@playwright/test';
 import { E2E_USER_ID } from '../src/lib/supabase/e2eStub';
 import { collectPageErrors, countDexieRows, expectNoHorizontalOverflow, signIn } from './helpers';
 
@@ -251,4 +251,90 @@ test.describe('signed-in app (Pixel 5)', () => {
 
     expect(errors.pageErrors, errors.pageErrors.join('\n')).toEqual([]);
   });
+
+  test('overwhelm trigger stays clear of the session Jump button', async ({ page }) => {
+    const errors = collectPageErrors(page);
+    await page.goto('/');
+    await expect(page.getByRole('button', { name: 'Skip readiness check' })).toBeVisible();
+    await page.getByRole('button', { name: 'Skip readiness check' }).click();
+    await expect(page.getByRole('button', { name: 'Start workout' })).toBeVisible();
+    await page.getByRole('button', { name: 'Start workout' }).click();
+    await expect(page.getByText('How recovered do you feel right now?')).toBeVisible();
+    await page.getByRole('button', { name: '5', exact: true }).click();
+
+    await expectOverwhelmClearOfJump(page);
+
+    const viewport = page.viewportSize();
+    await page.setViewportSize({ width: 360, height: viewport?.height ?? 851 });
+    await expectOverwhelmClearOfJump(page);
+
+    expect(errors.pageErrors, errors.pageErrors.join('\n')).toEqual([]);
+  });
 });
+
+/** Jump and the overwhelm trigger must each win a hit-test at their centres, and stay at least 8px apart. */
+async function expectOverwhelmClearOfJump(page: Page) {
+  const jump = page.getByRole('button', { name: 'Jump' });
+  const overwhelm = page.getByRole('button', { name: 'Open Overwhelm Protocol' });
+  await expect(jump).toBeVisible();
+  await expect(overwhelm).toBeVisible();
+
+  const hit = await page.evaluate(() => {
+    const jumpEl = [...document.querySelectorAll('button')].find(
+      (button) => button.textContent?.trim() === 'Jump',
+    );
+    const overwhelmEl = document.querySelector<HTMLButtonElement>(
+      'button[aria-label="Open Overwhelm Protocol"]',
+    );
+    if (!jumpEl || !overwhelmEl) return { found: false as const };
+
+    const jumpRect = jumpEl.getBoundingClientRect();
+    const overwhelmRect = overwhelmEl.getBoundingClientRect();
+    const jumpHit = document.elementFromPoint(
+      jumpRect.left + jumpRect.width / 2,
+      jumpRect.top + jumpRect.height / 2,
+    );
+    const overwhelmHit = document.elementFromPoint(
+      overwhelmRect.left + overwhelmRect.width / 2,
+      overwhelmRect.top + overwhelmRect.height / 2,
+    );
+    const overlapX = Math.min(jumpRect.right, overwhelmRect.right) - Math.max(jumpRect.left, overwhelmRect.left);
+    const overlapY = Math.min(jumpRect.bottom, overwhelmRect.bottom) - Math.max(jumpRect.top, overwhelmRect.top);
+    let gap = 0;
+    if (overlapX > 0 && overlapY > 0) {
+      gap = 0;
+    } else if (overlapX > 0) {
+      gap = Math.max(jumpRect.top, overwhelmRect.top) - Math.min(jumpRect.bottom, overwhelmRect.bottom);
+    } else if (overlapY > 0) {
+      gap = Math.max(jumpRect.left, overwhelmRect.left) - Math.min(jumpRect.right, overwhelmRect.right);
+    } else {
+      const dx = Math.max(jumpRect.left, overwhelmRect.left) - Math.min(jumpRect.right, overwhelmRect.right);
+      const dy = Math.max(jumpRect.top, overwhelmRect.top) - Math.min(jumpRect.bottom, overwhelmRect.bottom);
+      gap = Math.hypot(dx, dy);
+    }
+
+    return {
+      found: true as const,
+      jumpOwnsHit: jumpHit === jumpEl || (jumpHit != null && jumpEl.contains(jumpHit)),
+      overwhelmOwnsHit: overwhelmHit === overwhelmEl,
+      intersects: overlapX > 0 && overlapY > 0,
+      gap,
+      overwhelmWidth: overwhelmRect.width,
+      overwhelmHeight: overwhelmRect.height,
+      jumpHit: jumpHit instanceof Element ? jumpHit.getAttribute('aria-label') ?? jumpHit.textContent?.trim() : null,
+      overwhelmHit:
+        overwhelmHit instanceof Element
+          ? overwhelmHit.getAttribute('aria-label') ?? overwhelmHit.textContent?.trim()
+          : null,
+    };
+  });
+
+  expect(hit.found, 'Jump and Overwhelm controls should be in the document').toBe(true);
+  if (!hit.found) return;
+  expect(hit.jumpOwnsHit, `Jump centre hit ${String(hit.jumpHit)}`).toBe(true);
+  expect(hit.overwhelmOwnsHit, `Overwhelm centre hit ${String(hit.overwhelmHit)}`).toBe(true);
+  expect(hit.intersects, `bounding boxes intersect (gap ${hit.gap})`).toBe(false);
+  expect(hit.gap, `gap between Jump and Overwhelm is ${hit.gap}px`).toBeGreaterThanOrEqual(8);
+  expect(hit.overwhelmWidth).toBeGreaterThanOrEqual(44);
+  expect(hit.overwhelmHeight).toBeGreaterThanOrEqual(44);
+}
