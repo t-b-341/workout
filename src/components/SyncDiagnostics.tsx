@@ -5,7 +5,8 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { getDb } from '@/lib/db';
 import { useOnline } from '@/lib/hooks';
 import { createClient } from '@/lib/supabase/client';
-import { flushDirty, pullAll } from '@/lib/sync';
+import { flushDirty, localDelete, pullAll } from '@/lib/sync';
+import { isEmptySession } from '@/lib/sessionStatus';
 import {
   clearSyncErrors,
   recordSyncError,
@@ -24,6 +25,9 @@ export function SyncDiagnostics() {
   const online = useOnline();
   const errors = useSyncErrors();
   const dirty = useLiveQuery(() => getDb().dirty.toArray(), []);
+  const sessions = useLiveQuery(() => getDb().session_logs.toArray(), []);
+  const sets = useLiveQuery(() => getDb().set_logs.toArray(), []);
+  const readinessLogs = useLiveQuery(() => getDb().readiness_logs.toArray(), []);
   const [userId, setUserId] = useState<string | null>(null);
   const [authChecked, setAuthChecked] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
@@ -55,6 +59,14 @@ export function SyncDiagnostics() {
   }, [dirty]);
 
   const pendingTotal = dirty?.length ?? 0;
+  const emptySessions = useMemo(() => {
+    if (!sessions || !sets || !readinessLogs) return [];
+    return sessions.filter((session) => isEmptySession(session, sets, readinessLogs));
+  }, [sessions, sets, readinessLogs]);
+  const emptySessionRange = useMemo(
+    () => emptySessionDateRange(emptySessions.map((session) => session.date)),
+    [emptySessions],
+  );
   const hasIssues = pendingTotal > 0 || errors.length > 0;
   const defaultCollapsed = !hasIssues;
   const collapsed = userCollapsed ?? defaultCollapsed;
@@ -134,6 +146,45 @@ export function SyncDiagnostics() {
     }
   }
 
+  async function onRemoveEmptySessions() {
+    const db = getDb();
+    const [sessionRows, setRows, readinessRows] = await Promise.all([
+      db.session_logs.toArray(),
+      db.set_logs.toArray(),
+      db.readiness_logs.toArray(),
+    ]);
+    const targets = sessionRows.filter((session) =>
+      isEmptySession(session, setRows, readinessRows),
+    );
+    if (targets.length === 0) return;
+    const n = targets.length;
+    const range = emptySessionDateRange(targets.map((session) => session.date));
+    const ok = window.confirm(
+      `Remove ${n} empty session${n === 1 ? '' : 's'} (${range})? ` +
+        'Sessions with sets, a readiness log, a note, or a skipped status are kept. ' +
+        'Deletions sync to your account.',
+    );
+    if (!ok) return;
+    setBusy('Removing empty sessions…');
+    try {
+      for (const session of targets) {
+        const fresh = await db.session_logs.get(session.id);
+        if (!fresh) continue;
+        const [freshSets, freshReadiness] = await Promise.all([
+          db.set_logs.where('sessionLogId').equals(session.id).toArray(),
+          db.readiness_logs.where('sessionLogId').equals(session.id).toArray(),
+        ]);
+        if (!isEmptySession(fresh, freshSets, freshReadiness)) continue;
+        await localDelete('session_logs', fresh.id);
+      }
+      setBusy('Empty sessions removed');
+    } catch (e) {
+      setBusy(`Remove failed: ${(e as Error).message}`);
+    } finally {
+      window.setTimeout(() => setBusy(null), 4000);
+    }
+  }
+
   async function onClearQueue() {
     const ok = window.confirm(
       `Clear ${pendingTotal} pending write${pendingTotal === 1 ? '' : 's'}? ` +
@@ -169,6 +220,11 @@ export function SyncDiagnostics() {
           {errors.length > 0 && (
             <span className="text-[10px] font-medium text-rose-300 border border-rose-800/60 rounded-full px-1.5 py-0.5 shrink-0">
               {errors.length} error{errors.length === 1 ? '' : 's'}
+            </span>
+          )}
+          {emptySessions.length > 0 && (
+            <span className="text-[10px] font-medium text-zinc-300 border border-zinc-700 rounded-full px-1.5 py-0.5 shrink-0">
+              {emptySessions.length} empty
             </span>
           )}
         </div>
@@ -251,6 +307,23 @@ export function SyncDiagnostics() {
             )}
           </div>
 
+          {emptySessions.length > 0 && (
+            <div className="space-y-2 rounded-xl border border-zinc-800 bg-zinc-950 px-3 py-3">
+              <div className="text-xs text-zinc-400">
+                {emptySessions.length} empty session{emptySessions.length === 1 ? '' : 's'}
+                {' · '}
+                {emptySessionRange}
+              </div>
+              <button
+                type="button"
+                onClick={() => void onRemoveEmptySessions()}
+                className="h-9 px-3 rounded-lg bg-rose-950/60 hover:bg-rose-900/60 border border-rose-800/50 text-rose-200 text-xs"
+              >
+                Remove {emptySessions.length} empty session{emptySessions.length === 1 ? '' : 's'}
+              </button>
+            </div>
+          )}
+
           {busy && <div className="text-xs text-zinc-400">{busy}</div>}
           {testResult && (
             <pre className="text-[11px] text-zinc-300 bg-zinc-950 border border-zinc-800 rounded-lg p-2 whitespace-pre-wrap font-mono">
@@ -297,4 +370,12 @@ export function SyncDiagnostics() {
       )}
     </div>
   );
+}
+
+function emptySessionDateRange(dates: string[]): string {
+  if (dates.length === 0) return '';
+  const sorted = [...dates].sort();
+  const first = sorted[0];
+  const last = sorted[sorted.length - 1];
+  return first === last ? first : `${first} – ${last}`;
 }

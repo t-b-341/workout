@@ -23,7 +23,7 @@ import {
 } from '@/lib/quickSession';
 import { useComplexes, complexSummary } from '@/lib/complexes';
 import { liftForSnap, snapWorkingWeight } from '@/lib/progression';
-import { getAuthUserId, localUpsert, flushDirty } from '@/lib/sync';
+import { ensureSessionPersisted, getAuthUserId, localUpsert, flushDirty } from '@/lib/sync';
 import {
   finalizeWorkoutPauseAtCompletion,
   fmtDurationShort,
@@ -367,8 +367,9 @@ export function QuickSessionView({ onBack }: Props) {
     setFinishBusy(true);
     try {
       const completedAt = new Date().toISOString();
+      const stored = await ensureSessionPersisted(session);
       const finalSession = {
-        ...finalizeWorkoutPauseAtCompletion(session, completedAt),
+        ...finalizeWorkoutPauseAtCompletion(stored, completedAt),
         completedAt,
       };
       await localUpsert('session_logs', finalSession);

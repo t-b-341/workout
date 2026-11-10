@@ -11,7 +11,7 @@ import {
   useReadinessForSession,
   useSetsForSession,
 } from '@/lib/hooks';
-import { localDelete, localUpsert } from '@/lib/sync';
+import { ensureSessionPersisted, localDelete, localUpsert, persistSessionUpdate } from '@/lib/sync';
 import type {
   CardioLog,
   CardioType,
@@ -189,6 +189,7 @@ export function LiftCard({
       setPendingIntentByKey((prev) => ({ ...prev, [k]: nextIntent }));
       return;
     }
+    await ensureSessionPersisted(session);
     await localUpsert('set_logs', { ...existing, intent: nextIntent });
   }
 
@@ -242,6 +243,15 @@ export function LiftCard({
           }
         : {}),
     };
+    // The set row references session.id. Persist that session first — a draft
+    // only exists in memory until the first real action — and keep a stored
+    // row's startedAt if one is already there.
+    const loggedAt = row.loggedAt ?? new Date().toISOString();
+    const seeded = session.startedAt ? session : { ...session, startedAt: loggedAt };
+    const stored = await ensureSessionPersisted(seeded);
+    if (!stored.startedAt) {
+      await persistSessionUpdate(stored, { startedAt: loggedAt });
+    }
     await localUpsert('set_logs', row);
     setPendingIntentByKey((prev) => {
       if (!(k in prev)) return prev;
@@ -249,11 +259,6 @@ export function LiftCard({
       delete next[k];
       return next;
     });
-
-    // Stamp session start on first interaction.
-    if (!session.startedAt) {
-      await localUpsert('session_logs', { ...session, startedAt: row.loggedAt });
-    }
 
     // Cardio lifts mirror to cardio_logs so the weekly 150-min rollup sees them.
     if (isCardio) {
@@ -471,6 +476,7 @@ export function LiftCard({
                           key={speed}
                           type="button"
                           onClick={async () => {
+                            await ensureSessionPersisted(session);
                             await localUpsert('set_logs', {
                               ...existing,
                               barSpeed: existing.barSpeed === speed ? null : speed,

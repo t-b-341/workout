@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { deriveSessionStatus } from '@/lib/sessionStatus';
-import type { Prescription, SessionLog, SetLog } from '@/lib/types';
+import { deriveSessionStatus, isEmptySession } from '@/lib/sessionStatus';
+import type { Prescription, ReadinessLog, SessionLog, SetLog } from '@/lib/types';
 
 const baseSession = (): SessionLog => ({
   id: 's1',
@@ -66,5 +66,78 @@ describe('deriveSessionStatus', () => {
       status: 'completed' as const,
     }));
     expect(deriveSessionStatus(baseSession(), rx(), sets)).toBe('completed');
+  });
+});
+
+function oneSet(sessionLogId: string): SetLog {
+  return {
+    id: `set-${sessionLogId}`,
+    sessionLogId,
+    liftId: 'squat',
+    prescriptionId: 'p1',
+    setIndex: 0,
+    weight: 100,
+    reps: 5,
+    status: 'completed',
+  };
+}
+
+function oneReadiness(sessionLogId: string): ReadinessLog {
+  return {
+    id: `readiness-${sessionLogId}`,
+    sessionLogId,
+    date: '2026-05-01',
+    sleepHours: 8,
+    soreness: 2,
+    motivation: 3,
+    createdAt: '2026-05-01T12:00:00.000Z',
+  };
+}
+
+describe('isEmptySession', () => {
+  it('is true for a bare row', () => {
+    expect(isEmptySession(baseSession(), [], null)).toBe(true);
+  });
+
+  it('is false when the session has sets', () => {
+    expect(isEmptySession(baseSession(), [oneSet('s1')], null)).toBe(false);
+  });
+
+  it('is false when a readiness log is present', () => {
+    const readiness = oneReadiness('s1');
+    expect(isEmptySession(baseSession(), [], readiness)).toBe(false);
+    expect(isEmptySession(baseSession(), [], [readiness])).toBe(false);
+  });
+
+  it('is false when startedAt is set', () => {
+    expect(
+      isEmptySession({ ...baseSession(), startedAt: '2026-05-01T12:00:00.000Z' }, [], null),
+    ).toBe(false);
+  });
+
+  it('is false when completedAt is set', () => {
+    expect(
+      isEmptySession({ ...baseSession(), completedAt: '2026-05-01T13:00:00.000Z' }, [], null),
+    ).toBe(false);
+  });
+
+  it('is false when reason is set', () => {
+    expect(isEmptySession({ ...baseSession(), reason: 'poor sleep' }, [], null)).toBe(false);
+  });
+
+  it('is false when notes are set', () => {
+    expect(isEmptySession({ ...baseSession(), notes: 'elbow tweak' }, [], null)).toBe(false);
+  });
+
+  it('is false when mode is skip', () => {
+    expect(isEmptySession({ ...baseSession(), mode: 'skip' }, [], null)).toBe(false);
+  });
+
+  it('is false when sessionStatus is skipped', () => {
+    expect(isEmptySession({ ...baseSession(), sessionStatus: 'skipped' }, [], null)).toBe(false);
+  });
+
+  it('ignores sets and readiness that belong to another session', () => {
+    expect(isEmptySession(baseSession(), [oneSet('other')], [oneReadiness('other')])).toBe(true);
   });
 });

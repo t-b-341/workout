@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { localUpsert } from '@/lib/sync';
+import { persistSessionUpdate } from '@/lib/sync';
 import { fmtDate } from '@/lib/time';
 import type { SessionLog, SessionTemplate } from '@/lib/types';
 
@@ -31,7 +31,7 @@ export function SessionHeader({
     const trimmed = reasonDraft.trim();
     const next = trimmed.length > 0 ? trimmed : undefined;
     if (next === session.reason) return;
-    await localUpsert('session_logs', { ...session, reason: next });
+    await persistSessionUpdate(session, { reason: next });
   }
 
   return (

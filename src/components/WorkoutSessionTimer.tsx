@@ -1,30 +1,28 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { flushDirty, localUpsert } from '@/lib/sync';
+import { ensureSessionPersisted, flushDirty, persistSessionUpdate } from '@/lib/sync';
 import { fmtDurationShort, workoutWallClockElapsedMs } from '@/lib/stats';
 import type { SessionLog } from '@/lib/types';
 
 async function pauseWorkout(session: SessionLog) {
-  if (session.completedAt || !session.startedAt || session.workoutPausedAt) return;
-  await localUpsert('session_logs', {
-    ...session,
-    workoutPausedAt: new Date().toISOString(),
-  });
+  const stored = await ensureSessionPersisted(session);
+  if (stored.completedAt || !stored.startedAt || stored.workoutPausedAt) return;
+  await persistSessionUpdate(stored, { workoutPausedAt: new Date().toISOString() });
   await flushDirty().catch(() => {});
 }
 
 async function resumeWorkout(session: SessionLog) {
-  if (!session.workoutPausedAt) return;
-  const p = Date.parse(session.workoutPausedAt);
-  const next = Number.isNaN(p)
-    ? { ...session, workoutPausedAt: undefined }
+  const stored = await ensureSessionPersisted(session);
+  if (!stored.workoutPausedAt) return;
+  const p = Date.parse(stored.workoutPausedAt);
+  const patch = Number.isNaN(p)
+    ? { workoutPausedAt: undefined }
     : {
-        ...session,
-        workoutPausedAccumMs: (session.workoutPausedAccumMs ?? 0) + Math.max(0, Date.now() - p),
+        workoutPausedAccumMs: (stored.workoutPausedAccumMs ?? 0) + Math.max(0, Date.now() - p),
         workoutPausedAt: undefined,
       };
-  await localUpsert('session_logs', next);
+  await persistSessionUpdate(stored, patch);
   await flushDirty().catch(() => {});
 }
 
@@ -39,10 +37,9 @@ export function StartWorkoutButton({
     if (session.startedAt || session.completedAt) return;
     setBusy(true);
     try {
-      await localUpsert('session_logs', {
-        ...session,
-        startedAt: new Date().toISOString(),
-      });
+      const stored = await ensureSessionPersisted(session);
+      if (stored.startedAt || stored.completedAt) return;
+      await persistSessionUpdate(stored, { startedAt: new Date().toISOString() });
       await flushDirty().catch(() => {});
     } finally {
       setBusy(false);

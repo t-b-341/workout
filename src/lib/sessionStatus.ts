@@ -1,4 +1,4 @@
-import type { SessionLog, SessionStatus, SetLog, TemplateId } from './types';
+import type { ReadinessLog, SessionLog, SessionStatus, SetLog, TemplateId } from './types';
 
 export type { SessionStatus } from './types';
 
@@ -48,4 +48,37 @@ export function deriveSessionStatus(
 
 export function isGhostSessionStatus(status: SessionStatus): boolean {
   return status === 'ghost';
+}
+
+function hasText(value: string | null | undefined): boolean {
+  return typeof value === 'string' && value.trim().length > 0;
+}
+
+function hasReadinessForSession(
+  sessionId: string,
+  readiness: ReadinessLog | readonly ReadinessLog[] | null | undefined,
+): boolean {
+  if (readiness == null) return false;
+  const rows = Array.isArray(readiness) ? readiness : [readiness];
+  return rows.some((row) => row.sessionLogId === sessionId);
+}
+
+/**
+ * A session row created by viewing Today, with no training data attached.
+ * Sets and readiness are matched by `sessionLogId`, so callers may pass the
+ * full tables. True only when every signal of a real session is absent.
+ */
+export function isEmptySession(
+  session: SessionLog,
+  sets: readonly SetLog[],
+  readiness: ReadinessLog | readonly ReadinessLog[] | null | undefined,
+): boolean {
+  if (session.startedAt) return false;
+  if (session.completedAt) return false;
+  if (hasText(session.reason) || hasText(session.notes)) return false;
+  if (session.mode === 'skip') return false;
+  if (session.sessionStatus === 'skipped') return false;
+  if (sets.some((set) => set.sessionLogId === session.id)) return false;
+  if (hasReadinessForSession(session.id, readiness)) return false;
+  return true;
 }

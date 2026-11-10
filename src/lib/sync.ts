@@ -851,6 +851,31 @@ export async function restoreDeletedRow(table: RemoteTable, snapshot: Record<str
   await localUpsert(table, snapshot as { id: string });
 }
 
+/**
+ * Insert `session` when Dexie has no row yet. A stored row is returned unchanged
+ * so an in-memory draft cannot overwrite mode, sets-adjacent fields, or timestamps.
+ */
+export async function ensureSessionPersisted(session: SessionLog): Promise<SessionLog> {
+  const existing = await getDb().session_logs.get(session.id);
+  if (existing) return existing;
+  await localUpsert('session_logs', session);
+  return session;
+}
+
+/**
+ * Persist `session` with `patch` on top of the stored row when one exists.
+ * Use this before any child row that references `session.id`.
+ */
+export async function persistSessionUpdate(
+  session: SessionLog,
+  patch: Partial<SessionLog>,
+): Promise<SessionLog> {
+  const existing = await getDb().session_logs.get(session.id);
+  const next: SessionLog = { ...(existing ?? session), ...patch };
+  await localUpsert('session_logs', next);
+  return next;
+}
+
 export async function localUpsert<T extends { id: string }>(
   table: RemoteTable,
   row: T,

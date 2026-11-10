@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   SUPPLEMENT_ITEMS,
   saveSupplements,
@@ -10,6 +10,10 @@ import {
 
 type Props = { date: string };
 
+function anyTaken(taken: Record<SupplementId, boolean>): boolean {
+  return SUPPLEMENT_ITEMS.some(({ id }) => taken[id]);
+}
+
 export function SupplementsCard({ date }: Props) {
   const stored = useSupplementsForDate(date);
   const [taken, setTaken] = useState<Record<SupplementId, boolean>>(() => ({
@@ -18,6 +22,11 @@ export function SupplementsCard({ date }: Props) {
     multi: stored?.multi ?? false,
     creatine: stored?.creatine ?? false,
   }));
+  const rowExists = useRef(false);
+
+  useEffect(() => {
+    rowExists.current = stored != null;
+  }, [stored]);
 
   useEffect(() => {
     // Dexie live query hydrates async — sync local checkbox state when the row loads or edits land.
@@ -30,14 +39,18 @@ export function SupplementsCard({ date }: Props) {
     });
   }, [date, stored?.zma, stored?.d3k2, stored?.multi, stored?.creatine]);
 
-  useEffect(() => {
-    const t = window.setTimeout(() => {
-      void saveSupplements(date, { taken });
-    }, 300);
-    return () => window.clearTimeout(t);
-  }, [date, taken]);
-
   const allDone = taken.zma && taken.d3k2 && taken.multi && taken.creatine;
+
+  function toggle(id: SupplementId, checked: boolean) {
+    setTaken((prev) => {
+      const next = { ...prev, [id]: checked };
+      if (anyTaken(next) || rowExists.current || stored) {
+        rowExists.current = true;
+        void saveSupplements(date, { taken: next });
+      }
+      return next;
+    });
+  }
 
   return (
     <div className="rounded-2xl bg-zinc-900 border border-zinc-800 p-4 space-y-3">
@@ -59,9 +72,7 @@ export function SupplementsCard({ date }: Props) {
               type="checkbox"
               className="rounded border-zinc-600"
               checked={taken[id]}
-              onChange={(e) => {
-                setTaken((prev) => ({ ...prev, [id]: e.target.checked }));
-              }}
+              onChange={(e) => toggle(id, e.target.checked)}
             />
             <span>{label}</span>
           </label>

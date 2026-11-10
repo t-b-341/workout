@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { E2E_USER_ID } from '../src/lib/supabase/e2eStub';
-import { collectPageErrors, expectNoHorizontalOverflow, signIn } from './helpers';
+import { collectPageErrors, countDexieRows, expectNoHorizontalOverflow, signIn } from './helpers';
 
 const ROUTES = ['/', '/recovery', '/history', '/cardio', '/program'] as const;
 
@@ -181,6 +181,36 @@ test.describe('signed-in app (Pixel 5)', () => {
       sessionIds: [sessionId],
     });
 
+    expect(errors.pageErrors, errors.pageErrors.join('\n')).toEqual([]);
+  });
+
+  test('does not create a session or supplement row until the user acts', async ({ page }) => {
+    const errors = collectPageErrors(page);
+    await page.goto('/');
+    await expect(page.getByRole('button', { name: 'L1', exact: true })).toBeVisible();
+    await expect(page.getByRole('checkbox', { name: 'ZMA' })).toBeVisible();
+    // The old supplement effect wrote an all-false row about 300ms after paint.
+    await page.waitForTimeout(500);
+    expect(await countDexieRows(page, 'supplement_logs')).toBe(0);
+
+    for (const id of ['L1', 'U2', 'L2']) {
+      await page.getByRole('button', { name: id, exact: true }).click();
+    }
+    await page.waitForTimeout(500);
+    expect(await countDexieRows(page, 'session_logs')).toBe(0);
+    expect(await countDexieRows(page, 'supplement_logs')).toBe(0);
+    await expect(page.getByText('Did you train')).toHaveCount(0);
+
+    await page.getByRole('button', { name: 'Skip readiness check' }).click();
+    await expect.poll(() => countDexieRows(page, 'session_logs')).toBe(1);
+
+    await page.getByRole('button', { name: 'Start workout' }).click();
+    await expect(page.getByText('How recovered do you feel right now?')).toBeVisible();
+    await expect(page.getByText('Did you train')).toHaveCount(0);
+    await expect(page.getByText('Up next:')).toHaveCount(0);
+
+    await page.getByRole('checkbox', { name: 'ZMA' }).check();
+    await expect.poll(() => countDexieRows(page, 'supplement_logs')).toBe(1);
     expect(errors.pageErrors, errors.pageErrors.join('\n')).toEqual([]);
   });
 });

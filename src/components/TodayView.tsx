@@ -17,7 +17,7 @@ import {
   useThisWeekPullups,
   useTodaySession,
 } from '@/lib/hooks';
-import { getAuthUserId, localDelete, localUpsert, flushDirty } from '@/lib/sync';
+import { ensureSessionPersisted, getAuthUserId, localDelete, localUpsert, flushDirty, persistSessionUpdate } from '@/lib/sync';
 import { fmtDate, todayIso } from '@/lib/time';
 import type {
   Lift,
@@ -136,9 +136,22 @@ export function TodayView() {
 
   const activeId = validatedChosenTemplateId ?? suggested?.id ?? null;
   const activeTemplate = programTemplates.find((t) => t.id === activeId);
-  const session = useTodaySession((activeId ?? 'U1') as TemplateId);
-  const activePhase = useActivePhaseGoal();
   const todayStr = todayIso();
+  const storedSession = useTodaySession((activeId ?? 'U1') as TemplateId);
+  const draftSession = useMemo((): SessionLog | null => {
+    if (!activeId) return null;
+    return {
+      id: `${todayStr}-${activeId}`,
+      date: todayStr,
+      templateId: activeId,
+      mode: 'standard',
+      deload: false,
+      watchFlags: [],
+      sessionType: 'standard',
+    };
+  }, [activeId, todayStr]);
+  const session = storedSession ?? draftSession;
+  const activePhase = useActivePhaseGoal();
   const isNewPhaseDay = activePhase?.startDate === todayStr;
   const [phaseTransitionDismissed, setPhaseTransitionDismissed] =
     useState(true);
@@ -166,7 +179,6 @@ export function TodayView() {
   );
   const favoriteLiftIdSet = useMemo(() => new Set(favoriteLiftIds), [favoriteLiftIds]);
   const sessionActive = Boolean(session?.startedAt && !session?.completedAt);
-
   const readiness = useReadinessForSession(session?.id);
   const allReadiness = useAllReadiness();
   const allSets = useAllSets();
@@ -231,31 +243,6 @@ export function TodayView() {
     return sessionFinishHighlights(session, allSets, lifts, allBodyweight ?? [], allReadiness ?? []);
   }, [session, allSets, lifts, allBodyweight, allReadiness]);
 
-  // Auto-create today's session row. We re-check Dexie inside the effect
-  // because `session` is briefly `undefined` while useLiveQuery resolves;
-  // a naive upsert would clobber an existing row's mode/deload/watchFlags/
-  // startedAt/completedAt every time the page reloaded.
-  useEffect(() => {
-    if (!activeId || session) return;
-    let cancelled = false;
-    (async () => {
-      const id = `${todayIso()}-${activeId}`;
-      const existing = await getDb().session_logs.get(id);
-      if (cancelled || existing) return;
-      const row: SessionLog = {
-        id,
-        date: todayIso(),
-        templateId: activeId as TemplateId,
-        mode: 'standard',
-        deload: false,
-        watchFlags: [],
-        sessionType: 'standard',
-      };
-      await localUpsert('session_logs', row);
-    })().catch(() => {});
-    return () => { cancelled = true; };
-  }, [activeId, session]);
-
   useEffect(() => {
     if (!session || session.date !== todayIso()) return;
     writeTodayPlanPreference({ date: session.date, templateId: session.templateId });
@@ -275,10 +262,9 @@ export function TodayView() {
     return <QuickSessionView onBack={() => setQuickMode(false)} />;
   }
 
-  if (!templates || !lifts || !activeTemplate) {
+  if (!templates || !lifts || !activeTemplate || !session) {
     return <div className="p-6 text-zinc-500">Loading…</div>;
   }
-  if (!session) return <div className="p-6 text-zinc-500">Creating session…</div>;
 
   const isMiniSession = session
     ? MINI_TEMPLATE_IDS.has(session.templateId)
@@ -322,8 +308,7 @@ export function TodayView() {
 
   async function handlePerceivedRecovery(n: number | null) {
     if (!session) return;
-    const row: SessionLog = { ...session, perceivedRecovery: n };
-    await localUpsert('session_logs', row);
+    await persistSessionUpdate(session, { perceivedRecovery: n });
     setRecoveryPromptSessionId(session.id);
   }
 
@@ -544,8 +529,7 @@ export function TodayView() {
           <button
             type="button"
             onClick={async () => {
-              await localUpsert('session_logs', {
-                ...session,
+              await persistSessionUpdate(session, {
                 readinessCompletedAt: new Date().toISOString(),
               });
               setReadinessSkipped(true);
@@ -1104,12 +1088,13 @@ function FinishSessionButton({
   async function finish() {
     setBusy(true);
     try {
-      const wasFirstCompletion = !session.completedAt;
+      const stored = await ensureSessionPersisted(session);
+      const wasFirstCompletion = !stored.completedAt;
       const db = getDb();
-      const sessionSets = await db.set_logs.where('sessionLogId').equals(session.id).toArray();
+      const sessionSets = await db.set_logs.where('sessionLogId').equals(stored.id).toArray();
       let advanced = 0, held = 0, skipped = 0;
       for (const p of prescriptions) {
-        const dec = decideProgression(p, sessionSets, session, undefined, liftById);
+        const dec = decideProgression(p, sessionSets, stored, undefined, liftById);
         if (dec.advanced) {
           advanced++;
           await localUpsert('prescriptions', { ...p, weight: dec.nextWeight });
@@ -1121,15 +1106,15 @@ function FinishSessionButton({
       }
       const completedAt = new Date().toISOString();
       const durationMin =
-        session.startedAt
+        stored.startedAt
           ? Math.round(
               (new Date(completedAt).getTime() -
-                new Date(session.startedAt).getTime()) /
+                new Date(stored.startedAt).getTime()) /
                 60000,
             )
           : null;
       const finalSession = {
-        ...finalizeWorkoutPauseAtCompletion(session, completedAt),
+        ...finalizeWorkoutPauseAtCompletion(stored, completedAt),
         completedAt,
         durationMin,
       };
