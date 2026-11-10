@@ -6,6 +6,8 @@
  * Signed in only when the `e2e-user=1` cookie is present. Rows live in
  * localStorage under `e2e:db:<table>`. `localStorage['e2e:fail']` is a comma
  * list of tables whose upsert and delete calls fail.
+ * `localStorage['e2e:auth-offline'] === '1'` makes `getUser` report a
+ * retryable fetch error while `getSession` still returns the session.
  *
  * A select with no `.range()` returns at most 1,000 rows, matching
  * PostgREST's default max-rows. `.range()` and `.order()` are honoured so a
@@ -16,6 +18,7 @@ export const E2E_USER_ID = '00000000-0000-4000-8000-000000000001';
 
 const DB_PREFIX = 'e2e:db:';
 const FAIL_KEY = 'e2e:fail';
+const AUTH_OFFLINE_KEY = 'e2e:auth-offline';
 const COOKIE_NAME = 'e2e-user';
 /** PostgREST default max-rows. Selects without `.range()` must not exceed it. */
 const DEFAULT_MAX_ROWS = 1000;
@@ -348,7 +351,21 @@ function createQuery(table: string): E2eQuery {
   return builder;
 }
 
+function authOffline(): boolean {
+  try {
+    return storage().getItem(AUTH_OFFLINE_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
 async function getUser() {
+  if (authOffline()) {
+    return {
+      data: { user: null },
+      error: { name: 'AuthRetryableFetchError', status: 0 },
+    };
+  }
   const session = currentSession();
   return { data: { user: session?.user ?? null }, error: null };
 }

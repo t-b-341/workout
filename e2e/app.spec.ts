@@ -4,6 +4,11 @@ import { collectPageErrors, expectNoHorizontalOverflow, signIn } from './helpers
 
 const ROUTES = ['/', '/recovery', '/history', '/cardio', '/program'] as const;
 
+test('signed-out / redirects to /login', async ({ page }) => {
+  await page.goto('/');
+  await page.waitForURL(/\/login/, { timeout: 20_000 });
+});
+
 test.describe('signed-in app (Pixel 5)', () => {
   test.describe.configure({ timeout: 90_000 });
 
@@ -27,6 +32,22 @@ test.describe('signed-in app (Pixel 5)', () => {
       expect(errors.pageErrors, errors.pageErrors.join('\n')).toEqual([]);
     });
   }
+
+  test('loads Today when getUser is offline and does not redirect', async ({ page }) => {
+    const errors = collectPageErrors(page);
+    await page.addInitScript(() => {
+      localStorage.setItem('e2e:auth-offline', '1');
+    });
+    await page.goto('/');
+    const nav = page.getByRole('navigation');
+    await expect(nav.getByRole('link', { name: 'Today' })).toBeVisible();
+    await expect(page).not.toHaveURL(/\/login/);
+    // The background getUser rejection must not navigate away after paint.
+    await page.waitForTimeout(1_000);
+    await expect(page).not.toHaveURL(/\/login/);
+    await expect(nav.getByRole('link', { name: 'Today' })).toBeVisible();
+    expect(errors.pageErrors, errors.pageErrors.join('\n')).toEqual([]);
+  });
 
   test('logs a set, finishes the session, and keeps Done after reload', async ({ page }) => {
     const errors = collectPageErrors(page);

@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { Suspense, useCallback, useEffect, useState } from 'react';
+import { isUserAllowed } from '@/lib/authAllowlist';
 import { createClient } from '@/lib/supabase/client';
 import {
   importCompletedSession,
@@ -36,6 +37,70 @@ declare global {
   }
 }
 
+/** Gateway and "no HTTP response" statuses. These are not an auth decision. */
+const RETRYABLE_AUTH_STATUSES = new Set([0, 502, 503, 504, 520, 521, 522, 523, 524, 530]);
+
+const DEFINITIVE_AUTH_CODES = new Set([
+  'session_not_found',
+  'bad_jwt',
+  'invalid_jwt',
+  'user_not_found',
+  'user_banned',
+  'session_expired',
+]);
+
+function authErrorFields(error: unknown): { name: string; status?: number; code: string; message: string } | null {
+  if (!error || typeof error !== 'object') return null;
+  const err = error as { name?: unknown; status?: unknown; code?: unknown; message?: unknown };
+  return {
+    name: typeof err.name === 'string' ? err.name : '',
+    status: typeof err.status === 'number' ? err.status : undefined,
+    code: typeof err.code === 'string' ? err.code : '',
+    message: typeof err.message === 'string' ? err.message : '',
+  };
+}
+
+/**
+ * Network and retryable auth failures: no response, a fetch throw, or an
+ * AuthRetryableFetchError (including gateway statuses). Stay signed in.
+ * A plain `{ name, status }` object counts — the e2e stub does not construct
+ * a real AuthError, and `isAuthRetryableFetchError` would miss it.
+ */
+function isRetryableAuthFailure(error: unknown): boolean {
+  const fields = authErrorFields(error);
+  if (!fields) {
+    if (!(error instanceof Error)) return false;
+    const message = error.message.toLowerCase();
+    return (
+      message.includes('failed to fetch')
+      || message.includes('fetch failed')
+      || message.includes('networkerror')
+      || message.includes('network request failed')
+      || message.includes('load failed')
+    );
+  }
+  if (fields.name === 'AuthRetryableFetchError') return true;
+  if (fields.status != null && RETRYABLE_AUTH_STATUSES.has(fields.status)) return true;
+  const message = fields.message.toLowerCase();
+  return (
+    message.includes('failed to fetch')
+    || message.includes('fetch failed')
+    || message.includes('networkerror')
+    || message.includes('network request failed')
+    || message.includes('load failed')
+  );
+}
+
+/** The server answered and the session itself is invalid. */
+function isDefinitiveAuthRejection(error: unknown): boolean {
+  const fields = authErrorFields(error);
+  if (!fields || isRetryableAuthFailure(error)) return false;
+  if (DEFINITIVE_AUTH_CODES.has(fields.code)) return true;
+  if (fields.name === 'AuthSessionMissingError' || fields.name === 'AuthInvalidJwtError') return true;
+  if (fields.status === 401 || fields.status === 403) return true;
+  return fields.name === 'AuthApiError' && fields.status === 400;
+}
+
 async function backfillSessionDurations() {
   const db = getDb();
   const sessions = await db.session_logs
@@ -61,6 +126,42 @@ async function backfillSessionDurations() {
   }
 }
 
+/**
+ * Confirms the stored session with the server. A retryable or network
+ * failure leaves the local session in place. A definitive rejection, or a
+ * user id outside the allowlist, clears the cache and sends the user to login.
+ */
+async function verifyStoredSession(
+  supabase: ReturnType<typeof createClient>,
+  stillCurrent: () => boolean,
+  replace: (href: string) => void,
+) {
+  let user: { id: string } | null = null;
+  let error: unknown = null;
+  try {
+    const result = await supabase.auth.getUser();
+    user = result.data.user;
+    error = result.error;
+  } catch (err) {
+    if (!stillCurrent() || isRetryableAuthFailure(err)) return;
+    console.warn('[AppShell] getUser failed:', err);
+    return;
+  }
+  if (!stillCurrent() || isRetryableAuthFailure(error)) return;
+  if (user && isUserAllowed(user.id) && !isDefinitiveAuthRejection(error)) return;
+  if (user && !isUserAllowed(user.id)) {
+    clearCachedUserId();
+    replace('/login?error=not_allowed');
+    return;
+  }
+  if ((!user && !error) || isDefinitiveAuthRejection(error)) {
+    clearCachedUserId();
+    replace('/login');
+    return;
+  }
+  if (error) console.warn('[AppShell] getUser unverified:', error);
+}
+
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
@@ -78,14 +179,22 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     (async () => {
       try {
         const supabase = createClient();
-        const { data: { user } } = await supabase.auth.getUser();
-        if (!user) {
+        // Stored session only — no network. Offline getUser() returns a null
+        // user plus a fetch error, which must not send a signed-in gym
+        // session to /login.
+        const { data: { session } } = await supabase.auth.getSession();
+        const sessionUserId = session?.user?.id;
+        if (!sessionUserId || !isUserAllowed(sessionUserId)) {
           clearCachedUserId();
-          router.replace('/login');
+          router.replace(
+            sessionUserId && !isUserAllowed(sessionUserId)
+              ? '/login?error=not_allowed'
+              : '/login',
+          );
           return;
         }
-        await initDb(user.id);
-        setCachedUserId(user.id);
+        await initDb(sessionUserId);
+        setCachedUserId(sessionUserId);
         // Allow the browser client to register the session on its headers.
         await new Promise((resolve) => setTimeout(resolve, 100));
         await ensureLocalSeed();
@@ -93,11 +202,15 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         // App is ready to render with local data.
         // Sync happens in background — failures don't block UI.
         if (!cancelled) {
-          setUserId(user.id);
+          setUserId(sessionUserId);
           setDbReady(true);
           setSyncing(true);
           setReady(true);
         }
+
+        void verifyStoredSession(supabase, () => cancelled, (href) => {
+          router.replace(href);
+        });
 
         try {
           await backfillSessionDurations();
@@ -105,9 +218,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           // otherwise rows queued offline get silently dropped because
           // pushOne can't find them after the wipe.
           await flushDirty();
-          await seedRemotePrescriptionsIfEmpty(user.id);
-          await seedRemoteTemplatesIfEmpty(user.id);
-          await ensureS1RemoteTemplate(user.id);
+          await seedRemotePrescriptionsIfEmpty(sessionUserId);
+          await seedRemoteTemplatesIfEmpty(sessionUserId);
+          await ensureS1RemoteTemplate(sessionUserId);
           await Promise.race([
             pullAll({ full: true }),
             new Promise<void>((_, reject) =>

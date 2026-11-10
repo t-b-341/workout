@@ -69,6 +69,18 @@ describe('e2e supabase stub', () => {
     expect(after.data.user).toBeNull();
   });
 
+  it('getUser reports a retryable fetch error when e2e:auth-offline is set', async () => {
+    document.cookie = 'e2e-user=1';
+    localStorage.setItem('e2e:auth-offline', '1');
+    const client = createE2eStubClient();
+    await expect(client.auth.getUser()).resolves.toEqual({
+      data: { user: null },
+      error: { name: 'AuthRetryableFetchError', status: 0 },
+    });
+    const session = await client.auth.getSession();
+    expect(session.data.session?.user.id).toBe(E2E_USER_ID);
+  });
+
   it('reports the missing lifts table and does not store rows', async () => {
     const client = createE2eStubClient();
     const result = await client.from('lifts').select('*');
