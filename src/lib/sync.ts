@@ -1,12 +1,14 @@
 'use client';
 
 import type { RealtimeChannel } from '@supabase/supabase-js';
+import type { Table } from 'dexie';
 import { getDb, type DirtyRow } from './db';
 import { offerDeleteUndo, type UndoRemoteTable } from './deleteUndoCoordinator';
 import { createClient } from './supabase/client';
 import { LIFTS, PRESCRIPTIONS, TEMPLATES } from './seed';
 import { fromRemote, toRemote } from './syncCodec';
-import { recordSyncError } from './syncDiagnostics';
+import { clearFlushFailures, recordFlushFailures, recordSyncError } from './syncDiagnostics';
+import { planFullPull } from './syncReconcile';
 import type {
   BodyMeasurementLog,
   BodyReadinessLog,
@@ -553,11 +555,10 @@ async function persistRows(table: SyncPullTable, rows: RowPayload[]) {
 
 /** Pull rows belonging to the user into local Dexie cache. Uses the
  *  per-table `updated_at` watermark so we only fetch what changed since
- *  last sync. Pass `{ full: true }` to clear and refetch (e.g. after
- *  sign-in or schema reset). */
+ *  last sync. Pass `{ full: true }` to refetch every row (e.g. after
+ *  sign-in or schema reset) without dropping local changes still queued. */
 export async function pullAll(opts: { full?: boolean } = {}) {
   const supabase = createClient();
-  const db = getDb();
   const pullErrors: Array<{ table: string; error: unknown }> = [];
 
   for (const table of ALL_TABLES) {
@@ -586,15 +587,14 @@ export async function pullAll(opts: { full?: boolean } = {}) {
         continue;
       }
 
+      const rows = (data ?? []) as RowPayload[];
       if (opts.full && !watermark) {
-        const localTable = db[TABLE_TO_LOCAL[table]];
-        // @ts-expect-error dynamic table access
-        await localTable.clear();
+        await reconcileFullPull(table, rows);
+      } else if (rows.length > 0) {
+        await persistRows(table, rows);
       }
 
-      const rows = (data ?? []) as RowPayload[];
       if (rows.length > 0) {
-        await persistRows(table, rows);
         let max = watermark ?? '';
         for (const r of rows) {
           const ts = (r.updated_at as string | undefined) ?? '';
@@ -619,6 +619,51 @@ export async function pullAll(opts: { full?: boolean } = {}) {
   // loads in a degraded state and syncs on next attempt.
 }
 
+/**
+ * Full pull: drop local rows the server no longer has, but keep dirty
+ * upserts and do not let the server overwrite a pending local change.
+ * Delete + persist for this table share one Dexie transaction.
+ */
+async function reconcileFullPull(table: SyncPullTable, rows: RowPayload[]) {
+  const db = getDb();
+  const localTable = db[TABLE_TO_LOCAL[table]] as Table;
+  const dirty = await db.dirty.toArray();
+  const dirtyUpsertIds: string[] = [];
+  const dirtyDeleteIds: string[] = [];
+  for (const item of dirty) {
+    if (item.table !== table) continue;
+    if (item.op === 'delete') dirtyDeleteIds.push(item.rowId);
+    else dirtyUpsertIds.push(item.rowId);
+  }
+
+  const keys = await localTable.toCollection().primaryKeys();
+  const localIds = keys.filter((id): id is string => typeof id === 'string');
+  const remoteLocalIds: string[] = [];
+  for (const row of rows) {
+    if (typeof row.id === 'string') remoteLocalIds.push(localIdFor(table, row.id));
+  }
+  const plan = planFullPull({
+    localIds,
+    remoteLocalIds,
+    dirtyUpsertIds,
+    dirtyDeleteIds,
+  });
+  const skip = new Set(plan.skipRemoteLocalIds);
+  const rowsToPersist = rows.filter((row) => {
+    if (typeof row.id !== 'string') return true;
+    return !skip.has(localIdFor(table, row.id));
+  });
+
+  await db.transaction('rw', localTable, async () => {
+    if (plan.deleteLocalIds.length > 0) {
+      await localTable.bulkDelete(plan.deleteLocalIds);
+    }
+    if (rowsToPersist.length > 0) {
+      await persistRows(table, rowsToPersist);
+    }
+  });
+}
+
 /** Mark a row dirty so the next flush pushes it. */
 export async function enqueueDirty(table: RemoteTable, rowId: string, op: DirtyRow['op'] = 'upsert') {
   const db = getDb();
@@ -637,7 +682,10 @@ export async function flushDirty() {
   const db = getDb();
   const supabase = createClient();
   const dirty = sortDirtyQueueForFlush(await db.dirty.toArray());
-  if (dirty.length === 0) return;
+  if (dirty.length === 0) {
+    clearFlushFailures();
+    return;
+  }
 
   const authUserId = await getAuthUserId();
   let refreshed = false;
@@ -688,6 +736,11 @@ export async function flushDirty() {
       `[flushDirty] ${failedItems.length} rows failed to push`,
       failedItems.map(f => `${f.item.table}:${f.item.rowId}`)
     );
+    // Same message pushOne already stored via recordSyncError.
+    const first = failedItems[0].err;
+    recordFlushFailures(failedItems.length, first.message || 'Upload failed');
+  } else {
+    clearFlushFailures();
   }
 }
 

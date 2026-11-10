@@ -2,18 +2,27 @@
 
 import Link from 'next/link';
 import { useDirtyQueueCount, useOnline } from '@/lib/hooks';
+import { useFlushFailures } from '@/lib/syncDiagnostics';
 
 /** Compact online/offline + dirty-queue hint for gym-floor confidence. */
 export function SyncStatusBar() {
   const pending = useDirtyQueueCount();
   const online = useOnline();
+  const flushFailures = useFlushFailures();
 
   if (pending === undefined) return null;
 
-  const statusDot = online ? 'bg-emerald-500' : 'bg-amber-500';
+  const uploadFailed = online && flushFailures != null && flushFailures.count > 0;
+  const statusDot = !online
+    ? 'bg-amber-500'
+    : uploadFailed
+      ? 'bg-rose-500'
+      : 'bg-emerald-500';
   let message: string;
   if (!online) {
     message = pending > 0 ? `Offline · ${pending} saved on this device` : 'Offline · changes stay on this device';
+  } else if (uploadFailed && flushFailures) {
+    message = `${flushFailures.count} failed to upload · ${flushFailures.message}`;
   } else if (pending > 0) {
     message = `${pending} waiting to upload`;
   } else {
@@ -30,7 +39,7 @@ export function SyncStatusBar() {
         <span className="truncate">{message}</span>
       </span>
       <Link href="/program" className="shrink-0 font-medium text-amber-400 hover:text-amber-300">
-        Sync
+        {uploadFailed ? 'Sync diagnostics' : 'Sync'}
       </Link>
     </div>
   );

@@ -52,4 +52,40 @@ test.describe('signed-in app (Pixel 5)', () => {
     await expect(page.getByText('Done', { exact: true }).first()).toBeVisible();
     expect(errors.pageErrors, errors.pageErrors.join('\n')).toEqual([]);
   });
+
+  test('keeps sets when set_logs uploads fail and shows the failed status', async ({ page }) => {
+    const errors = collectPageErrors(page);
+    await page.goto('/');
+    await expect(page.getByRole('button', { name: 'Skip readiness check' })).toBeVisible();
+    await page.getByRole('button', { name: 'Skip readiness check' }).click();
+    await expect(page.getByRole('button', { name: 'Start workout' })).toBeVisible();
+    await page.getByRole('button', { name: 'Start workout' }).click();
+    await expect(page.getByText('How recovered do you feel right now?')).toBeVisible();
+    await page.getByRole('button', { name: '5', exact: true }).click();
+    const logSet = page.getByRole('button', { name: 'Log set' });
+    await expect(logSet.first()).toBeVisible();
+
+    // Reject set_logs writes only. Selects still succeed, which is the wipe case.
+    await page.evaluate(() => localStorage.setItem('e2e:fail', 'set_logs'));
+    await logSet.first().click();
+    await expect(page.getByText('Done', { exact: true })).toHaveCount(1);
+    await logSet.first().click();
+    await expect(page.getByText('Done', { exact: true })).toHaveCount(2);
+
+    await page.reload();
+    const status = page.getByRole('status');
+    await expect(status).toContainText('failed to upload');
+    await expect(status).toContainText('e2e injected');
+    await expect(page.getByText('Done', { exact: true })).toHaveCount(2);
+    await expect(page.getByRole('link', { name: 'Sync diagnostics' })).toHaveAttribute('href', '/program');
+
+    await page.evaluate(() => localStorage.removeItem('e2e:fail'));
+    await page.getByRole('link', { name: 'Sync diagnostics' }).click();
+    await expect(page.getByRole('heading', { name: 'Program' })).toBeVisible();
+    await page.getByRole('button', { name: 'Sync', exact: true }).click();
+    await page.getByRole('navigation').getByRole('link', { name: 'Today' }).click();
+    await expect(page.getByRole('status')).toContainText('Up to date', { timeout: 20_000 });
+    await expect(page.getByText('Done', { exact: true })).toHaveCount(2);
+    expect(errors.pageErrors, errors.pageErrors.join('\n')).toEqual([]);
+  });
 });
