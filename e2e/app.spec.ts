@@ -274,6 +274,105 @@ test.describe('signed-in app (Pixel 5)', () => {
     expect(errors.pageErrors, errors.pageErrors.join('\n')).toEqual([]);
   });
 
+  test('prescription rows stack on a phone and keep the column header when wide', async ({ page }) => {
+    const errors = collectPageErrors(page);
+    await page.goto('/program');
+    await expect(page.getByRole('heading', { name: 'Program' })).toBeVisible();
+    await page.getByRole('button', { name: /^U1 ·/ }).click();
+    await expect(page.getByRole('combobox', { name: 'Lift for Push Press' })).toBeVisible();
+    const rows = page.locator('[data-prescription-row]');
+    await expect(rows.first()).toBeVisible();
+    await expect(page.locator('[data-prescription-header]')).toBeHidden();
+
+    const phone = await page.evaluate(() => {
+      const viewportWidth = window.innerWidth;
+      const rowEls = [...document.querySelectorAll<HTMLElement>('[data-prescription-row]')];
+      return {
+        viewportWidth,
+        scrollWidth: document.documentElement.scrollWidth,
+        clientWidth: document.documentElement.clientWidth,
+        rows: rowEls.map((row) => {
+          const select = row.querySelector('select');
+          const weight = row.querySelector<HTMLElement>('input[aria-label^="Weight for "]');
+          const sets = row.querySelector<HTMLElement>('input[aria-label^="Sets for "]');
+          const repMin = row.querySelector<HTMLElement>('input[aria-label^="Rep min for "]');
+          const notes = row.querySelector<HTMLElement>('input[aria-label^="Notes for "]');
+          const remove = [...row.querySelectorAll('button')].find((button) => button.textContent?.trim() === 'Remove');
+          const star = row.querySelector<HTMLElement>('button[aria-label="Pin lift"], button[aria-label="Unpin lift"]');
+          const up = row.querySelector<HTMLElement>('button[aria-label="Move exercise up"]');
+          const down = row.querySelector<HTMLElement>('button[aria-label="Move exercise down"]');
+          const liftName = select?.selectedOptions[0]?.textContent?.trim() ?? '';
+          const controls = [...row.querySelectorAll('input, select')].map((el) => ({
+            tag: el.tagName.toLowerCase(),
+            name: el.getAttribute('aria-label')?.trim() ?? '',
+          }));
+          const box = (el: Element | null | undefined) => {
+            const rect = el?.getBoundingClientRect();
+            return rect ? { width: rect.width, height: rect.height, top: rect.top, right: rect.right } : null;
+          };
+          return {
+            liftName,
+            select: box(select),
+            weight: box(weight),
+            sets: box(sets),
+            repMin: box(repMin),
+            notes: box(notes),
+            remove: box(remove),
+            star: box(star),
+            up: box(up),
+            down: box(down),
+            controls,
+          };
+        }),
+      };
+    });
+
+    expect(phone.rows.length).toBeGreaterThan(0);
+    for (const row of phone.rows) {
+      expect(row.liftName.length).toBeGreaterThan(0);
+      expect(row.select?.width ?? 0).toBeGreaterThanOrEqual(160);
+      expect(row.remove, 'Remove button').not.toBeNull();
+      expect(row.remove!.right).toBeLessThanOrEqual(phone.viewportWidth + 1);
+      expect(row.star!.width).toBeGreaterThanOrEqual(44);
+      expect(row.star!.height).toBeGreaterThanOrEqual(44);
+      expect(row.up!.width).toBeGreaterThanOrEqual(44);
+      expect(row.up!.height).toBeGreaterThanOrEqual(44);
+      expect(row.down!.width).toBeGreaterThanOrEqual(44);
+      expect(row.down!.height).toBeGreaterThanOrEqual(44);
+      expect(row.remove!.width).toBeGreaterThanOrEqual(44);
+      expect(row.remove!.height).toBeGreaterThanOrEqual(44);
+      expect(row.select!.top).toBeLessThan(row.weight!.top);
+      expect(Math.abs(row.weight!.top - row.sets!.top)).toBeLessThan(12);
+      expect(Math.abs(row.weight!.top - row.repMin!.top)).toBeLessThan(12);
+      expect(row.weight!.top).toBeLessThan(row.notes!.top);
+      expect(row.notes!.top).toBeLessThan(row.remove!.top);
+      expect(row.controls).toHaveLength(6);
+      for (const control of row.controls) {
+        expect(control.name, `${control.tag} accessible name`).toMatch(new RegExp(` for ${row.liftName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`));
+      }
+    }
+    await expectNoHorizontalOverflow(page);
+
+    const viewport = page.viewportSize();
+    await page.setViewportSize({ width: 1280, height: viewport?.height ?? 851 });
+    await expect(page.locator('[data-prescription-header]')).toBeVisible();
+
+    const wide = await page.evaluate(() => {
+      const row = document.querySelector('[data-prescription-row]');
+      if (!row) return null;
+      const top = (selector: string) => row.querySelector(selector)?.getBoundingClientRect().top ?? Number.NaN;
+      const selectTop = top('select');
+      const weightTop = top('input[aria-label^="Weight for "]');
+      const notesTop = top('input[aria-label^="Notes for "]');
+      return { selectTop, weightTop, notesTop };
+    });
+    expect(wide, 'prescription row on a wide viewport').not.toBeNull();
+    expect(Math.abs(wide!.selectTop - wide!.weightTop)).toBeLessThan(16);
+    expect(Math.abs(wide!.selectTop - wide!.notesTop)).toBeLessThan(16);
+
+    expect(errors.pageErrors, errors.pageErrors.join('\n')).toEqual([]);
+  });
+
   test('overwhelm trigger stays clear of the session Jump button', async ({ page }) => {
     const errors = collectPageErrors(page);
     await page.goto('/');

@@ -246,12 +246,14 @@ export function LooseIntField({
   min = 0,
   max = 9999,
   className,
+  'aria-label': ariaLabel,
 }: {
   value: number;
   onCommit: (n: number) => void;
   min?: number;
   max?: number;
   className?: string;
+  'aria-label'?: string;
 }) {
   const { setFocused, text, setText } = useBlurSyncedNumericText(value, String);
 
@@ -267,6 +269,7 @@ export function LooseIntField({
       type="text"
       inputMode="numeric"
       value={text}
+      aria-label={ariaLabel}
       className={className}
       onFocus={() => setFocused(true)}
       onBlur={() => {
@@ -375,11 +378,13 @@ export function LooseDecimalField({
   onCommit,
   className,
   allowNegative,
+  'aria-label': ariaLabel,
 }: {
   value: number;
   onCommit: (n: number) => void;
   className?: string;
   allowNegative?: boolean;
+  'aria-label'?: string;
 }) {
   const { setFocused, text, setText } = useBlurSyncedNumericText(value, String);
 
@@ -398,6 +403,7 @@ export function LooseDecimalField({
       type="text"
       inputMode="decimal"
       value={text}
+      aria-label={ariaLabel}
       className={className}
       onFocus={() => setFocused(true)}
       onBlur={() => {
