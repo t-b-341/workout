@@ -2,7 +2,7 @@ import { expect, test, type Page } from '@playwright/test';
 import { E2E_USER_ID } from '../src/lib/supabase/e2eStub';
 import { collectPageErrors, countDexieRows, expectNoHorizontalOverflow, signIn } from './helpers';
 
-const ROUTES = ['/', '/recovery', '/history', '/cardio', '/program'] as const;
+const ROUTES = ['/', '/recovery', '/history', '/cardio', '/program', '/program/meso-analysis'] as const;
 
 test('signed-out / redirects to /login', async ({ page }) => {
   await page.goto('/');
@@ -32,6 +32,28 @@ test.describe('signed-in app (Pixel 5)', () => {
       expect(errors.pageErrors, errors.pageErrors.join('\n')).toEqual([]);
     });
   }
+
+  test('/program/meso-analysis keeps the bottom nav after reload', async ({ page }) => {
+    const errors = collectPageErrors(page);
+
+    async function expectAnalysisShell() {
+      const nav = page.getByRole('navigation');
+      await expect(nav.getByRole('link', { name: 'Today' })).toBeVisible();
+      await expect(nav.getByRole('link', { name: 'Daily Check-In' })).toBeVisible();
+      await expect(nav.getByRole('link', { name: 'History' })).toBeVisible();
+      await expect(nav.getByRole('link', { name: 'Cardio' })).toBeVisible();
+      await expect(nav.getByRole('link', { name: 'Program' })).toBeVisible();
+      await expect(page.getByRole('heading', { name: 'Mesocycle analysis' })).toBeVisible();
+      await expect(page.getByText('DB not initialized')).toHaveCount(0);
+      await expectNoHorizontalOverflow(page);
+    }
+
+    await page.goto('/program/meso-analysis');
+    await expectAnalysisShell();
+    await page.reload();
+    await expectAnalysisShell();
+    expect(errors.pageErrors, errors.pageErrors.join('\n')).toEqual([]);
+  });
 
   test('loads Today when getUser is offline and does not redirect', async ({ page }) => {
     const errors = collectPageErrors(page);
