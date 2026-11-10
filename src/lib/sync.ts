@@ -8,6 +8,7 @@ import { createClient } from './supabase/client';
 import { LIFTS, PRESCRIPTIONS, TEMPLATES } from './seed';
 import { fromRemote, toRemote } from './syncCodec';
 import { clearFlushFailures, recordFlushFailures, recordSyncError } from './syncDiagnostics';
+import { fetchAllPages } from './syncPaging';
 import { planFullPull } from './syncReconcile';
 import type {
   BodyMeasurementLog,
@@ -556,7 +557,9 @@ async function persistRows(table: SyncPullTable, rows: RowPayload[]) {
 /** Pull rows belonging to the user into local Dexie cache. Uses the
  *  per-table `updated_at` watermark so we only fetch what changed since
  *  last sync. Pass `{ full: true }` to refetch every row (e.g. after
- *  sign-in or schema reset) without dropping local changes still queued. */
+ *  sign-in or schema reset) without dropping local changes still queued.
+ *  Each table is read in id order, one page at a time, and reconciled
+ *  only after every page has arrived. */
 export async function pullAll(opts: { full?: boolean } = {}) {
   const supabase = createClient();
   const pullErrors: Array<{ table: string; error: unknown }> = [];
@@ -564,9 +567,14 @@ export async function pullAll(opts: { full?: boolean } = {}) {
   for (const table of ALL_TABLES) {
     try {
       const watermark = opts.full ? null : await getWatermark(table);
-      let q = supabase.from(table).select('*');
-      if (watermark) q = q.gt('updated_at', watermark);
-      const { data, error } = await q;
+      const { rows, error } = await fetchAllPages(async (from, to) => {
+        let q = supabase.from(table).select('*');
+        if (watermark) q = q.gt('updated_at', watermark);
+        const { data, error: pageError } = await q
+          .order('id', { ascending: true })
+          .range(from, to);
+        return { data: (data ?? null) as RowPayload[] | null, error: pageError };
+      });
 
       if (error) {
         if (
@@ -586,8 +594,6 @@ export async function pullAll(opts: { full?: boolean } = {}) {
         pullErrors.push({ table, error });
         continue;
       }
-
-      const rows = (data ?? []) as RowPayload[];
       if (opts.full && !watermark) {
         await reconcileFullPull(table, rows);
       } else if (rows.length > 0) {

@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { E2E_USER_ID } from '../src/lib/supabase/e2eStub';
 import { collectPageErrors, expectNoHorizontalOverflow, signIn } from './helpers';
 
 const ROUTES = ['/', '/recovery', '/history', '/cardio', '/program'] as const;
@@ -86,6 +87,79 @@ test.describe('signed-in app (Pixel 5)', () => {
     await page.getByRole('navigation').getByRole('link', { name: 'Today' }).click();
     await expect(page.getByRole('status')).toContainText('Up to date', { timeout: 20_000 });
     await expect(page.getByText('Done', { exact: true })).toHaveCount(2);
+    expect(errors.pageErrors, errors.pageErrors.join('\n')).toEqual([]);
+  });
+
+  test('pulls 2,500 set logs for one session past the 1,000 row cap', async ({ page }) => {
+    const errors = collectPageErrors(page);
+    const sessionId = 'e2e-paged-session';
+    await page.addInitScript((seededSessionId: string) => {
+      const rows = [];
+      for (let i = 0; i < 2500; i++) {
+        rows.push({
+          id: `e2e-set-${String(i).padStart(4, '0')}`,
+          session_log_id: seededSessionId,
+          lift_id: 'bp',
+          prescription_id: 'e2e-rx',
+          set_index: i,
+          weight: 100,
+          reps: 5,
+          status: 'completed',
+          updated_at: '2026-01-01T00:00:00.000Z',
+        });
+      }
+      localStorage.setItem('e2e:db:set_logs', JSON.stringify(rows));
+    }, sessionId);
+
+    await page.goto('/');
+    await expect(page.getByRole('navigation').getByRole('link', { name: 'Today' })).toBeVisible();
+
+    await expect.poll(async () => {
+      return page.evaluate(async (args: { userId: string }) => {
+        const name = `workout-${args.userId}`;
+        const existing = await indexedDB.databases();
+        if (!existing.some((db) => db.name === name)) {
+          return { count: 0, sessionIds: [] as string[] };
+        }
+        return await new Promise<{ count: number; sessionIds: string[] }>((resolve, reject) => {
+          const req = indexedDB.open(name);
+          req.onerror = () => reject(req.error);
+          req.onsuccess = () => {
+            const db = req.result;
+            const finish = (value: { count: number; sessionIds: string[] }) => {
+              db.close();
+              resolve(value);
+            };
+            if (!db.objectStoreNames.contains('set_logs')) {
+              finish({ count: 0, sessionIds: [] });
+              return;
+            }
+            const getReq = db.transaction('set_logs', 'readonly').objectStore('set_logs').getAll();
+            getReq.onerror = () => {
+              db.close();
+              reject(getReq.error);
+            };
+            getReq.onsuccess = () => {
+              const stored = getReq.result as Array<{ sessionLogId?: string }>;
+              const sessionIds: string[] = [];
+              const seen = new Set<string>();
+              for (const row of stored) {
+                const id = row?.sessionLogId;
+                if (typeof id === 'string' && !seen.has(id)) {
+                  seen.add(id);
+                  sessionIds.push(id);
+                }
+              }
+              finish({ count: stored.length, sessionIds });
+            };
+          };
+        });
+      }, { userId: E2E_USER_ID });
+    }, { timeout: 30_000 }).toEqual({
+      count: 2500,
+      sessionIds: [sessionId],
+    });
+
     expect(errors.pageErrors, errors.pageErrors.join('\n')).toEqual([]);
   });
 });

@@ -114,6 +114,35 @@ describe('e2e supabase stub', () => {
     expect(left.data?.map((row) => row.id).sort()).toEqual(['a', 'c']);
   });
 
+  it('returns at most 1,000 rows unless a range is given', async () => {
+    const client = createE2eStubClient();
+    const seeded = Array.from({ length: 2500 }, (_, i) => ({
+      id: `row-${String(i).padStart(4, '0')}`,
+    }));
+    localStorage.setItem('e2e:db:set_logs', JSON.stringify(seeded));
+
+    const capped = await client.from('set_logs').select('*');
+    expect(capped.error).toBeNull();
+    expect(capped.data).toHaveLength(1000);
+
+    const page = await client
+      .from('set_logs')
+      .select('*')
+      .order('id', { ascending: true })
+      .range(1000, 1999);
+    expect(page.data).toHaveLength(1000);
+    expect(page.data?.[0]?.id).toBe('row-1000');
+    expect(page.data?.[999]?.id).toBe('row-1999');
+
+    const tail = await client
+      .from('set_logs')
+      .select('*')
+      .order('id', { ascending: true })
+      .range(2000, 2999);
+    expect(tail.data).toHaveLength(500);
+    expect(tail.data?.[0]?.id).toBe('row-2000');
+  });
+
   it('fails upsert and delete for tables listed in e2e:fail', async () => {
     const client = createE2eStubClient();
     await client.from('bodyweight_logs').upsert({ id: 'keep', bodyweight: 1 });

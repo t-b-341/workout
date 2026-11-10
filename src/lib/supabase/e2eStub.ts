@@ -6,6 +6,10 @@
  * Signed in only when the `e2e-user=1` cookie is present. Rows live in
  * localStorage under `e2e:db:<table>`. `localStorage['e2e:fail']` is a comma
  * list of tables whose upsert and delete calls fail.
+ *
+ * A select with no `.range()` returns at most 1,000 rows, matching
+ * PostgREST's default max-rows. `.range()` and `.order()` are honoured so a
+ * paged pull can read past that cap.
  */
 
 export const E2E_USER_ID = '00000000-0000-4000-8000-000000000001';
@@ -13,6 +17,8 @@ export const E2E_USER_ID = '00000000-0000-4000-8000-000000000001';
 const DB_PREFIX = 'e2e:db:';
 const FAIL_KEY = 'e2e:fail';
 const COOKIE_NAME = 'e2e-user';
+/** PostgREST default max-rows. Selects without `.range()` must not exceed it. */
+const DEFAULT_MAX_ROWS = 1000;
 
 type Row = Record<string, unknown>;
 
@@ -332,6 +338,8 @@ function createQuery(table: string): E2eQuery {
     const count = countMode ? rows.length : null;
     if (rangeFrom != null && rangeTo != null) {
       rows = rows.slice(rangeFrom, rangeTo + 1);
+    } else {
+      rows = rows.slice(0, DEFAULT_MAX_ROWS);
     }
     if (head) return ok(null, count);
     return ok(rows, count);
