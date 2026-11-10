@@ -109,7 +109,9 @@ export function TodayView() {
     const p = readTodayPlanPreference();
     return todayPlanPreferenceIsForToday(p) ? p.templateId : null;
   });
-  const [readinessSkipped, setReadinessSkipped] = useState(false);
+  // Session id whose check was just skipped or saved. Hides the form before the
+  // live query returns `readinessCompletedAt`. A different template still prompts.
+  const [readinessSkipSessionId, setReadinessSkipSessionId] = useState<string | null>(null);
   const [quickMode, setQuickMode] = useState(false);
   const [showStoicMoment, setShowStoicMoment] = useState(false);
   const [showOverwhelmProtocol, setShowOverwhelmProtocol] = useState(false);
@@ -270,8 +272,13 @@ export function TodayView() {
     ? MINI_TEMPLATE_IDS.has(session.templateId)
     : false;
 
+  const readinessSkipped = readinessSkipSessionId === session.id;
   const needsReadiness =
-    !readiness && !readinessSkipped && !session.startedAt && !session.completedAt;
+    !readiness &&
+    !readinessSkipped &&
+    !session.readinessCompletedAt &&
+    !session.startedAt &&
+    !session.completedAt;
   const checkinFullyCompleted = Boolean(readiness);
   const checkinSkipped = !readiness && Boolean(session.readinessCompletedAt);
 
@@ -524,7 +531,7 @@ export function TodayView() {
           <ReadinessForm
             session={session}
             promptBodyweight={activeTemplate.id === 'L1'}
-            onComplete={() => setReadinessSkipped(true)}
+            onComplete={() => setReadinessSkipSessionId(session.id)}
           />
           <button
             type="button"
@@ -532,7 +539,7 @@ export function TodayView() {
               await persistSessionUpdate(session, {
                 readinessCompletedAt: new Date().toISOString(),
               });
-              setReadinessSkipped(true);
+              setReadinessSkipSessionId(session.id);
             }}
             className="w-full text-xs text-zinc-500 underline underline-offset-2"
           >Skip readiness check</button>

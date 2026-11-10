@@ -213,4 +213,42 @@ test.describe('signed-in app (Pixel 5)', () => {
     await expect.poll(() => countDexieRows(page, 'supplement_logs')).toBe(1);
     expect(errors.pageErrors, errors.pageErrors.join('\n')).toEqual([]);
   });
+
+  test('skipped readiness stays dismissed after leaving Today and after reload', async ({ page }) => {
+    const errors = collectPageErrors(page);
+    await page.goto('/');
+    await expect(page.getByRole('button', { name: 'L1', exact: true })).toBeVisible();
+    await page.getByRole('button', { name: 'L1', exact: true }).click();
+    await expect(page.getByRole('button', { name: 'Skip readiness check' })).toBeVisible();
+    await page.getByRole('button', { name: 'Skip readiness check' }).click();
+    await expect(page.getByRole('button', { name: 'Start workout' })).toBeVisible();
+    await expect(page.getByText('How are you walking in?')).toHaveCount(0);
+
+    await page.getByRole('navigation').getByRole('link', { name: 'History' }).click();
+    await expect(page.getByRole('heading', { name: 'History' })).toBeVisible();
+    await page.getByRole('navigation').getByRole('link', { name: 'Today' }).click();
+    await expect(page.getByRole('button', { name: 'Start workout' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Skip readiness check' })).toHaveCount(0);
+    await expect(page.getByText('How are you walking in?')).toHaveCount(0);
+
+    await page.reload();
+    await expect(page.getByRole('navigation').getByRole('link', { name: 'Today' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Start workout' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Skip readiness check' })).toHaveCount(0);
+    await expect(page.getByText('How are you walking in?')).toHaveCount(0);
+    // pullAll({ full: true }) clears local rows and writes them back from the stub.
+    await page.waitForTimeout(2_000);
+    await expect(page.getByRole('button', { name: 'Start workout' })).toBeVisible();
+    await expect(page.getByText('How are you walking in?')).toHaveCount(0);
+
+    // The prompt is per session: a template with no readinessCompletedAt still asks.
+    await page.getByRole('button', { name: 'U2', exact: true }).click();
+    await expect(page.getByRole('button', { name: 'Skip readiness check' })).toBeVisible();
+    await expect(page.getByText('How are you walking in?')).toBeVisible();
+    await page.getByRole('button', { name: 'L1', exact: true }).click();
+    await expect(page.getByRole('button', { name: 'Start workout' })).toBeVisible();
+    await expect(page.getByText('How are you walking in?')).toHaveCount(0);
+
+    expect(errors.pageErrors, errors.pageErrors.join('\n')).toEqual([]);
+  });
 });
