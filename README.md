@@ -30,9 +30,8 @@ npm install
 Create a project at [supabase.com](https://supabase.com), then:
 
 1. Copy `.env.example` → `.env.local` and paste your project URL + anon key
-2. In the Supabase dashboard, go to **SQL Editor** and run, in order, every
-   file in `supabase/migrations/` (currently `0001_init.sql`,
-   `0002_timestamps.sql`, `0003_readiness.sql`). See
+2. In the Supabase dashboard, go to **SQL Editor** and run every file in
+   `supabase/migrations/` in filename order. See
    `supabase/migrations/README.md` for the rules around adding new ones.
 3. **Authentication → Providers → GitHub** — enable it
    - Register a GitHub OAuth app at
@@ -79,39 +78,68 @@ seed program loads on first run.
 - `/` — Today (auto-suggests session by day-of-week; readiness check at
   start; rest timer between sets; PR badges flash on save; live session
   duration)
+- `/recovery` — Daily Check-In (sleep, intake, stress, and the other daily logs)
 - `/cardio` — log LISS / intervals + weekly 150-min rollup
-- `/history` — six tabs:
+- `/history` — sixteen tabs:
   - **Sessions** — every session with sets, reasons, watch-flags
   - **Trends** — per-lift e1RM + volume sparklines
+  - **Types** — each program day compared only to itself
   - **Weeks** — weekly volume / cardio / mode counts / pattern coverage /
     sets-per-muscle-group / top sets
   - **PRs** — chronological PR feed (per-rep weight PRs)
+  - **Goals** — lifting and bodyweight goals
   - **Muscle** — last-12-weeks pattern + muscle-group set counts
   - **BW** — bodyweight chart with raw + 4-week rolling average
+  - **Measure** — body measurements
+  - **Diet** — nutrition logs
+  - **Supplements** — supplement logs
+  - **Caffeine** — caffeine logs
+  - **Hydration** — hydration logs
+  - **Injuries** — injury episodes
+  - **HRV** — HRV readings and variability
+  - **Strength Balance** — main-lift strength ratios
 - `/lifts/[liftId]` — movement-specific dashboard (active prescriptions,
   e1RM trend, top-set + volume bars, PR table by rep range, full session log)
-- `/program` — desktop-friendly editor for prescriptions
+- `/program` — editor for prescriptions, schedule, and mesocycles
+- `/program/meso-analysis` — mesocycle analysis for a named block or a custom
+  date range
+- `/settings` — reminders, wellness targets, Today display prefs, visible
+  measurements, and the wide/phone layout choice
+- `/login` — GitHub sign-in
+- `/auth/callback` — OAuth code exchange
+
+## Access
+
+`NEXT_PUBLIC_ALLOWED_USER_IDS` is an extra gate after GitHub sign-in. It is a
+comma-separated list of Supabase user UUIDs. When the variable is empty, the
+gate is off (`src/lib/authAllowlist.ts`). Set it in Vercel for a deployed app.
+Row-level security in Supabase is the real protection; this variable only
+limits which signed-in users see the app UI.
 
 ## Deploy
 
-Push to GitHub, import in [Vercel](https://vercel.com), set the same two env
-vars (`NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`). Add the
-Vercel URL to GitHub OAuth app redirect URIs.
+Push to GitHub, import in [Vercel](https://vercel.com), and set
+`NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY`. Set
+`NEXT_PUBLIC_ALLOWED_USER_IDS` there too if you want the allowlist on (see
+Access). Add the Vercel URL to the GitHub OAuth app redirect URIs.
 
-GitHub Actions runs **lint, unit tests, Playwright mobile smoke, and production
-build** on every push and pull request (`.github/workflows/ci.yml`). Before a
-meaningful release, see `docs/release-checklist.md`.
+GitHub Actions runs **lint, typecheck, unit tests, Playwright mobile smoke, and
+production build** on every push and pull request (`.github/workflows/ci.yml`).
+Before a meaningful release, see `docs/release-checklist.md`.
 
 ## Tests
 
 ```bash
-npm test           # one-shot
-npm run test:watch # rerun on change
+npm test              # Vitest, one-shot
+npm run test:watch    # rerun on change
+npm run test:e2e      # Playwright mobile smoke (headless)
+npm run test:e2e:ui   # interactive runner + trace viewer
+npm run typecheck     # tsc --noEmit, including test files
 ```
 
-The progression engine is the highest-leverage piece of logic — it's covered
-by 20 unit tests in `tests/progression.test.ts` (standard / light / skip /
-deload, per-side lifts, increment overrides, snapping helpers).
+The progression engine is the highest-leverage piece of logic. It is covered
+in `tests/progression.test.ts` (standard / light / skip / deload, per-side
+lifts, increment overrides, snapping helpers).
 
 ### Mobile layout from desktop
 

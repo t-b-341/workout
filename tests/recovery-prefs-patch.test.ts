@@ -17,7 +17,12 @@ vi.mock('../src/lib/db', () => {
   };
 });
 
-import { DEFAULT_RECOVERY_PREFS, loadRecoveryPrefs, patchRecoveryPrefs } from '../src/lib/recoveryPrefs';
+import {
+  DEFAULT_RECOVERY_PREFS,
+  loadRecoveryPrefs,
+  patchRecoveryPrefs,
+  type RecoveryPrefs,
+} from '../src/lib/recoveryPrefs';
 
 describe('patchRecoveryPrefs', () => {
   beforeEach(() => {
@@ -57,7 +62,8 @@ describe('patchRecoveryPrefs', () => {
     });
 
     await patchRecoveryPrefs({
-      nutritionTargets: { proteinG: 205 },
+      // Nested targets are merged at runtime; Partial<RecoveryPrefs> still requires a full object.
+      nutritionTargets: { proteinG: 205 } as RecoveryPrefs['nutritionTargets'],
     });
 
     const prefs = await loadRecoveryPrefs();

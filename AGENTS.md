@@ -26,9 +26,15 @@ Playwright boots the dev server with `NEXT_PUBLIC_E2E_STUB=1` (and `NODE_ENV` is
 - `npm run dev` — dev server
 - `npm test` / `npm run test:watch` — Vitest (`tests/*.test.ts`)
 - `npm run test:e2e` / `npm run test:e2e:ui` — Playwright mobile smoke (`e2e/`)
-- `npm run lint` / `npm run build`
+- `npm run lint` / `npm run typecheck` / `npm run build`
 
-**After code changes:** run the full test suite before finishing — `npm test` then `npm run test:e2e` (both must pass). Do not report work complete after unit tests only.
+**After code changes:** run the full suite before finishing. All of these must pass:
+
+- `npm run typecheck`
+- `npm test`
+- `npm run test:e2e`
+
+Do not report work complete after unit tests only.
 
 ## Docs
 

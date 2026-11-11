@@ -8,12 +8,11 @@ import type { Lift, Prescription, TemplateId } from '../src/lib/types';
 
 function lift(overrides: Partial<Lift> & Pick<Lift, 'id'>): Lift {
   return {
-    id: overrides.id,
-    name: overrides.name ?? overrides.id,
-    equipment: overrides.equipment ?? 'barbell',
-    loadUnit: overrides.loadUnit ?? 'lb',
-    repUnit: overrides.repUnit ?? 'reps',
-    increment: overrides.increment ?? 5,
+    name: overrides.id,
+    equipment: 'barbell',
+    loadUnit: 'lb',
+    repUnit: 'reps',
+    increment: 5,
     ...overrides,
   };
 }
@@ -52,7 +51,7 @@ describe('applyStandardDeload', () => {
 
   it('accessory weighted: halves sets (rounded) and scales load', () => {
     const p = rx({ liftId: 'jm_press', weight: 100, sets: 5, repMin: 8, repMax: 12 });
-    const out = applyStandardDeload(p, lift({ id: 'jm_press', loadUnit: 'lb', equipment: 'dumbbells' }));
+    const out = applyStandardDeload(p, lift({ id: 'jm_press', loadUnit: 'lb', equipment: 'dumbbell' }));
     expect(out.weight).toBe(85);
     expect(out.sets).toBe(3);
     expect(out.repMin).toBe(8);
