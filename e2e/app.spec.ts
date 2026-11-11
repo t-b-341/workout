@@ -2,7 +2,7 @@ import { expect, test, type Page } from '@playwright/test';
 import { E2E_USER_ID } from '../src/lib/supabase/e2eStub';
 import { collectPageErrors, countDexieRows, expectNoHorizontalOverflow, signIn } from './helpers';
 
-const ROUTES = ['/', '/recovery', '/history', '/cardio', '/program', '/program/meso-analysis'] as const;
+const ROUTES = ['/', '/recovery', '/history', '/cardio', '/program', '/program/meso-analysis', '/settings'] as const;
 
 test('signed-out / redirects to /login', async ({ page }) => {
   await page.goto('/');
@@ -550,6 +550,125 @@ test.describe('signed-in app (Pixel 5)', () => {
     await page.setViewportSize({ width: 360, height: viewport?.height ?? 851 });
     await expectOverwhelmClearOfJump(page);
 
+    expect(errors.pageErrors, errors.pageErrors.join('\n')).toEqual([]);
+  });
+
+  test('/settings loads with the bottom nav and shows all four groups', async ({ page }) => {
+    const errors = collectPageErrors(page);
+    await page.goto('/settings');
+    const nav = page.getByRole('navigation');
+    await expect(nav.getByRole('link', { name: 'Today' })).toBeVisible();
+    await expect(nav.getByRole('link', { name: 'Daily Check-In' })).toBeVisible();
+    await expect(nav.getByRole('link', { name: 'History' })).toBeVisible();
+    await expect(nav.getByRole('link', { name: 'Cardio' })).toBeVisible();
+    await expect(nav.getByRole('link', { name: 'Program' })).toBeVisible();
+    await expect(nav.getByRole('link', { name: 'Settings' })).toHaveCount(0);
+    await expect(page.getByRole('heading', { name: 'Settings' })).toBeVisible();
+    await expect(page.getByText('Reminders', { exact: true })).toBeVisible();
+    await expect(page.getByText('Mindfulness & cardio goals')).toBeVisible();
+    await expect(page.getByText('Today tab', { exact: true })).toBeVisible();
+    await expect(page.getByText('Visible measurements', { exact: true })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Phone', exact: true })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Wide', exact: true })).toBeVisible();
+    await expect(page.getByRole('link', { name: 'Sync diagnostics' })).toHaveAttribute(
+      'href',
+      '/program#sync-diagnostics',
+    );
+    await expectNoHorizontalOverflow(page);
+    expect(errors.pageErrors, errors.pageErrors.join('\n')).toEqual([]);
+  });
+
+  test('hide prescribed sessions from Settings, then show them again', async ({ page }) => {
+    const errors = collectPageErrors(page);
+    await page.goto('/settings');
+    await page.getByRole('button', { name: 'Hide prescribed sessions on Today' }).click();
+    await expect(page.getByRole('button', { name: 'Show prescribed sessions on Today' })).toBeVisible();
+
+    await page.getByRole('navigation').getByRole('link', { name: 'Today' }).click();
+    await expect(page.getByText("Today's workout")).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Skip readiness check' })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: /Quick Session/ })).toBeVisible();
+
+    await page.getByRole('link', { name: 'Settings' }).click();
+    await page.getByRole('button', { name: 'Show prescribed sessions on Today' }).click();
+    await expect(page.getByRole('button', { name: 'Hide prescribed sessions on Today' })).toBeVisible();
+    await page.getByRole('navigation').getByRole('link', { name: 'Today' }).click();
+    await expect(page.getByText("Today's workout")).toBeVisible();
+    expect(errors.pageErrors, errors.pageErrors.join('\n')).toEqual([]);
+  });
+
+  test('/recovery stays short when every daily card is collapsed', async ({ page }) => {
+    const errors = collectPageErrors(page);
+    await page.setViewportSize({ width: 412, height: 915 });
+    await page.goto('/recovery');
+    await expect(page.getByRole('heading', { name: 'Daily Check-In' })).toBeVisible();
+    await expect(page.getByRole('link', { name: 'Settings' })).toBeVisible();
+    await expect(page.getByText('Visible templates')).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Save sleep' })).toHaveCount(0);
+    await expect(page.getByText('Daily recovery')).toBeVisible();
+    await expect(page.getByText("Today's recommendations")).toBeVisible();
+
+    const morning = page.getByRole('heading', { name: 'Morning', exact: true });
+    const intake = page.getByRole('heading', { name: 'Intake', exact: true });
+    const mind = page.getByRole('heading', { name: 'Mind', exact: true });
+    const body = page.getByRole('heading', { name: 'Body', exact: true });
+    await expect(morning).toBeVisible();
+    await expect(intake).toBeVisible();
+    await expect(mind).toBeVisible();
+    await expect(body).toBeVisible();
+
+    const scoreBox = await documentBox(page.getByText('Daily recovery'));
+    const recBox = await documentBox(page.getByText("Today's recommendations"));
+    const morningBox = await documentBox(morning);
+    const intakeBox = await documentBox(intake);
+    const mindBox = await documentBox(mind);
+    const bodyBox = await documentBox(body);
+    expect(scoreBox.top).toBeLessThan(recBox.top);
+    expect(recBox.top).toBeLessThan(morningBox.top);
+    expect(morningBox.top).toBeLessThan(intakeBox.top);
+    expect(intakeBox.top).toBeLessThan(mindBox.top);
+    expect(mindBox.top).toBeLessThan(bodyBox.top);
+
+    const metrics = await page.evaluate(() => ({
+      height: document.documentElement.scrollHeight,
+      controls: document.querySelectorAll('button, input, select, textarea, a[href]').length,
+      viewport: `${window.innerWidth}x${window.innerHeight}`,
+    }));
+    console.log(`recovery-collapsed ${JSON.stringify(metrics)}`);
+    expect(metrics.height).toBeLessThan(2500);
+    await expectNoHorizontalOverflow(page);
+    expect(errors.pageErrors, errors.pageErrors.join('\n')).toEqual([]);
+  });
+
+  test('sleep row summary keeps the saved hours and quality', async ({ page }) => {
+    const errors = collectPageErrors(page);
+    await page.goto('/recovery');
+    const sleepRow = page.getByRole('button', { name: /^Sleep/ });
+    await expect(sleepRow).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Save sleep' })).toHaveCount(0);
+    await sleepRow.click();
+    await expect(page.getByRole('button', { name: 'Save sleep' })).toBeVisible();
+    await page.getByLabel('Hours').fill('7.5');
+    await page.getByLabel(/Quality/).fill('4');
+    await page.getByRole('button', { name: 'Save sleep' }).click();
+    await expect(sleepRow).toContainText('7.5 h, quality 4');
+    await expect.poll(() => page.evaluate(() => localStorage.getItem('e2e:db:sleep_logs') ?? '')).toContain('7.5');
+    await page.reload();
+    await expect(page.getByRole('button', { name: /^Sleep/ })).toContainText('7.5 h, quality 4');
+    expect(errors.pageErrors, errors.pageErrors.join('\n')).toEqual([]);
+  });
+
+  test('the gear link on Today opens /settings', async ({ page }) => {
+    const errors = collectPageErrors(page);
+    await page.goto('/');
+    const gear = page.getByRole('link', { name: 'Settings' });
+    await expect(gear).toBeVisible();
+    const box = await gear.boundingBox();
+    expect(box?.width ?? 0).toBeGreaterThanOrEqual(44);
+    expect(box?.height ?? 0).toBeGreaterThanOrEqual(44);
+    await gear.click();
+    await expect(page).toHaveURL(/\/settings$/);
+    await expect(page.getByRole('heading', { name: 'Settings' })).toBeVisible();
     expect(errors.pageErrors, errors.pageErrors.join('\n')).toEqual([]);
   });
 });

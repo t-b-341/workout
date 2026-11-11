@@ -1,9 +1,11 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useMemo, useState, type ReactNode } from 'react';
 import {
   useAllBodyweight,
+  useAllInjuryEpisodes,
   useAllNutrition,
+  useBodyweightForDate,
   useHydrationForDate,
   useMacroTrendAdvice,
   useMindfulnessForDate,
@@ -41,20 +43,35 @@ import { kcalFromMacros } from '@/lib/macros';
 import { deriveMealMetrics, sortMealTimestamps } from '@/lib/mealTiming';
 import { replaceMealTimestampsForDay } from '@/lib/nutritionMealQuick';
 import { flushDirty, localDelete, localUpsert } from '@/lib/sync';
+import { useSupplementsForDate } from '@/lib/supplements';
 import { todayIso } from '@/lib/time';
-import type { HydrationLog, NutritionDayType, NutritionLog, ReadinessLog, SessionLog, StressLog } from '@/lib/types';
+import type {
+  BodyweightLog,
+  CaffeineLog,
+  HydrationLog,
+  InjuryEpisode,
+  MindfulnessLog,
+  NutritionDayType,
+  NutritionLog,
+  OralHealthLog,
+  ReadinessLog,
+  RelationshipCheckin,
+  SessionLog,
+  SleepLog,
+  StoicCheckin,
+  StressLog,
+} from '@/lib/types';
 import { NUTRITION_DAY_TYPES } from '@/lib/types';
 import { defaultNutritionDayType } from '@/lib/nutritionDayType';
 import { CbtThoughtRecordSheet } from './CbtThoughtRecordSheet';
 import { StoicMomentSheet } from './StoicMomentSheet';
 import { BodyweightQuickLog } from './BodyweightQuickLog';
 import { InjuryTrackingPanel } from './InjuryTrackingPanel';
+import { CollapsibleCard } from './CollapsibleCard';
 import { MacroTrendCallout } from './MacroTrendCallout';
+import { PageHeader } from './SettingsGearLink';
 import { PageShell } from './PageShell';
 import { SupplementsCard } from './SupplementsCard';
-import { TrackerReminderCard } from './TrackerReminderCard';
-import { WellnessTargetsCard } from './WellnessTargetsCard';
-import { TodayPrescribedPrefCard } from './TodayPrescribedPrefCard';
 import { MindfulnessEntriesSection } from './MindfulnessEntriesSection';
 
 function clamp(n: number, min: number, max: number): number {
@@ -414,6 +431,126 @@ function DailyRecoveryExplainSheet({
   );
 }
 
+function formatHours(n: number): string {
+  const rounded = Math.round(n * 10) / 10;
+  return Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(1);
+}
+
+function formatAmount(n: number): string {
+  const rounded = Math.round(n * 10) / 10;
+  return Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(1);
+}
+
+function sleepRowSummary(sleep: SleepLog | undefined): string {
+  if (!sleep) return 'Not logged';
+  return `${formatHours(sleep.sleepHours)} h, quality ${sleep.sleepQuality}`;
+}
+
+function napRowSummary(row: ReadinessLog | undefined): string {
+  const min = row?.napDurationMin ?? 0;
+  if (min <= 0) return 'Not logged';
+  if (row?.napTiming === 'late') return `${min} min, after 3pm`;
+  if (row?.napTiming === 'early') return `${min} min, before 3pm`;
+  return `${min} min`;
+}
+
+function reflectionRowSummary(checkin: StoicCheckin | undefined, momentCount: number): string {
+  const tension = checkin?.tension.trim();
+  if (tension) {
+    const one = tension.replace(/\s+/g, ' ');
+    return one.length > 48 ? `${one.slice(0, 47)}…` : one;
+  }
+  if (checkin && (checkin.withinControl.trim() || checkin.intention.trim())) return 'Logged';
+  if (momentCount > 0) return momentCount === 1 ? '1 moment' : `${momentCount} moments`;
+  return 'Not logged';
+}
+
+function ateRowSummary(log: NutritionLog | undefined): string {
+  const stamped = log?.mealTimestamps?.length;
+  const n = stamped != null ? stamped : (log?.mealsLoggedCount ?? 0);
+  if (n <= 0) return 'Not logged';
+  return n === 1 ? '1 meal' : `${n} meals`;
+}
+
+function hydrationRowSummary(log: HydrationLog | undefined): string {
+  if (!log || log.waterActualMl <= 0) return 'Not logged';
+  return `${formatAmount(mlToUsFloz(log.waterActualMl))} oz`;
+}
+
+function nutritionRowSummary(log: NutritionLog | undefined): string {
+  if (!log) return 'Not logged';
+  const fromMacros = kcalFromMacros(log.proteinActualG, log.carbsActualG, log.fatActualG);
+  const kcal = fromMacros > 0 ? fromMacros : log.caloriesActual;
+  if (kcal <= 0) return 'Not logged';
+  return `${Math.round(kcal)} kcal`;
+}
+
+function caffeineRowSummary(logs: CaffeineLog[] | undefined): string {
+  const total = (logs ?? []).reduce((sum, row) => sum + row.amountMg, 0);
+  if (total <= 0) return 'Not logged';
+  return `${total} mg`;
+}
+
+function supplementRowSummary(
+  row: { zma: boolean; d3k2: boolean; multi: boolean; creatine: boolean } | undefined,
+): string {
+  if (!row) return 'Not logged';
+  const n = [row.zma, row.d3k2, row.multi, row.creatine].filter(Boolean).length;
+  if (n === 0) return 'Not logged';
+  return `${n} of 4`;
+}
+
+function stressRowSummary(entries: StressLog[] | undefined): string {
+  const rows = entries ?? [];
+  if (rows.length === 0) return 'Not logged';
+  const only = rows[0];
+  if (rows.length === 1 && only) return `rating ${only.rating}`;
+  const avg = averageStressRating(rows);
+  return `${rows.length} check-ins, avg ${avg == null ? '—' : avg.toFixed(1)}`;
+}
+
+function mindfulnessRowSummary(logs: MindfulnessLog[] | undefined): string {
+  const rows = logs ?? [];
+  if (rows.length === 0) return 'Not logged';
+  const minutes = rows.reduce((sum, row) => sum + (row.durationMin ?? 0), 0);
+  if (minutes > 0) return `${minutes} min`;
+  return rows.length === 1 ? '1 entry' : `${rows.length} entries`;
+}
+
+function relationshipRowSummary(row: RelationshipCheckin | undefined): string {
+  if (!row) return 'Not logged';
+  return `connection ${row.connectionRating}/5`;
+}
+
+function bodyweightRowSummary(row: BodyweightLog | undefined): string {
+  if (!row) return 'Not logged';
+  return `${formatAmount(row.bodyweight)} lb`;
+}
+
+function injuryRowSummary(episodes: InjuryEpisode[] | undefined): string {
+  if (!episodes) return '…';
+  const sites = new Set(episodes.filter((episode) => !episode.endedAt).map((episode) => episode.siteKey));
+  if (sites.size === 0) return 'None active';
+  return sites.size === 1 ? '1 active' : `${sites.size} active`;
+}
+
+function oralRowSummary(row: OralHealthLog | undefined): string {
+  if (!row) return 'Not logged';
+  const n = [row.tongueScrape, row.brush, row.floss, row.mouthwash].filter(Boolean).length;
+  if (n === 0) return 'Not logged';
+  if (n === 4) return 'All done';
+  return `${n} of 4`;
+}
+
+function CheckinGroup({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <section className="space-y-2">
+      <h2 className="px-1 text-xs font-medium uppercase tracking-wider text-zinc-500">{title}</h2>
+      {children}
+    </section>
+  );
+}
+
 export function RecoveryView() {
   const date = todayIso();
   const [showStoicMoment, setShowStoicMoment] = useState(false);
@@ -431,6 +568,14 @@ export function RecoveryView() {
   const session = useTodaySession(todayPlanTemplateId);
   const readiness = useReadinessForSession(session?.id);
   const yesterdayReadiness = useReadinessForDate(yesterday);
+  const napReadiness = useReadinessForDate(date);
+  const stoicCheckin = useStoicCheckinForDate(date);
+  const caffeineLogs = useCaffeineLogsForDate(date);
+  const oralHealth = useOralHealthForDate(date);
+  const relationship = useRelationshipCheckinForDate(date);
+  const bodyweightToday = useBodyweightForDate(date);
+  const injuryEpisodes = useAllInjuryEpisodes();
+  const supplementsToday = useSupplementsForDate(date);
 
   const score = useMemo(
     () =>
@@ -468,30 +613,7 @@ export function RecoveryView() {
 
   return (
     <PageShell className="p-4 space-y-4">
-      <MacroTrendCallout advice={macroTrend} title="Fueling trend (days before today)" />
-
-        <DidYouEatQuickSection date={date} existing={nutrition} prefs={prefs} />
-
-        <NapQuickLogCard date={date} />
-
-        <StoicCheckinCard
-          date={date}
-          momentCount={stoicMoments?.length ?? 0}
-          onQuickMoment={() => setShowStoicMoment(true)}
-        />
-
-        <SupplementsCard date={date} />
-
-        <CaffeineCard date={date} />
-
-        <OralHealthCard date={date} />
-
-        <RelationshipCheckinCard date={date} />
-
-        <StressSection date={date} entries={stress ?? []} />
-
-        <MindfulnessEntriesSection date={date} />
-      <SleepSection date={date} existing={sleep} />
+      <PageHeader title="Daily Check-In" />
 
       <div className="rounded-2xl bg-zinc-900 border border-zinc-800 p-4">
         <div className="flex items-start justify-between gap-2">
@@ -531,18 +653,6 @@ export function RecoveryView() {
         weights={compositeExplainWeights}
       />
 
-      <TrackerReminderCard />
-
-      <WellnessTargetsCard />
-
-      <TodayPrescribedPrefCard />
-
-      <BodyweightQuickLog date={date} />
-      <HydrationSection date={date} existing={hydration} prefs={prefs} />
-      <NutritionSection date={date} existing={nutrition} prefs={prefs} />
-
-      <InjuryTrackingPanel />
-
       <div className="rounded-2xl bg-zinc-900 border border-zinc-800 p-4 space-y-2">
         <div className="text-sm font-medium">Today&apos;s recommendations</div>
         <div className="space-y-1.5 text-sm text-zinc-300">
@@ -555,6 +665,78 @@ export function RecoveryView() {
         <div className="text-sm text-zinc-300">{plan.cardioNote}</div>
         <div className="text-sm text-zinc-300">{plan.nutritionNote}</div>
       </div>
+
+      <MacroTrendCallout advice={macroTrend} title="Fueling trend (days before today)" />
+
+      <CheckinGroup title="Morning">
+        <CollapsibleCard sectionId="checkin-sleep" title="Sleep" summary={sleepRowSummary(sleep)}>
+          <SleepSection date={date} existing={sleep} />
+        </CollapsibleCard>
+        <CollapsibleCard sectionId="checkin-nap" title="Nap" summary={napRowSummary(napReadiness)}>
+          <NapQuickLogCard date={date} />
+        </CollapsibleCard>
+        <CollapsibleCard
+          sectionId="checkin-reflection"
+          title="Morning reflection"
+          summary={reflectionRowSummary(stoicCheckin, stoicMoments?.length ?? 0)}
+        >
+          <StoicCheckinCard
+            date={date}
+            momentCount={stoicMoments?.length ?? 0}
+            onQuickMoment={() => setShowStoicMoment(true)}
+          />
+        </CollapsibleCard>
+      </CheckinGroup>
+
+      <CheckinGroup title="Intake">
+        <CollapsibleCard sectionId="checkin-ate" title="Did you eat?" summary={ateRowSummary(nutrition)}>
+          <DidYouEatQuickSection date={date} existing={nutrition} prefs={prefs} />
+        </CollapsibleCard>
+        <CollapsibleCard sectionId="checkin-hydration" title="Hydration" summary={hydrationRowSummary(hydration)}>
+          <HydrationSection date={date} existing={hydration} prefs={prefs} />
+        </CollapsibleCard>
+        <CollapsibleCard sectionId="checkin-nutrition" title="Nutrition & macros" summary={nutritionRowSummary(nutrition)}>
+          <NutritionSection date={date} existing={nutrition} prefs={prefs} />
+        </CollapsibleCard>
+        <CollapsibleCard sectionId="checkin-caffeine" title="Caffeine" summary={caffeineRowSummary(caffeineLogs)}>
+          <CaffeineCard date={date} />
+        </CollapsibleCard>
+        <CollapsibleCard sectionId="checkin-supplements" title="Supplements" summary={supplementRowSummary(supplementsToday)}>
+          <SupplementsCard date={date} />
+        </CollapsibleCard>
+      </CheckinGroup>
+
+      <CheckinGroup title="Mind">
+        <CollapsibleCard sectionId="checkin-stress" title="Stress check" summary={stressRowSummary(stress)}>
+          <StressSection date={date} entries={stress ?? []} />
+        </CollapsibleCard>
+        <CollapsibleCard
+          sectionId="checkin-mindfulness"
+          title="Meditation / mindfulness"
+          summary={mindfulnessRowSummary(mindfulness)}
+        >
+          <MindfulnessEntriesSection date={date} />
+        </CollapsibleCard>
+        <CollapsibleCard
+          sectionId="checkin-relationship"
+          title="Relationship"
+          summary={relationshipRowSummary(relationship)}
+        >
+          <RelationshipCheckinCard date={date} />
+        </CollapsibleCard>
+      </CheckinGroup>
+
+      <CheckinGroup title="Body">
+        <CollapsibleCard sectionId="checkin-bodyweight" title="Bodyweight" summary={bodyweightRowSummary(bodyweightToday)}>
+          <BodyweightQuickLog date={date} />
+        </CollapsibleCard>
+        <CollapsibleCard sectionId="checkin-injuries" title="Current injuries & body state" summary={injuryRowSummary(injuryEpisodes)}>
+          <InjuryTrackingPanel />
+        </CollapsibleCard>
+        <CollapsibleCard sectionId="checkin-oral" title="Oral health" summary={oralRowSummary(oralHealth)}>
+          <OralHealthCard date={date} />
+        </CollapsibleCard>
+      </CheckinGroup>
 
       {showStoicMoment && (
         <StoicMomentSheet

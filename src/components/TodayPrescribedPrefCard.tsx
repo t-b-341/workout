@@ -23,7 +23,6 @@ const MEASURE_FIELDS: { key: string; label: string }[] = [
 export function TodayPrescribedPrefCard() {
   const hidden = useHidePrescribed();
   const disabledIds = useDisabledTemplateIds();
-  const disabledMeasureFields = useDisabledMeasureFields();
   const templates = useLiveQuery(
     async () => (await getDb().templates.toArray()).filter((t) => t.id !== 'QUICK'),
     [],
@@ -95,30 +94,37 @@ export function TodayPrescribedPrefCard() {
           })}
         </div>
       </div>
-      <div className="border-t border-zinc-800 pt-3 mt-1 space-y-2">
-        <div className="text-sm font-medium text-zinc-200">Visible measurements</div>
-        <p className="text-xs text-zinc-500">
-          Choose which measurement fields appear in the Weekly tracker. This device only.
-        </p>
-        <div className="space-y-1.5">
-          {MEASURE_FIELDS.map((f) => {
-            const enabled = !disabledMeasureFields.includes(f.key);
-            return (
-              <div key={f.key} className="flex items-center justify-between gap-3">
-                <span className="text-sm text-zinc-200">{f.label}</span>
-                <button
-                  type="button"
-                  aria-pressed={enabled}
-                  aria-label={enabled ? `Hide ${f.label}` : `Show ${f.label}`}
-                  onClick={() => void toggleMeasureFieldDisabled(f.key)}
-                  className={`shrink-0 h-7 w-12 rounded-full relative transition-colors ${enabled ? 'bg-amber-500' : 'bg-zinc-700'}`}
-                >
-                  <span className={`absolute top-1 h-5 w-5 rounded-full bg-zinc-950 transition-[left] ${enabled ? 'left-6' : 'left-1'}`} />
-                </button>
-              </div>
-            );
-          })}
-        </div>
+    </div>
+  );
+}
+
+export function VisibleMeasurementsCard() {
+  const disabledMeasureFields = useDisabledMeasureFields();
+
+  return (
+    <div className="rounded-2xl bg-zinc-900 border border-zinc-800 p-4 space-y-2">
+      <div className="text-xs uppercase tracking-wider text-zinc-500">Visible measurements</div>
+      <p className="text-xs text-zinc-500">
+        Choose which measurement fields appear in the Weekly tracker. This device only.
+      </p>
+      <div className="space-y-1.5">
+        {MEASURE_FIELDS.map((f) => {
+          const enabled = !disabledMeasureFields.includes(f.key);
+          return (
+            <div key={f.key} className="flex items-center justify-between gap-3">
+              <span className="text-sm text-zinc-200">{f.label}</span>
+              <button
+                type="button"
+                aria-pressed={enabled}
+                aria-label={enabled ? `Hide ${f.label}` : `Show ${f.label}`}
+                onClick={() => void toggleMeasureFieldDisabled(f.key)}
+                className={`shrink-0 h-7 w-12 rounded-full relative transition-colors ${enabled ? 'bg-amber-500' : 'bg-zinc-700'}`}
+              >
+                <span className={`absolute top-1 h-5 w-5 rounded-full bg-zinc-950 transition-[left] ${enabled ? 'left-6' : 'left-1'}`} />
+              </button>
+            </div>
+          );
+        })}
       </div>
     </div>
   );

@@ -204,7 +204,7 @@ export function SyncDiagnostics() {
   }
 
   return (
-    <div className="rounded-2xl bg-zinc-900 border border-zinc-800 overflow-hidden">
+    <div id="sync-diagnostics" className="scroll-mt-4 rounded-2xl bg-zinc-900 border border-zinc-800 overflow-hidden">
       <button
         type="button"
         onClick={() => setUserCollapsed(!collapsed)}

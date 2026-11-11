@@ -2,7 +2,7 @@
 
 import { useId, useSyncExternalStore, type ReactNode } from 'react';
 
-/** Per-row open state for Today trackers. Missing keys stay collapsed. */
+/** Per-row open state for Today trackers and Daily Check-In. Missing keys stay collapsed. */
 export const TODAY_SECTIONS_STORAGE_KEY = 'workout:todaySections:v1';
 
 const CHANGE_EVENT = 'workout-today-sections';

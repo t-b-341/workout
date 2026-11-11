@@ -47,6 +47,7 @@ import {
 } from '@/lib/workday';
 import { CardioBanner } from './CardioBanner';
 import { CollapsibleCard } from './CollapsibleCard';
+import { PageHeader } from './SettingsGearLink';
 import { MindfulnessWeeklyBanner } from './MindfulnessWeeklyBanner';
 import { SessionHeader } from './SessionHeader';
 import { LiftCard } from './LiftCard';
@@ -281,7 +282,12 @@ export function TodayView() {
   }
 
   if (!templates || !lifts || !activeTemplate || !session) {
-    return <div className="p-6 text-zinc-500">Loading…</div>;
+    return (
+      <PageShell className="p-4 space-y-4">
+        <PageHeader title="Today" titleAs="p" />
+        <div className="text-zinc-500">Loading…</div>
+      </PageShell>
+    );
   }
 
   const isMiniSession = session
@@ -340,6 +346,7 @@ export function TodayView() {
 
   return (
     <PageShell className={`p-4 space-y-4 ${showSessionDock && !hidePrescribed ? 'pb-24' : ''}`}>
+      <PageHeader title="Today" titleAs="p" />
       <SyncStatusBar />
       <MesoBoundaryPromptCard />
       {!hidePrescribed && (
