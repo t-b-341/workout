@@ -984,7 +984,10 @@ export function ProgramEditor() {
       )}
 
       <div className="rounded-2xl bg-zinc-900 border border-zinc-800 overflow-hidden">
-        <div className="grid grid-cols-12 gap-2 px-3 py-2 text-xs uppercase tracking-wider text-zinc-500 border-b border-zinc-800">
+        <div
+          data-prescription-header
+          className="hidden sm:grid grid-cols-12 gap-2 px-3 py-2 text-xs uppercase tracking-wider text-zinc-500 border-b border-zinc-800"
+        >
           <div className="col-span-3">Lift</div>
           <div className="col-span-2 text-center">Weight</div>
           <div className="col-span-1 text-center">Sets</div>
@@ -994,15 +997,20 @@ export function ProgramEditor() {
         </div>
         {(prescriptions ?? []).map((p, idx, arr) => {
           const pinned = favoriteLiftIdSet.has(p.liftId);
+          const liftName = liftsSorted.find((l) => l.id === p.liftId)?.name ?? p.liftId;
           return (
-          <div key={p.id} className="grid grid-cols-12 gap-2 px-3 py-3 items-center border-b border-zinc-800 last:border-b-0">
-            <div className="col-span-3 min-w-0 flex items-center gap-1.5">
+          <div
+            key={p.id}
+            data-prescription-row
+            className="grid grid-cols-12 gap-x-2 gap-y-3 px-3 py-3 items-center border-b border-zinc-800 last:border-b-0 sm:gap-2"
+          >
+            <div className="col-span-12 min-w-0 flex items-center gap-1.5 sm:col-span-3">
               <button
                 type="button"
                 aria-label={pinned ? 'Unpin lift' : 'Pin lift'}
                 title={pinned ? 'Unpin from favorites' : 'Pin — surfaces first on Today & in this list'}
                 onClick={() => void toggleFavoriteLift(p.liftId)}
-                className={`shrink-0 h-10 w-9 rounded-lg border text-lg leading-none flex items-center justify-center ${
+                className={`shrink-0 flex h-11 w-11 items-center justify-center rounded-lg border text-lg leading-none sm:h-10 sm:w-9 ${
                   pinned
                     ? 'border-amber-500/50 bg-amber-500/15 text-amber-400'
                     : 'border-zinc-700 bg-zinc-950 text-zinc-500 hover:text-zinc-300 hover:border-zinc-600'
@@ -1012,13 +1020,13 @@ export function ProgramEditor() {
               </button>
               <select
                 value={p.liftId}
-                aria-label="Exercise for this row"
+                aria-label={`Lift for ${liftName}`}
                 onChange={(e) => {
                   const liftId = e.target.value;
                   const w = snapWorkingWeight(p.weight, liftForSnap(liftId));
                   void update(p, { liftId, weight: w, increment: undefined });
                 }}
-                className="h-10 min-w-0 flex-1 rounded-lg bg-zinc-950 border border-zinc-800 px-2 text-sm text-zinc-200"
+                className="h-10 min-w-0 w-full flex-1 rounded-lg bg-zinc-950 border border-zinc-800 px-2 text-sm text-zinc-200"
               >
                 {!liftsSorted.some((l) => l.id === p.liftId) && (
                   <option value={p.liftId}>{p.liftId}</option>
@@ -1030,54 +1038,82 @@ export function ProgramEditor() {
                 ))}
               </select>
             </div>
-            <LooseDecimalField
-              value={p.weight}
-              onCommit={(n) =>
-                update(p, {
-                  weight: snapWorkingWeight(n, liftForSnap(p.liftId)),
-                })
-              }
-              className="col-span-2 h-10 rounded-lg bg-zinc-950 border border-zinc-800 text-center"
-            />
-            <LooseIntField
-              value={p.sets}
-              min={1}
-              max={99}
-              onCommit={(n) => update(p, { sets: n })}
-              className="col-span-1 h-10 rounded-lg bg-zinc-950 border border-zinc-800 text-center"
-            />
-            <div className="col-span-2 flex items-center gap-1">
-              <LooseIntField
-                value={p.repMin}
-                min={1}
-                max={99}
-                onCommit={(n) => update(p, { repMin: n })}
-                className="w-full h-10 rounded-lg bg-zinc-950 border border-zinc-800 text-center"
-              />
-              <span className="text-zinc-600">–</span>
-              <LooseIntField
-                value={p.repMax}
-                min={1}
-                max={99}
-                onCommit={(n) => update(p, { repMax: n })}
-                className="w-full h-10 rounded-lg bg-zinc-950 border border-zinc-800 text-center"
-              />
+            <div className="col-span-12 grid grid-cols-[minmax(0,1.2fr)_minmax(3.25rem,0.55fr)_minmax(0,1.65fr)] items-end gap-2 sm:contents">
+              <div className="min-w-0 sm:col-span-2">
+                <span className="mb-1 block text-[10px] font-medium uppercase leading-tight text-zinc-500 sm:hidden">
+                  Weight
+                </span>
+                <LooseDecimalField
+                  value={p.weight}
+                  aria-label={`Weight for ${liftName}`}
+                  onCommit={(n) =>
+                    update(p, {
+                      weight: snapWorkingWeight(n, liftForSnap(p.liftId)),
+                    })
+                  }
+                  className="h-10 w-full min-w-0 rounded-lg bg-zinc-950 border border-zinc-800 text-center"
+                />
+              </div>
+              <div className="min-w-0 sm:col-span-1">
+                <span className="mb-1 block text-[10px] font-medium uppercase leading-tight text-zinc-500 sm:hidden">
+                  Sets
+                </span>
+                <LooseIntField
+                  value={p.sets}
+                  min={1}
+                  max={99}
+                  aria-label={`Sets for ${liftName}`}
+                  onCommit={(n) => update(p, { sets: n })}
+                  className="h-10 w-full min-w-0 rounded-lg bg-zinc-950 border border-zinc-800 text-center"
+                />
+              </div>
+              <div className="min-w-0 sm:col-span-2">
+                <div className="mb-1 flex items-end gap-1 sm:hidden" aria-hidden="true">
+                  <span className="min-w-0 flex-1 text-[10px] font-medium uppercase leading-tight text-zinc-500">
+                    Rep min
+                  </span>
+                  <span className="shrink-0 text-transparent">–</span>
+                  <span className="min-w-0 flex-1 text-[10px] font-medium uppercase leading-tight text-zinc-500">
+                    Rep max
+                  </span>
+                </div>
+                <div className="flex items-center gap-1">
+                  <LooseIntField
+                    value={p.repMin}
+                    min={1}
+                    max={99}
+                    aria-label={`Rep min for ${liftName}`}
+                    onCommit={(n) => update(p, { repMin: n })}
+                    className="h-10 w-full min-w-0 flex-1 rounded-lg bg-zinc-950 border border-zinc-800 text-center"
+                  />
+                  <span className="text-zinc-600">–</span>
+                  <LooseIntField
+                    value={p.repMax}
+                    min={1}
+                    max={99}
+                    aria-label={`Rep max for ${liftName}`}
+                    onCommit={(n) => update(p, { repMax: n })}
+                    className="h-10 w-full min-w-0 flex-1 rounded-lg bg-zinc-950 border border-zinc-800 text-center"
+                  />
+                </div>
+              </div>
             </div>
             <input
               type="text"
               value={p.notes ?? ''}
+              aria-label={`Notes for ${liftName}`}
               onChange={(e) => update(p, { notes: e.target.value })}
               placeholder="—"
-              className="col-span-2 h-10 px-2 rounded-lg bg-zinc-950 border border-zinc-800 text-sm"
+              className="col-span-12 h-10 min-w-0 w-full px-2 rounded-lg bg-zinc-950 border border-zinc-800 text-sm sm:col-span-2"
             />
-            <div className="col-span-2 flex flex-col gap-1 items-stretch">
-              <div className="flex gap-1 justify-center">
+            <div className="col-span-12 flex items-center justify-end gap-2 sm:col-span-2 sm:flex-col sm:items-stretch sm:justify-start sm:gap-1">
+              <div className="flex justify-center gap-2 sm:gap-1">
                 <button
                   type="button"
                   aria-label="Move exercise up"
                   disabled={idx === 0}
                   onClick={() => void movePrescriptionUp(p)}
-                  className="h-9 flex-1 max-w-[3.5rem] rounded-lg border border-zinc-700 bg-zinc-950 text-sm text-zinc-200 hover:bg-zinc-800 disabled:opacity-40 disabled:pointer-events-none"
+                  className="h-11 w-11 shrink-0 rounded-lg border border-zinc-700 bg-zinc-950 text-sm text-zinc-200 hover:bg-zinc-800 disabled:opacity-40 disabled:pointer-events-none sm:h-9 sm:w-auto sm:max-w-[3.5rem] sm:flex-1"
                 >
                   ↑
                 </button>
@@ -1086,7 +1122,7 @@ export function ProgramEditor() {
                   aria-label="Move exercise down"
                   disabled={idx === arr.length - 1}
                   onClick={() => void movePrescriptionDown(p)}
-                  className="h-9 flex-1 max-w-[3.5rem] rounded-lg border border-zinc-700 bg-zinc-950 text-sm text-zinc-200 hover:bg-zinc-800 disabled:opacity-40 disabled:pointer-events-none"
+                  className="h-11 w-11 shrink-0 rounded-lg border border-zinc-700 bg-zinc-950 text-sm text-zinc-200 hover:bg-zinc-800 disabled:opacity-40 disabled:pointer-events-none sm:h-9 sm:w-auto sm:max-w-[3.5rem] sm:flex-1"
                 >
                   ↓
                 </button>
@@ -1094,7 +1130,7 @@ export function ProgramEditor() {
               <button
                 type="button"
                 onClick={() => void removeExerciseSlot(p)}
-                className="h-9 px-2 rounded-lg border border-rose-900/60 bg-rose-950/40 text-[11px] font-medium text-rose-200 hover:bg-rose-950/70"
+                className="h-11 min-w-11 shrink-0 px-3 rounded-lg border border-rose-900/60 bg-rose-950/40 text-[11px] font-medium text-rose-200 hover:bg-rose-950/70 sm:h-9 sm:min-w-0 sm:px-2"
               >
                 Remove
               </button>

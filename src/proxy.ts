@@ -6,6 +6,18 @@ const PUBLIC_PATHS = ['/login', '/auth/callback', '/_next', '/favicon.ico', '/ma
 
 export async function proxy(request: NextRequest) {
   const url = request.nextUrl;
+  const isPublic = PUBLIC_PATHS.some((p) => url.pathname.startsWith(p));
+
+  if (process.env.NEXT_PUBLIC_E2E_STUB === '1' && process.env.NODE_ENV !== 'production') {
+    const signedIn = request.cookies.get('e2e-user')?.value === '1';
+    if (!signedIn && !isPublic) {
+      const loginUrl = url.clone();
+      loginUrl.pathname = '/login';
+      loginUrl.searchParams.set('next', url.pathname);
+      return NextResponse.redirect(loginUrl);
+    }
+    return NextResponse.next({ request });
+  }
 
   let response = NextResponse.next({ request });
 
@@ -30,7 +42,6 @@ export async function proxy(request: NextRequest) {
 
   const { data: { user } } = await supabase.auth.getUser();
 
-  const isPublic = PUBLIC_PATHS.some((p) => url.pathname.startsWith(p));
   if (!user && !isPublic) {
     const loginUrl = url.clone();
     loginUrl.pathname = '/login';

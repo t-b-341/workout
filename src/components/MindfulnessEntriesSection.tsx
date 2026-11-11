@@ -198,7 +198,7 @@ export function MindfulnessEntriesSection({
             </div>
           </div>
           <p className="text-[11px] text-right">
-            <Link href="/recovery#wellness-targets" className="text-amber-400/90 hover:text-amber-300">
+            <Link href="/settings#wellness-targets" className="text-amber-400/90 hover:text-amber-300">
               Change daily or weekly goal
             </Link>
           </p>

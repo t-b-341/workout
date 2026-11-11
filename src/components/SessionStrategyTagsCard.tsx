@@ -1,6 +1,6 @@
 'use client';
 
-import { localUpsert } from '@/lib/sync';
+import { persistSessionUpdate } from '@/lib/sync';
 import {
   SESSION_STRATEGY_TAGS,
   type SessionStrategyTagId,
@@ -15,8 +15,7 @@ export function SessionStrategyTagsCard({ session }: { session: SessionLog }) {
     if (next.has(id)) next.delete(id);
     else next.add(id);
     const arr = [...next].sort() as SessionStrategyTagId[];
-    await localUpsert('session_logs', {
-      ...session,
+    await persistSessionUpdate(session, {
       tags: arr.length > 0 ? arr : undefined,
     });
   }

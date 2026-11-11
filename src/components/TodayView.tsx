@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useLiveQuery } from 'dexie-react-hooks';
 import {
   useAllBodyMeasurements,
   useAllBodyweight,
@@ -10,18 +11,24 @@ import {
   useLifts,
   useActivePhaseGoal,
   useMacroTrendAdvice,
+  useMindfulnessForDate,
   usePrescriptions,
   usePullupLogsForDate,
   useReadinessForSession,
   useTemplates,
+  useThisWeekCardio,
+  useThisWeekMindfulness,
   useThisWeekPullups,
   useTodaySession,
 } from '@/lib/hooks';
-import { getAuthUserId, localDelete, localUpsert, flushDirty } from '@/lib/sync';
+import { ensureSessionPersisted, getAuthUserId, localDelete, localUpsert, flushDirty, persistSessionUpdate } from '@/lib/sync';
 import { fmtDate, todayIso } from '@/lib/time';
 import type {
+  BodyMeasurementLog,
+  BodyweightLog,
   Lift,
   NutritionPhaseMode,
+  PhaseGoal,
   Prescription,
   PullupLog,
   SessionLog,
@@ -30,7 +37,17 @@ import type {
   TemplateId,
   TrainingPhaseMode,
 } from '@/lib/types';
+import { dayNotesMetaKey, normalizeDayNotesValue } from '@/lib/dayNotes';
+import { SUPPLEMENT_ITEMS, useSupplementsForDate } from '@/lib/supplements';
+import {
+  durationHrForShift,
+  normalizeWorkdayValue,
+  useWorkdayForDate,
+  type WorkdayShift,
+} from '@/lib/workday';
 import { CardioBanner } from './CardioBanner';
+import { CollapsibleCard } from './CollapsibleCard';
+import { PageHeader } from './SettingsGearLink';
 import { MindfulnessWeeklyBanner } from './MindfulnessWeeklyBanner';
 import { SessionHeader } from './SessionHeader';
 import { LiftCard } from './LiftCard';
@@ -109,7 +126,9 @@ export function TodayView() {
     const p = readTodayPlanPreference();
     return todayPlanPreferenceIsForToday(p) ? p.templateId : null;
   });
-  const [readinessSkipped, setReadinessSkipped] = useState(false);
+  // Session id whose check was just skipped or saved. Hides the form before the
+  // live query returns `readinessCompletedAt`. A different template still prompts.
+  const [readinessSkipSessionId, setReadinessSkipSessionId] = useState<string | null>(null);
   const [quickMode, setQuickMode] = useState(false);
   const [showStoicMoment, setShowStoicMoment] = useState(false);
   const [showOverwhelmProtocol, setShowOverwhelmProtocol] = useState(false);
@@ -136,9 +155,22 @@ export function TodayView() {
 
   const activeId = validatedChosenTemplateId ?? suggested?.id ?? null;
   const activeTemplate = programTemplates.find((t) => t.id === activeId);
-  const session = useTodaySession((activeId ?? 'U1') as TemplateId);
-  const activePhase = useActivePhaseGoal();
   const todayStr = todayIso();
+  const storedSession = useTodaySession((activeId ?? 'U1') as TemplateId);
+  const draftSession = useMemo((): SessionLog | null => {
+    if (!activeId) return null;
+    return {
+      id: `${todayStr}-${activeId}`,
+      date: todayStr,
+      templateId: activeId,
+      mode: 'standard',
+      deload: false,
+      watchFlags: [],
+      sessionType: 'standard',
+    };
+  }, [activeId, todayStr]);
+  const session = storedSession ?? draftSession;
+  const activePhase = useActivePhaseGoal();
   const isNewPhaseDay = activePhase?.startDate === todayStr;
   const [phaseTransitionDismissed, setPhaseTransitionDismissed] =
     useState(true);
@@ -166,7 +198,6 @@ export function TodayView() {
   );
   const favoriteLiftIdSet = useMemo(() => new Set(favoriteLiftIds), [favoriteLiftIds]);
   const sessionActive = Boolean(session?.startedAt && !session?.completedAt);
-
   const readiness = useReadinessForSession(session?.id);
   const allReadiness = useAllReadiness();
   const allSets = useAllSets();
@@ -231,31 +262,6 @@ export function TodayView() {
     return sessionFinishHighlights(session, allSets, lifts, allBodyweight ?? [], allReadiness ?? []);
   }, [session, allSets, lifts, allBodyweight, allReadiness]);
 
-  // Auto-create today's session row. We re-check Dexie inside the effect
-  // because `session` is briefly `undefined` while useLiveQuery resolves;
-  // a naive upsert would clobber an existing row's mode/deload/watchFlags/
-  // startedAt/completedAt every time the page reloaded.
-  useEffect(() => {
-    if (!activeId || session) return;
-    let cancelled = false;
-    (async () => {
-      const id = `${todayIso()}-${activeId}`;
-      const existing = await getDb().session_logs.get(id);
-      if (cancelled || existing) return;
-      const row: SessionLog = {
-        id,
-        date: todayIso(),
-        templateId: activeId as TemplateId,
-        mode: 'standard',
-        deload: false,
-        watchFlags: [],
-        sessionType: 'standard',
-      };
-      await localUpsert('session_logs', row);
-    })().catch(() => {});
-    return () => { cancelled = true; };
-  }, [activeId, session]);
-
   useEffect(() => {
     if (!session || session.date !== todayIso()) return;
     writeTodayPlanPreference({ date: session.date, templateId: session.templateId });
@@ -275,17 +281,26 @@ export function TodayView() {
     return <QuickSessionView onBack={() => setQuickMode(false)} />;
   }
 
-  if (!templates || !lifts || !activeTemplate) {
-    return <div className="p-6 text-zinc-500">Loading…</div>;
+  if (!templates || !lifts || !activeTemplate || !session) {
+    return (
+      <PageShell className="p-4 space-y-4">
+        <PageHeader title="Today" titleAs="p" />
+        <div className="text-zinc-500">Loading…</div>
+      </PageShell>
+    );
   }
-  if (!session) return <div className="p-6 text-zinc-500">Creating session…</div>;
 
   const isMiniSession = session
     ? MINI_TEMPLATE_IDS.has(session.templateId)
     : false;
 
+  const readinessSkipped = readinessSkipSessionId === session.id;
   const needsReadiness =
-    !readiness && !readinessSkipped && !session.startedAt && !session.completedAt;
+    !readiness &&
+    !readinessSkipped &&
+    !session.readinessCompletedAt &&
+    !session.startedAt &&
+    !session.completedAt;
   const checkinFullyCompleted = Boolean(readiness);
   const checkinSkipped = !readiness && Boolean(session.readinessCompletedAt);
 
@@ -304,6 +319,9 @@ export function TodayView() {
     session.mode !== 'skip' &&
     (prescriptions?.length ?? 0) > 0 &&
     !session.completedAt;
+  // Same condition that mounts SessionContextDock. The dock is ~3.6rem tall
+  // on top of the 4rem nav; 5rem leaves at least 8px above it.
+  const sessionDockVisible = !hidePrescribed && showSessionDock && Boolean(allSets);
 
   const recoveryRated =
     session.perceivedRecovery !== undefined ||
@@ -322,16 +340,15 @@ export function TodayView() {
 
   async function handlePerceivedRecovery(n: number | null) {
     if (!session) return;
-    const row: SessionLog = { ...session, perceivedRecovery: n };
-    await localUpsert('session_logs', row);
+    await persistSessionUpdate(session, { perceivedRecovery: n });
     setRecoveryPromptSessionId(session.id);
   }
 
   return (
     <PageShell className={`p-4 space-y-4 ${showSessionDock && !hidePrescribed ? 'pb-24' : ''}`}>
+      <PageHeader title="Today" titleAs="p" />
       <SyncStatusBar />
       <MesoBoundaryPromptCard />
-      <MacroTrendTodayBanner />
       {!hidePrescribed && (
         <GhostSessionPromptCard
           onLogNow={(templateId) => {
@@ -340,28 +357,32 @@ export function TodayView() {
           }}
         />
       )}
-      <WeekActivityStrip />
-      {session.completedAt && (
-        <SessionCompleteBanner
-          session={session}
-          templateName={activeTemplate.name}
-          sets={allSets ?? []}
-          highlights={completeHighlights}
-          onViewRecap={openReplayRecap}
+      {isNewPhaseDay && !phaseTransitionDismissed && activePhase && (
+        <PhaseTransitionCard
+          phase={activePhase}
+          onDismiss={() => void handleDismissPhaseTransition()}
         />
       )}
 
-      <PhaseSummaryCard />
-      <CardioBanner />
-      <PullupTracker />
-      <MindfulnessWeeklyBanner />
+      {!hidePrescribed && (
+        <SessionHeader
+          template={activeTemplate}
+          session={session}
+          templates={programTemplates}
+          hideTemplatePicker={sundayGateActive}
+          onTemplateChange={(t) => {
+            setChosenTemplateId(t.id);
+            writeTodayPlanPreference({ date: todayIso(), templateId: t.id });
+          }}
+        />
+      )}
 
       {!session.startedAt && !session.completedAt && (hidePrescribed || !sundayGateActive) && (
         <div className="rounded-2xl border border-zinc-800 bg-zinc-900 p-4 space-y-3">
           {!hidePrescribed && (
             <>
               <div className="text-xs text-zinc-500 uppercase tracking-wider">Today&apos;s workout</div>
-              <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+              <div className="grid grid-cols-3 gap-2">
                 {sortTemplatesProgramOrder(programTemplates).map((t) => (
                   <button
                     key={t.id}
@@ -393,162 +414,38 @@ export function TodayView() {
         </div>
       )}
 
-      {!hidePrescribed && (
-        <SessionHeader
-          template={activeTemplate}
-          session={session}
-          templates={programTemplates}
-          hideTemplatePicker={sundayGateActive}
-          onTemplateChange={(t) => {
-            setChosenTemplateId(t.id);
-            writeTodayPlanPreference({ date: todayIso(), templateId: t.id });
-          }}
-        />
-      )}
-      <MindfulnessTodayCard session={session} />
-      <WorkdayCard date={todayIso()} />
-      {isNewPhaseDay && !phaseTransitionDismissed && activePhase && (
-        <div className="rounded-2xl border border-amber-700/50
-          bg-amber-950/20 px-4 py-3 space-y-1.5">
-          <div className="flex items-start justify-between gap-2">
-            <div className="space-y-0.5">
-              <div className="text-xs uppercase tracking-wide
-                text-amber-400 font-medium">
-                New phase started today
-              </div>
-              <div className="text-sm font-medium text-zinc-200">
-                {activePhase.label}
-              </div>
-            </div>
-            <button
-              type="button"
-              onClick={() => void handleDismissPhaseTransition()}
-              className="shrink-0 text-zinc-600 hover:text-zinc-400
-                text-lg leading-none mt-0.5"
-              aria-label="Dismiss"
-            >
-              ×
-            </button>
-          </div>
-          <div className="flex gap-3 text-xs text-zinc-400">
-            <span className={
-              activePhase.trainingMode === 'accumulation'
-                ? 'text-amber-400'
-                : activePhase.trainingMode === 'deload'
-                  ? 'text-sky-400' : 'text-zinc-400'
-            }>
-              {activePhase.trainingMode}
-            </span>
-            <span>·</span>
-            <span className={
-              activePhase.nutritionMode === 'deficit'
-                ? 'text-rose-400'
-                : activePhase.nutritionMode === 'surplus'
-                  ? 'text-emerald-400' : 'text-zinc-400'
-            }>
-              {activePhase.nutritionMode}
-            </span>
-            {activePhase.caloriesTraining && (
-              <>
-                <span>·</span>
-                <span>
-                  {activePhase.caloriesTraining.toLocaleString()} kcal
-                  training days
-                </span>
-              </>
-            )}
-            {activePhase.proteinG && (
-              <>
-                <span>·</span>
-                <span>{activePhase.proteinG}g protein</span>
-              </>
-            )}
-          </div>
-          {activePhase.trainingMode === 'deload' &&
-            activePhase.nutritionMode === 'deficit' && (
-            <div className="text-[10px] text-amber-500/80
-              border-t border-amber-800/30 pt-1.5">
-              Deload in deficit — prioritize sleep and protein
-              over session length targets this week.
-            </div>
-          )}
-        </div>
-      )}
-      <SupplementsCard date={todayIso()} />
-      <DayNotesCard date={todayIso()} />
-      <button
-        type="button"
-        onClick={() => setShowStoicMoment(true)}
-        className="w-full h-9 rounded-xl border border-zinc-800 bg-zinc-900/50 text-xs text-zinc-500 hover:text-amber-400 hover:border-zinc-700 transition-colors text-left px-3"
-      >
-        + Stoic moment
-      </button>
-      {(weeklyFlags.bodyweightOverdue || weeklyFlags.measurementsOverdue) && (
-        <WeeklyTrackingReminder
-          bodyweightOverdue={weeklyFlags.bodyweightOverdue}
-          measurementsOverdue={weeklyFlags.measurementsOverdue}
-        />
-      )}
-
-      <div className="rounded-xl border border-zinc-800 bg-zinc-950/60 px-3 py-2.5 space-y-1.5">
-        <div className="text-[11px] uppercase tracking-wider text-zinc-500">Last logged</div>
-        <div className="text-sm text-zinc-300">
-          <span className="text-zinc-500">Weigh-in </span>
-          {lastWeighIn ? (
-            <>
-              <span className="text-zinc-200">{fmtDate(lastWeighIn.date, 'MMM d, yyyy')}</span>
-              <span className="text-zinc-600"> · </span>
-              <span className="font-mono text-zinc-100">{lastWeighIn.bodyweight}</span>
-              <span className="text-zinc-500 text-xs"> lb</span>
-            </>
-          ) : (
-            <span className="text-zinc-600">No entries yet</span>
-          )}
-        </div>
-        <div className="text-sm text-zinc-300">
-          <span className="text-zinc-500">Measurements </span>
-          {lastMeasurement ? (
-            <>
-              <span className="text-zinc-200">{fmtDate(lastMeasurement.date, 'MMM d, yyyy')}</span>
-              <span className="text-zinc-600"> · </span>
-              <span className="font-mono text-zinc-100">
-                W {lastMeasurement.waist} · A {lastMeasurement.abdomen} · H {lastMeasurement.hips}
-              </span>
-              <span className="text-zinc-500 text-xs"> in</span>
-            </>
-          ) : (
-            <span className="text-zinc-600">No entries yet</span>
-          )}
-        </div>
-      </div>
-
-      <BodyweightQuickLog
-        date={todayIso()}
-        subtitle="Doesn&apos;t have to be lower day — updates the BW chart for this date."
-      />
-      <BodyMeasurementsQuickLog date={todayIso()} />
-      {!needsReadiness && (
+      {hidePrescribed && !needsReadiness && (
         <DailyCheckinStatusBanner
           fullyCompleted={checkinFullyCompleted}
           skipped={checkinSkipped}
         />
       )}
 
-      {!hidePrescribed && (needsReadiness ? (
+      {!hidePrescribed && (
+        <div className="space-y-3">
+          {session.completedAt && (
+            <SessionCompleteBanner
+              session={session}
+              templateName={activeTemplate.name}
+              sets={allSets ?? []}
+              highlights={completeHighlights}
+              onViewRecap={openReplayRecap}
+            />
+          )}
+          {needsReadiness ? (
         <>
           <ReadinessForm
             session={session}
             promptBodyweight={activeTemplate.id === 'L1'}
-            onComplete={() => setReadinessSkipped(true)}
+            onComplete={() => setReadinessSkipSessionId(session.id)}
           />
           <button
             type="button"
             onClick={async () => {
-              await localUpsert('session_logs', {
-                ...session,
+              await persistSessionUpdate(session, {
                 readinessCompletedAt: new Date().toISOString(),
               });
-              setReadinessSkipped(true);
+              setReadinessSkipSessionId(session.id);
             }}
             className="w-full text-xs text-zinc-500 underline underline-offset-2"
           >Skip readiness check</button>
@@ -562,6 +459,10 @@ export function TodayView() {
             <div className="text-lg font-medium text-zinc-200 mb-2">Skipping for recovery</div>
             <div className="text-sm">No sets to log. Switch back to Standard or Light if plans change.</div>
           </div>
+          <DailyCheckinStatusBanner
+            fullyCompleted={checkinFullyCompleted}
+            skipped={checkinSkipped}
+          />
         </>
       ) : sundayGateActive ? (
         <>
@@ -586,6 +487,10 @@ export function TodayView() {
               Tap here to start Monday&apos;s workout
             </button>
           </div>
+          <DailyCheckinStatusBanner
+            fullyCompleted={checkinFullyCompleted}
+            skipped={checkinSkipped}
+          />
         </>
       ) : (
         <div className="space-y-3">
@@ -598,6 +503,10 @@ export function TodayView() {
               {session.startedAt && <WorkoutStopwatchBar session={session} />}
             </>
           )}
+          <DailyCheckinStatusBanner
+            fullyCompleted={checkinFullyCompleted}
+            skipped={checkinSkipped}
+          />
           {needsPerceivedRecovery && (
             <div className="rounded-2xl border border-zinc-800 bg-zinc-900 p-5 space-y-4">
               <div className="text-sm font-medium text-zinc-200">
@@ -667,7 +576,7 @@ export function TodayView() {
                     onClick={() =>
                       setHiddenPrescriptionIds((prev) => new Set([...prev, p.id]))
                     }
-                    className="absolute top-3 right-3 z-10 h-6 w-6 rounded-full bg-zinc-800 border border-zinc-700 text-zinc-500 hover:text-rose-400 text-xs flex items-center justify-center transition-colors"
+                    className="absolute top-2 right-2 z-10 h-11 w-11 rounded-full bg-zinc-800 border border-zinc-700 text-zinc-400 hover:text-rose-400 text-xl leading-none flex items-center justify-center transition-colors"
                   >
                     ×
                   </button>
@@ -724,10 +633,9 @@ export function TodayView() {
             </button>
           )}
         </div>
-      ))}
+          )}
 
-      {!hidePrescribed &&
-        !needsReadiness &&
+          {!needsReadiness &&
         !needsPerceivedRecovery &&
         session.mode !== 'skip' &&
         !sundayGateActive && (
@@ -757,7 +665,24 @@ export function TodayView() {
             onAdd={handleAddExercise}
           />
         </>
+          )}
+        </div>
       )}
+      <WeekActivityStrip />
+      <TodayTrackers
+        session={session}
+        weeklyFlags={weeklyFlags}
+        lastWeighIn={lastWeighIn}
+        lastMeasurement={lastMeasurement}
+      />
+      <button
+        type="button"
+        onClick={() => setShowStoicMoment(true)}
+        className="w-full h-9 rounded-xl border border-zinc-800 bg-zinc-900/50 text-xs text-zinc-500 hover:text-amber-400 hover:border-zinc-700 transition-colors text-left px-3"
+      >
+        + Stoic moment
+      </button>
+      <PhaseSummaryCard />
       {!hidePrescribed && showSessionDock && allSets && (
         <SessionContextDock session={session} prescriptions={displayPrescriptions ?? []} allSets={allSets} />
       )}
@@ -781,8 +706,16 @@ export function TodayView() {
           onClose={() => setShowStoicMoment(false)}
         />
       )}
-      {/* Overwhelm Protocol floating trigger */}
-      <div className="fixed bottom-20 right-4 z-40">
+      {/* Overwhelm Protocol floating trigger. Hidden dock: 5rem above the
+          viewport bottom (bottom-20) plus the home-indicator inset, so it
+          stays above the nav. Open dock: another 4rem clears the dock. */}
+      <div
+        className={`fixed right-4 z-40 ${
+          sessionDockVisible
+            ? 'bottom-[calc(4rem+max(env(safe-area-inset-bottom),0px)+5rem)]'
+            : 'bottom-[calc(5rem+max(env(safe-area-inset-bottom),0px))]'
+        }`}
+      >
         <button
           type="button"
           onClick={() => setShowOverwhelmProtocol(true)}
@@ -873,6 +806,251 @@ function MacroTrendTodayBanner() {
       title="Fueling trend (recent days)"
       onDismiss={dismiss}
     />
+  );
+}
+
+function PhaseTransitionCard({
+  phase,
+  onDismiss,
+}: {
+  phase: PhaseGoal;
+  onDismiss: () => void;
+}) {
+  return (
+    <div className="rounded-2xl border border-amber-700/50 bg-amber-950/20 px-4 py-3 space-y-1.5">
+      <div className="flex items-start justify-between gap-2">
+        <div className="space-y-0.5">
+          <div className="text-xs uppercase tracking-wide text-amber-400 font-medium">
+            New phase started today
+          </div>
+          <div className="text-sm font-medium text-zinc-200">{phase.label}</div>
+        </div>
+        <button
+          type="button"
+          onClick={onDismiss}
+          className="shrink-0 text-zinc-600 hover:text-zinc-400 text-lg leading-none mt-0.5"
+          aria-label="Dismiss"
+        >
+          ×
+        </button>
+      </div>
+      <div className="flex gap-3 text-xs text-zinc-400">
+        <span
+          className={
+            phase.trainingMode === 'accumulation'
+              ? 'text-amber-400'
+              : phase.trainingMode === 'deload'
+                ? 'text-sky-400'
+                : 'text-zinc-400'
+          }
+        >
+          {phase.trainingMode}
+        </span>
+        <span>·</span>
+        <span
+          className={
+            phase.nutritionMode === 'deficit'
+              ? 'text-rose-400'
+              : phase.nutritionMode === 'surplus'
+                ? 'text-emerald-400'
+                : 'text-zinc-400'
+          }
+        >
+          {phase.nutritionMode}
+        </span>
+        {phase.caloriesTraining && (
+          <>
+            <span>·</span>
+            <span>{phase.caloriesTraining.toLocaleString()} kcal training days</span>
+          </>
+        )}
+        {phase.proteinG && (
+          <>
+            <span>·</span>
+            <span>{phase.proteinG}g protein</span>
+          </>
+        )}
+      </div>
+      {phase.trainingMode === 'deload' && phase.nutritionMode === 'deficit' && (
+        <div className="text-[10px] text-amber-500/80 border-t border-amber-800/30 pt-1.5">
+          Deload in deficit — prioritize sleep and protein over session length targets this week.
+        </div>
+      )}
+    </div>
+  );
+}
+
+function workdaySummary(shift: WorkdayShift | null): string {
+  if (shift == null) return 'Not set';
+  if (shift === 'off') return 'Off';
+  const label =
+    shift === 'am' ? 'AM' : shift === 'pm' ? 'PM' : shift === 'double' ? 'Double' : 'Shift';
+  return `${label} · ${durationHrForShift(shift)} hr`;
+}
+
+function oneLinePreview(text: string): string {
+  const flat = text.replace(/\s+/g, ' ').trim();
+  if (!flat) return 'Empty';
+  return flat.length > 80 ? `${flat.slice(0, 79)}…` : flat;
+}
+
+function TodayTrackers({
+  session,
+  weeklyFlags,
+  lastWeighIn,
+  lastMeasurement,
+}: {
+  session: SessionLog;
+  weeklyFlags: { bodyweightOverdue: boolean; measurementsOverdue: boolean };
+  lastWeighIn: BodyweightLog | null;
+  lastMeasurement: BodyMeasurementLog | null;
+}) {
+  const date = todayIso();
+  const cardio = useThisWeekCardio();
+  const pullups = useThisWeekPullups();
+  const mindfulnessWeek = useThisWeekMindfulness();
+  const mindfulnessToday = useMindfulnessForDate(session.date);
+  const workday = useWorkdayForDate(date);
+  const supplements = useSupplementsForDate(date);
+  const notesKey = dayNotesMetaKey(date);
+  const notesRow = useLiveQuery(
+    () => getDb().meta.where('key').equals(notesKey).first(),
+    [notesKey],
+  );
+  const macroAdvice = useMacroTrendAdvice(date);
+  const macroDismissed =
+    typeof window !== 'undefined' &&
+    (() => {
+      try {
+        return sessionStorage.getItem(`${MACRO_TREND_DISMISS_PREFIX}${date}`) === '1';
+      } catch {
+        return false;
+      }
+    })();
+
+  const cardioSummary = cardio ? `${cardio.total} / ${cardio.target} min` : '…';
+  const pullupSummary = pullups ? `${pullups.total} / ${pullups.target} reps` : '…';
+  const todayMindMin = (mindfulnessToday ?? []).reduce((sum, row) => sum + (row.durationMin ?? 0), 0);
+  const mindfulnessSummary = mindfulnessWeek
+    ? `${mindfulnessWeek.total} / ${mindfulnessWeek.target} min · ${todayMindMin} min today`
+    : '…';
+  const supplementCount = supplements
+    ? SUPPLEMENT_ITEMS.filter(({ id }) => Boolean(supplements[id])).length
+    : 0;
+  const noteSummary = oneLinePreview(normalizeDayNotesValue(notesRow?.value).text);
+  const bodyweightSummary = lastWeighIn
+    ? lastWeighIn.date === date
+      ? `${lastWeighIn.bodyweight} lb today`
+      : `${lastWeighIn.bodyweight} lb`
+    : 'No entries yet';
+  const measurementSummary = lastMeasurement
+    ? `W ${lastMeasurement.waist} · A ${lastMeasurement.abdomen} · H ${lastMeasurement.hips}`
+    : 'No entries yet';
+  const weeklySummary =
+    weeklyFlags.bodyweightOverdue && weeklyFlags.measurementsOverdue
+      ? 'Bodyweight and measurements are 1+ week old'
+      : weeklyFlags.bodyweightOverdue
+        ? 'Bodyweight is 1+ week old'
+        : weeklyFlags.measurementsOverdue
+          ? 'Measurements are 1+ week old'
+          : 'Up to date';
+  const macroSummary =
+    macroAdvice === undefined
+      ? '…'
+      : macroDismissed
+        ? 'Dismissed'
+        : (macroAdvice.lines[0] ?? 'No hint');
+  const lastLoggedSummary = lastWeighIn ? `${lastWeighIn.bodyweight} lb` : 'No weigh-in yet';
+
+  return (
+    <div className="space-y-2">
+      <h2 className="px-1 text-xs font-medium uppercase tracking-wider text-zinc-500">Trackers</h2>
+      <CollapsibleCard sectionId="cardio" title="Cardio this week" summary={cardioSummary}>
+        <CardioBanner />
+      </CollapsibleCard>
+      <CollapsibleCard sectionId="pullups" title="Pull-ups this week" summary={pullupSummary}>
+        <PullupTracker />
+      </CollapsibleCard>
+      <CollapsibleCard sectionId="mindfulness" title="Mindfulness" summary={mindfulnessSummary}>
+        <div className="space-y-3">
+          <MindfulnessWeeklyBanner />
+          <MindfulnessTodayCard session={session} />
+        </div>
+      </CollapsibleCard>
+      <CollapsibleCard
+        sectionId="workday"
+        title="Work day"
+        summary={workdaySummary(normalizeWorkdayValue(workday?.value).shift)}
+      >
+        <WorkdayCard date={date} />
+      </CollapsibleCard>
+      <CollapsibleCard sectionId="supplements" title="Supplements" summary={`${supplementCount} of 4`}>
+        <SupplementsCard date={date} />
+      </CollapsibleCard>
+      <CollapsibleCard sectionId="notes" title="Day's notes" summary={noteSummary}>
+        <DayNotesCard date={date} />
+      </CollapsibleCard>
+      <CollapsibleCard sectionId="bodyweight" title="Bodyweight" summary={bodyweightSummary}>
+        <BodyweightQuickLog
+          date={date}
+          subtitle="Doesn&apos;t have to be lower day — updates the BW chart for this date."
+        />
+      </CollapsibleCard>
+      <CollapsibleCard sectionId="measurements" title="Body measurements" summary={measurementSummary}>
+        <BodyMeasurementsQuickLog date={date} />
+      </CollapsibleCard>
+      <CollapsibleCard sectionId="weekly" title="Weekly tracking reminder" summary={weeklySummary}>
+        {weeklyFlags.bodyweightOverdue || weeklyFlags.measurementsOverdue ? (
+          <WeeklyTrackingReminder
+            bodyweightOverdue={weeklyFlags.bodyweightOverdue}
+            measurementsOverdue={weeklyFlags.measurementsOverdue}
+          />
+        ) : (
+          <p className="rounded-2xl border border-zinc-800 bg-zinc-900 px-4 py-3 text-sm text-zinc-400">
+            Bodyweight and measurements are up to date.
+          </p>
+        )}
+      </CollapsibleCard>
+      <CollapsibleCard sectionId="macro" title="Macro trend hint" summary={macroSummary}>
+        <MacroTrendTodayBanner />
+        {macroAdvice !== undefined && (macroDismissed || macroAdvice.lines.length === 0) && (
+          <p className="px-1 pt-1 text-sm text-zinc-500">No fueling hint right now.</p>
+        )}
+      </CollapsibleCard>
+      <CollapsibleCard sectionId="lastLogged" title="Last logged" summary={lastLoggedSummary}>
+        <div className="rounded-xl border border-zinc-800 bg-zinc-950/60 px-3 py-2.5 space-y-1.5">
+          <div className="text-[11px] uppercase tracking-wider text-zinc-500">Last logged</div>
+          <div className="text-sm text-zinc-300">
+            <span className="text-zinc-500">Weigh-in </span>
+            {lastWeighIn ? (
+              <>
+                <span className="text-zinc-200">{fmtDate(lastWeighIn.date, 'MMM d, yyyy')}</span>
+                <span className="text-zinc-600"> · </span>
+                <span className="font-mono text-zinc-100">{lastWeighIn.bodyweight}</span>
+                <span className="text-zinc-500 text-xs"> lb</span>
+              </>
+            ) : (
+              <span className="text-zinc-600">No entries yet</span>
+            )}
+          </div>
+          <div className="text-sm text-zinc-300">
+            <span className="text-zinc-500">Measurements </span>
+            {lastMeasurement ? (
+              <>
+                <span className="text-zinc-200">{fmtDate(lastMeasurement.date, 'MMM d, yyyy')}</span>
+                <span className="text-zinc-600"> · </span>
+                <span className="font-mono text-zinc-100">
+                  W {lastMeasurement.waist} · A {lastMeasurement.abdomen} · H {lastMeasurement.hips}
+                </span>
+                <span className="text-zinc-500 text-xs"> in</span>
+              </>
+            ) : (
+              <span className="text-zinc-600">No entries yet</span>
+            )}
+          </div>
+        </div>
+      </CollapsibleCard>
+    </div>
   );
 }
 
@@ -1104,12 +1282,13 @@ function FinishSessionButton({
   async function finish() {
     setBusy(true);
     try {
-      const wasFirstCompletion = !session.completedAt;
+      const stored = await ensureSessionPersisted(session);
+      const wasFirstCompletion = !stored.completedAt;
       const db = getDb();
-      const sessionSets = await db.set_logs.where('sessionLogId').equals(session.id).toArray();
+      const sessionSets = await db.set_logs.where('sessionLogId').equals(stored.id).toArray();
       let advanced = 0, held = 0, skipped = 0;
       for (const p of prescriptions) {
-        const dec = decideProgression(p, sessionSets, session, undefined, liftById);
+        const dec = decideProgression(p, sessionSets, stored, undefined, liftById);
         if (dec.advanced) {
           advanced++;
           await localUpsert('prescriptions', { ...p, weight: dec.nextWeight });
@@ -1121,15 +1300,15 @@ function FinishSessionButton({
       }
       const completedAt = new Date().toISOString();
       const durationMin =
-        session.startedAt
+        stored.startedAt
           ? Math.round(
               (new Date(completedAt).getTime() -
-                new Date(session.startedAt).getTime()) /
+                new Date(stored.startedAt).getTime()) /
                 60000,
             )
           : null;
       const finalSession = {
-        ...finalizeWorkoutPauseAtCompletion(session, completedAt),
+        ...finalizeWorkoutPauseAtCompletion(stored, completedAt),
         completedAt,
         durationMin,
       };

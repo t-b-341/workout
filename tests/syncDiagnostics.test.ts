@@ -15,14 +15,18 @@ class MockStorage implements Storage {
   setItem(key: string, value: string): void { this.data.set(key, value); }
 }
 
-type GlobalShim = typeof globalThis & {
-  window?: { localStorage: Storage; dispatchEvent: () => boolean };
-  localStorage?: Storage;
+// `typeof globalThis` already types `window` as the DOM Window, so a partial
+// mock has to replace that property instead of intersecting with it.
+type SyncTestGlobal = Omit<typeof globalThis, 'window'> & {
+  window?: {
+    localStorage: Storage;
+    dispatchEvent: (event: Event) => boolean;
+  };
 };
 
 beforeEach(() => {
   const storage = new MockStorage();
-  const g = globalThis as GlobalShim;
+  const g = globalThis as SyncTestGlobal;
   g.window = { localStorage: storage, dispatchEvent: () => true };
   g.localStorage = storage;
 });
@@ -75,7 +79,7 @@ describe('syncDiagnostics', () => {
   });
 
   it('survives corrupted storage gracefully', () => {
-    const g = globalThis as GlobalShim;
+    const g = globalThis as SyncTestGlobal;
     g.localStorage!.setItem('workout:sync-errors', '{not json');
     expect(readSyncErrors()).toEqual([]);
   });

@@ -20,7 +20,7 @@ export function MindfulnessWeeklyBanner() {
         />
       </div>
       <div className="mt-2 text-right">
-        <Link href="/recovery#wellness-targets" className="text-[11px] text-amber-400/90 hover:text-amber-300">
+        <Link href="/settings#wellness-targets" className="text-[11px] text-amber-400/90 hover:text-amber-300">
           Edit weekly goal
         </Link>
       </div>

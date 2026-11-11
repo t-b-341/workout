@@ -16,6 +16,7 @@ import { loadMesoConfig } from './mesocycle';
 import { computeMesoAnalysis } from './mesoAnalysis';
 import { defaultNutritionDayType, resolveNutritionTargetsForDate } from './nutritionDayType';
 import { loadExportProgramTargetsForSummary } from './programExportTargets';
+import { buildRecoveryScoreSeries } from './recovery';
 import { loadRecoveryPrefs } from './recoveryPrefs';
 import type {
   BodyMeasurementLog,
@@ -33,6 +34,7 @@ import type {
   NutritionLog,
   Prescription,
   ReadinessLog,
+  RecoveryScore,
   SessionLabelType,
   SessionLog,
   SessionStatus,
@@ -63,8 +65,11 @@ import { computeStrengthBalance, type RatioResult } from './strengthBalance';
 import { currentValueForGoal, isGoalAchieved } from './liftingGoals';
 import { todayIso } from './time';
 
-/** Export payload schema — bump when top-level export shape changes. */
-const FULL_LOCAL_EXPORT_SCHEMA_VERSION = 38;
+/**
+ * Export payload schema — bump when top-level export shape changes.
+ * 39: `recovery_scores[]` — missing pillar and composite scores are null, not a placeholder 60.
+ */
+const FULL_LOCAL_EXPORT_SCHEMA_VERSION = 39;
 
 const MEANINGFUL_META_PREFIXES = [
   'workout:supplements:v1:',
@@ -78,6 +83,7 @@ const KNOWN_LOCALSTORAGE_KEYS = [
   'workout:layout-mode',
   'workout:todayPlan:v1',
   'workout:sundayMondayEarlyUnlock:v1',
+  'workout:todaySections:v1',
 ] as const;
 
 /** Set row as written to export JSON (parent session date copied; intent always present; RPE clamped 1–10 or null). */
@@ -347,6 +353,8 @@ export type FullLocalExport = {
   nutrition_logs: ExportedNutritionLog[];
   hydration_logs: HydrationLog[];
   sleep_logs: SleepLog[];
+  /** Per-day recovery scores. Missing pillars and an under-determined composite are null. */
+  recovery_scores: RecoveryScore[];
   stress_logs: StressLog[];
   stress_daily_summaries: StressDailySummary[];
   cbt_thought_records: CbtThoughtRecord[];
@@ -1042,6 +1050,15 @@ export async function buildFullLocalExport(opts?: FullLocalExportOptions): Promi
     mesoEndDate: opts?.mesoEndDate,
   });
 
+  const recovery_scores = buildRecoveryScoreSeries({
+    sleepLogs: sleep_logs,
+    hydrationLogs: hydration_logs,
+    nutritionLogs: nutrition_logs,
+    readinessLogs: readiness_logs,
+    stressLogs: stress_logs,
+    mindfulnessLogs: mindfulness_logs,
+  });
+
   const body_measurement_logs_out: ExportedBodyMeasurementLog[] = body_measurement_logs.map(
     (m) => ({
       ...m,
@@ -1073,6 +1090,7 @@ export async function buildFullLocalExport(opts?: FullLocalExportOptions): Promi
     nutrition_logs: nutrition_logs_out,
     hydration_logs,
     sleep_logs,
+    recovery_scores,
     stress_logs,
     stress_daily_summaries,
     cbt_thought_records,

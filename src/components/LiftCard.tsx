@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from 'react';
 import {
   useAllBodyweight,
   useAllReadiness,
@@ -11,7 +11,7 @@ import {
   useReadinessForSession,
   useSetsForSession,
 } from '@/lib/hooks';
-import { localDelete, localUpsert } from '@/lib/sync';
+import { ensureSessionPersisted, localDelete, localUpsert, persistSessionUpdate } from '@/lib/sync';
 import type {
   CardioLog,
   CardioType,
@@ -32,6 +32,7 @@ import { detectPR, detectLissIntensityPR, est1RM } from '@/lib/stats';
 import { RestTimer } from './RestTimer';
 import { rpeFromRir, shouldTrackRpeForReps } from '@/lib/rpe';
 import { resolveCardioTimestamps } from '@/lib/cardioTime';
+import { JUMP_TO_SET_EVENT } from '@/lib/todaySessionUi';
 
 type Props = {
   prescription: Prescription;
@@ -122,6 +123,10 @@ export function LiftCard({
   const [reasonDraft, setReasonDraft] = useState('');
   const [substituteId, setSubstituteId] = useState<string>('');
   const [pendingIntentByKey, setPendingIntentByKey] = useState<Record<string, SetIntent>>({});
+  const [overrideKey, setOverrideKey] = useState<string | null>(null);
+  const [reopened, setReopened] = useState(false);
+  const [jumpNonce, setJumpNonce] = useState(0);
+  const scrolledJump = useRef(0);
 
   const isQuickSession = prescription.id.startsWith('quick-');
   const liftSets = (sets ?? []).filter(
@@ -189,6 +194,7 @@ export function LiftCard({
       setPendingIntentByKey((prev) => ({ ...prev, [k]: nextIntent }));
       return;
     }
+    await ensureSessionPersisted(session);
     await localUpsert('set_logs', { ...existing, intent: nextIntent });
   }
 
@@ -242,18 +248,25 @@ export function LiftCard({
           }
         : {}),
     };
+    // The set row references session.id. Persist that session first — a draft
+    // only exists in memory until the first real action — and keep a stored
+    // row's startedAt if one is already there.
+    const loggedAt = row.loggedAt ?? new Date().toISOString();
+    const seeded = session.startedAt ? session : { ...session, startedAt: loggedAt };
+    const stored = await ensureSessionPersisted(seeded);
+    if (!stored.startedAt) {
+      await persistSessionUpdate(stored, { startedAt: loggedAt });
+    }
     await localUpsert('set_logs', row);
+    setOverrideKey(null);
+    setReopened(false);
+    setOpenSubs(null);
     setPendingIntentByKey((prev) => {
       if (!(k in prev)) return prev;
       const next = { ...prev };
       delete next[k];
       return next;
     });
-
-    // Stamp session start on first interaction.
-    if (!session.startedAt) {
-      await localUpsert('session_logs', { ...session, startedAt: row.loggedAt });
-    }
 
     // Cardio lifts mirror to cardio_logs so the weekly 150-min rollup sees them.
     if (isCardio) {
@@ -291,18 +304,91 @@ export function LiftCard({
     }
   }
 
-  // Identify whether the next unlogged set should show a rest timer (based
-  // on the most recent loggedAt for this lift).
-  let nextUnloggedKey: string | null = null;
-  for (const idx of indexes) {
-    for (const side of sides) {
-      const key = `${idx}-${side ?? 'X'}`;
-      if (!getSet(idx, side)) {
-        nextUnloggedKey = key;
-        break;
-      }
+  const slots = indexes.flatMap((idx) =>
+    sides.map((side) => ({
+      idx,
+      side,
+      key: `${idx}-${side ?? 'X'}`,
+    })),
+  );
+  const firstOpen = slots.find((slot) => !getSet(slot.idx, slot.side)) ?? null;
+  const allLogged = firstOpen == null;
+  const pinnedKey =
+    overrideKey != null && slots.some((slot) => slot.key === overrideKey) ? overrideKey : null;
+  const expandedKey = allLogged ? (reopened ? pinnedKey : null) : (pinnedKey ?? firstOpen.key);
+
+  useEffect(() => {
+    function onJump(event: Event) {
+      const prescriptionId = (event as CustomEvent<{ prescriptionId?: string }>).detail?.prescriptionId;
+      if (prescriptionId !== prescription.id) return;
+      setOverrideKey(null);
+      setOpenSubs(null);
+      setJumpNonce((n) => n + 1);
     }
-    if (nextUnloggedKey) break;
+    window.addEventListener(JUMP_TO_SET_EVENT, onJump);
+    return () => window.removeEventListener(JUMP_TO_SET_EVENT, onJump);
+  }, [prescription.id]);
+
+  useEffect(() => {
+    if (jumpNonce === 0 || scrolledJump.current === jumpNonce) return;
+    scrolledJump.current = jumpNonce;
+    const key = firstOpen?.key ?? null;
+    const el =
+      (key && document.getElementById(`set-${prescription.id}-${key}`))
+      || document.getElementById(`lift-${prescription.id}`);
+    el?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, [jumpNonce, firstOpen?.key, prescription.id]);
+
+  const completedSets = liftSets.filter((s) => s.status === 'completed');
+  const summaryText = (() => {
+    const n = completedSets.length;
+    const noun = `${n} ${n === 1 ? 'set' : 'sets'} done`;
+    if (n === 0) return noun;
+    const top = completedSets.reduce((best, s) => {
+      if (s.weight !== best.weight) return s.weight > best.weight ? s : best;
+      return s.reps > best.reps ? s : best;
+    });
+    const topLabel = lift.loadUnit === 'none'
+      ? `${top.reps} ${repUnitLabel}`
+      : `${top.weight} x ${top.reps}`;
+    return `${noun} - top ${topLabel}`;
+  })();
+
+  if (allLogged && !reopened) {
+    return (
+      <div id={`lift-${prescription.id}`} className="rounded-2xl bg-zinc-900 border border-zinc-800 scroll-mt-24">
+        <button
+          type="button"
+          aria-expanded={false}
+          onClick={() => setReopened(true)}
+          className="w-full p-4 pr-14 text-left"
+        >
+          <div className="flex items-start gap-2">
+            {pinned && (
+              <span className="text-amber-400 text-sm shrink-0 mt-0.5 select-none" title="Pinned lift" aria-hidden>
+                ★
+              </span>
+            )}
+            <span className="min-w-0">
+              <span className="block font-semibold text-zinc-100">{lift.name}</span>
+              <span className="block text-xs text-zinc-400 mt-0.5">
+                <span className="font-mono">{prescription.weight}</span>
+                <span className="text-zinc-600"> × </span>
+                <span className="font-mono">{prescription.sets}</span>
+                <span className="text-zinc-600"> × </span>
+                <span className="font-mono">
+                  {prescription.repMin === prescription.repMax
+                    ? prescription.repMax
+                    : `${prescription.repMin}–${prescription.repMax}`}
+                </span>
+                {prescription.perSide && <span className="text-zinc-500"> · per side</span>}
+              </span>
+              <span data-set-summary className="block text-sm text-zinc-200 mt-1">{summaryText}</span>
+            </span>
+          </div>
+        </button>
+      </div>
+    );
   }
 
   return (
@@ -314,7 +400,7 @@ export function LiftCard({
               ★
             </span>
           )}
-          <div className="min-w-0">
+          <div className="min-w-0 pr-12">
           <div className="font-semibold text-zinc-100">{lift.name}</div>
           <div className="text-xs text-zinc-400 mt-0.5">
             <span className="font-mono">{prescription.weight}</span>
@@ -373,26 +459,40 @@ export function LiftCard({
       <WarmupSection lift={lift} />
 
       <div className="space-y-2">
-        {indexes.map((idx) =>
-          sides.map((side) => {
-            const existing = getSet(idx, side);
-            const isDone = !!existing && existing.status !== 'skipped';
-            const key = `${idx}-${side ?? 'X'}`;
-            const isNextUnlogged = key === nextUnloggedKey;
-            const pr = prFor(existing);
-            const lip = lissIntensityPrFor(existing);
-            return (
-              <div key={key} className="space-y-1">
-                {isNextUnlogged && mostRecentLogTs && (
-                  <div className="px-1">
-                    <RestTimer
-                      since={mostRecentLogTs ?? undefined}
-                      restTargetSeconds={restTargetSeconds}
-                    />
-                  </div>
-                )}
+        {slots.map((slot) => {
+          const { idx, side, key } = slot;
+          const existing = getSet(idx, side);
+          const isDone = !!existing && existing.status !== 'skipped';
+          const expanded = key === expandedKey;
+          const pr = prFor(existing);
+          const lip = lissIntensityPrFor(existing);
+          const a11yBase = `${lift.name} set ${idx + 1}${side ? ` ${side}` : ''}`;
+          const repsShown = existing?.reps ?? prescription.repMin;
+          const weightShown = existing?.weight ?? prescription.weight;
+          const rirShown = shouldTrackRpeForReps(repsShown)
+            ? (existing ? existing.rir : 2)
+            : undefined;
+          const loadLabel = lift.loadUnit === 'none'
+            ? `${repsShown} ${repUnitLabel}`
+            : `${weightShown} ${lift.loadUnit === 'kg' ? 'kg' : 'lb'} x ${repsShown}`;
+          const hasPr = !!(pr?.repPR || pr?.e1rmPR || lip?.speedPR || lip?.inclinePR);
+          return (
+            <div key={key} className="space-y-1">
+              {key === firstOpen?.key && mostRecentLogTs && (
+                <div className="px-1">
+                  <RestTimer
+                    since={mostRecentLogTs ?? undefined}
+                    restTargetSeconds={restTargetSeconds}
+                  />
+                </div>
+              )}
+              {expanded ? (
                 <div
-                  className={`rounded-xl border ${existing ? 'border-zinc-700 bg-zinc-950' : 'border-zinc-800 bg-zinc-900'} p-3`}
+                  id={`set-${prescription.id}-${key}`}
+                  data-set-index={idx}
+                  data-expanded="true"
+                  data-current-set={key === firstOpen?.key ? 'true' : 'false'}
+                  className={`scroll-mt-24 rounded-xl border p-3 ${existing ? 'border-zinc-700 bg-zinc-950' : 'border-zinc-800 bg-zinc-900'}`}
                 >
                   <div className="flex items-center justify-between mb-2 gap-2 flex-wrap">
                     <div className="text-sm text-zinc-300 font-medium">
@@ -451,6 +551,7 @@ export function LiftCard({
                     lift={lift}
                     isCardio={isCardio}
                     repUnitLabel={repUnitLabel}
+                    a11yBase={a11yBase}
                     initialWeight={existing?.weight ?? prescription.weight}
                     initialReps={existing?.reps ?? prescription.repMin}
                     initialRir={existing?.rir}
@@ -463,137 +564,176 @@ export function LiftCard({
                     done={isDone}
                   />
 
-                  {existing?.status === 'completed' &&
-                    (existing.intent === 'working' || existing.intent === 'backoff') && (
-                    <div className="flex gap-1 mt-1">
-                      {(['fast', 'normal', 'slow'] as const).map((speed) => (
-                        <button
-                          key={speed}
-                          type="button"
-                          onClick={async () => {
-                            await localUpsert('set_logs', {
-                              ...existing,
-                              barSpeed: existing.barSpeed === speed ? null : speed,
-                            });
-                          }}
-                          className={`flex-1 h-6 rounded text-[10px] border transition-colors ${
-                            existing.barSpeed === speed
-                              ? speed === 'fast'
-                                ? 'bg-emerald-800 border-emerald-700 text-emerald-200'
-                                : speed === 'slow'
-                                  ? 'bg-rose-900 border-rose-800 text-rose-200'
-                                  : 'bg-zinc-700 border-zinc-600 text-zinc-200'
-                              : 'bg-zinc-900 border-zinc-800 text-zinc-600 hover:text-zinc-400'
-                          }`}
-                        >
-                          {speed === 'fast'
-                            ? '⚡ Fast'
-                            : speed === 'normal'
-                              ? '→ Normal'
-                              : '↓ Slow'}
-                        </button>
-                      ))}
-                    </div>
-                  )}
-
-                  {prescription.notes &&
-                    existing?.status !== 'completed' && (
-                    <div className="text-[10px] text-amber-400/70
-                      leading-snug pt-0.5 flex items-start gap-1">
+                  {prescription.notes && existing?.status !== 'completed' && (
+                    <div className="text-[10px] text-amber-400/70 leading-snug pt-0.5 flex items-start gap-1">
                       <span className="text-amber-600 shrink-0">↑</span>
                       {prescription.notes}
                     </div>
                   )}
 
-                  <label className="mt-3 block text-xs text-zinc-500">
-                    Set intent
-                    <select
-                      className="mt-1 block w-full max-w-xs h-9 rounded-lg bg-zinc-950 border border-zinc-800 px-2 text-sm text-zinc-200"
-                      aria-label={`Intent for set ${idx + 1}`}
-                      value={intentFor(idx, side)}
-                      onChange={(e) => void setIntentChoice(idx, side, e.target.value as SetIntent)}
-                    >
-                      {SET_INTENTS.map((it) => (
-                        <option key={it} value={it}>
-                          {INTENT_LABEL[it]}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
+                  <MoreDisclosure label={`${a11yBase} More`}>
+                    <label className="block text-xs text-zinc-500">
+                      Set intent
+                      <select
+                        className="mt-1 block w-full max-w-xs h-11 rounded-lg bg-zinc-950 border border-zinc-800 px-2 text-sm text-zinc-200"
+                        aria-label={`${a11yBase} intent`}
+                        value={intentFor(idx, side)}
+                        onChange={(e) => void setIntentChoice(idx, side, e.target.value as SetIntent)}
+                      >
+                        {SET_INTENTS.map((it) => (
+                          <option key={it} value={it}>
+                            {INTENT_LABEL[it]}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
 
-                  <div className="flex gap-2 mt-2 text-xs">
                     <button
+                      type="button"
                       onClick={() => setOpenSubs(openSubs === idx ? null : idx)}
-                      className="text-zinc-400 underline underline-offset-2"
+                      className="h-11 px-1 text-sm text-zinc-400 underline underline-offset-2"
                     >
                       {openSubs === idx ? 'Cancel' : 'Modify…'}
                     </button>
-                  </div>
 
-                  {openSubs === idx && (
-                    <div className="mt-3 space-y-2 border-t border-zinc-800 pt-3">
-                      <div className="flex flex-wrap gap-2">
-                        <button
-                          onClick={async () => {
-                            await logSet({ setIndex: idx, side, weight: 0, reps: 0, status: 'skipped', reason: reasonDraft || undefined });
-                            setOpenSubs(null);
-                            setReasonDraft('');
-                          }}
-                          className="px-3 h-9 rounded-lg bg-zinc-700 text-sm"
-                        >Skip set</button>
-                        <button
-                          onClick={async () => {
-                            await logSet({ setIndex: idx, side, weight: existing?.weight ?? prescription.weight, reps: existing?.reps ?? 0, status: 'reduced', reason: reasonDraft || undefined });
-                            setOpenSubs(null);
-                            setReasonDraft('');
-                          }}
-                          className="px-3 h-9 rounded-lg bg-amber-700 text-sm"
-                        >Mark reduced</button>
-                        <select
-                          aria-label="Substitute lift"
-                          value={substituteId}
-                          onChange={(e) => setSubstituteId(e.target.value)}
-                          className="px-2 h-9 rounded-lg bg-zinc-800 text-sm flex-1 min-w-[140px]"
-                        >
-                          <option value="">Substitute lift…</option>
-                          {(lifts ?? []).filter((l) => l.id !== lift.id).map((l) => (
-                            <option key={l.id} value={l.id}>{l.name}</option>
-                          ))}
-                        </select>
-                        <button
-                          disabled={!substituteId}
-                          onClick={async () => {
-                            await logSet({
-                              setIndex: idx, side,
-                              weight: existing?.weight ?? prescription.weight,
-                              reps: existing?.reps ?? 0,
-                              status: 'substituted',
-                              substituteLiftId: substituteId,
-                              reason: reasonDraft || undefined,
-                            });
-                            setOpenSubs(null);
-                            setSubstituteId('');
-                            setReasonDraft('');
-                          }}
-                          className="px-3 h-9 rounded-lg bg-indigo-700 text-sm disabled:opacity-50"
-                        >Apply sub</button>
+                    {openSubs === idx && (
+                      <div className="space-y-2 border-t border-zinc-800 pt-3">
+                        <div className="flex flex-wrap gap-2">
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              await logSet({ setIndex: idx, side, weight: 0, reps: 0, status: 'skipped', reason: reasonDraft || undefined });
+                              setOpenSubs(null);
+                              setReasonDraft('');
+                            }}
+                            className="px-3 h-11 rounded-lg bg-zinc-700 text-sm"
+                          >Skip set</button>
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              await logSet({ setIndex: idx, side, weight: existing?.weight ?? prescription.weight, reps: existing?.reps ?? 0, status: 'reduced', reason: reasonDraft || undefined });
+                              setOpenSubs(null);
+                              setReasonDraft('');
+                            }}
+                            className="px-3 h-11 rounded-lg bg-amber-700 text-sm"
+                          >Mark reduced</button>
+                          <select
+                            aria-label="Substitute lift"
+                            value={substituteId}
+                            onChange={(e) => setSubstituteId(e.target.value)}
+                            className="px-2 h-11 rounded-lg bg-zinc-800 text-sm flex-1 min-w-[140px]"
+                          >
+                            <option value="">Substitute lift…</option>
+                            {(lifts ?? []).filter((l) => l.id !== lift.id).map((l) => (
+                              <option key={l.id} value={l.id}>{l.name}</option>
+                            ))}
+                          </select>
+                          <button
+                            type="button"
+                            disabled={!substituteId}
+                            onClick={async () => {
+                              await logSet({
+                                setIndex: idx, side,
+                                weight: existing?.weight ?? prescription.weight,
+                                reps: existing?.reps ?? 0,
+                                status: 'substituted',
+                                substituteLiftId: substituteId,
+                                reason: reasonDraft || undefined,
+                              });
+                              setOpenSubs(null);
+                              setSubstituteId('');
+                              setReasonDraft('');
+                            }}
+                            className="px-3 h-11 rounded-lg bg-indigo-700 text-sm disabled:opacity-50"
+                          >Apply sub</button>
+                        </div>
+                        <input
+                          aria-label={`${a11yBase} reason`}
+                          placeholder="Reason (optional) — e.g., knee bothered me"
+                          value={reasonDraft}
+                          onChange={(e) => setReasonDraft(e.target.value)}
+                          className="w-full h-11 px-3 rounded-lg bg-zinc-800 text-sm"
+                        />
+                        {existing?.reason && (
+                          <div className="text-xs text-zinc-500">Current reason: {existing.reason}</div>
+                        )}
                       </div>
-                      <input
-                        placeholder="Reason (optional) — e.g., knee bothered me"
-                        value={reasonDraft}
-                        onChange={(e) => setReasonDraft(e.target.value)}
-                        className="w-full h-10 px-3 rounded-lg bg-zinc-800 text-sm"
-                      />
-                      {existing?.reason && (
-                        <div className="text-xs text-zinc-500">Current reason: {existing.reason}</div>
-                      )}
-                    </div>
-                  )}
+                    )}
+
+                    {existing?.status === 'completed' &&
+                      (existing.intent === 'working' || existing.intent === 'backoff') && (
+                      <div className="flex gap-1">
+                        {(['fast', 'normal', 'slow'] as const).map((speed) => (
+                          <button
+                            key={speed}
+                            type="button"
+                            aria-label={`${a11yBase} bar speed ${speed}`}
+                            aria-pressed={existing.barSpeed === speed}
+                            onClick={async () => {
+                              await ensureSessionPersisted(session);
+                              await localUpsert('set_logs', {
+                                ...existing,
+                                barSpeed: existing.barSpeed === speed ? null : speed,
+                              });
+                            }}
+                            className={`flex-1 h-12 rounded-xl text-xs border transition-colors ${
+                              existing.barSpeed === speed
+                                ? speed === 'fast'
+                                  ? 'bg-emerald-800 border-emerald-700 text-emerald-200'
+                                  : speed === 'slow'
+                                    ? 'bg-rose-900 border-rose-800 text-rose-200'
+                                    : 'bg-zinc-700 border-zinc-600 text-zinc-200'
+                                : 'bg-zinc-900 border-zinc-800 text-zinc-400'
+                            }`}
+                          >
+                            {speed === 'fast'
+                              ? '⚡ Fast'
+                              : speed === 'normal'
+                                ? '→ Normal'
+                                : '↓ Slow'}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </MoreDisclosure>
                 </div>
-              </div>
-            );
-          }),
-        )}
+              ) : (
+                <button
+                  type="button"
+                  id={`set-${prescription.id}-${key}`}
+                  data-set-index={idx}
+                  data-expanded="false"
+                  data-current-set={key === firstOpen?.key ? 'true' : 'false'}
+                  onClick={() => {
+                    setOverrideKey(key);
+                    setOpenSubs(null);
+                  }}
+                  className="scroll-mt-24 flex h-12 w-full items-center gap-2 overflow-hidden whitespace-nowrap rounded-xl border border-zinc-800 bg-zinc-950 px-3 text-left text-sm"
+                >
+                  <span className="shrink-0 font-medium text-zinc-300">
+                    Set {idx + 1}{side ? ` · ${side}` : ''}
+                  </span>
+                  <span className="truncate font-mono text-zinc-200">{loadLabel}</span>
+                  {rirShown != null && (
+                    <span className="shrink-0 text-zinc-400">RIR {rirShown}</span>
+                  )}
+                  <span className="ml-auto flex shrink-0 items-center gap-1">
+                    {hasPr && (
+                      <span className="rounded-full bg-amber-500 px-1.5 py-0.5 text-[10px] font-semibold uppercase leading-none text-zinc-950">
+                        PR
+                      </span>
+                    )}
+                    {existing && (
+                      <span className={`rounded-full px-2 py-0.5 text-xs leading-none text-white ${STATUS_COLOR[existing.status]}`}>
+                        {STATUS_LABEL[existing.status]}
+                      </span>
+                    )}
+                  </span>
+                </button>
+              )}
+            </div>
+          );
+        })}
       </div>
 
       {(onAddSet || onRemoveLastSet) && (
@@ -757,11 +897,44 @@ function CardioDurationTimer({
   );
 }
 
+function MoreDisclosure({ label, children }: { label: string; children: ReactNode }) {
+  const [open, setOpen] = useState(false);
+  const panelId = useId();
+  return (
+    <div>
+      <button
+        type="button"
+        aria-expanded={open}
+        aria-controls={panelId}
+        aria-label={label}
+        onClick={() => setOpen((value) => !value)}
+        className="mt-2 h-12 w-full rounded-xl border border-zinc-800 bg-zinc-950 text-sm font-medium text-zinc-300"
+      >
+        {open ? 'Less' : 'More'}
+      </button>
+      {open ? (
+        <div id={panelId} className="mt-3 space-y-2">
+          {children}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function fieldLabels(base: string, field: string) {
+  return {
+    input: `${base} ${field}`,
+    decrease: `${base} decrease ${field}`,
+    increase: `${base} increase ${field}`,
+  };
+}
+
 function SetRow({
   prescription,
   lift,
   isCardio,
   repUnitLabel,
+  a11yBase,
   initialWeight,
   initialReps,
   initialRir,
@@ -775,6 +948,7 @@ function SetRow({
   lift: Lift;
   isCardio: boolean;
   repUnitLabel: string;
+  a11yBase: string;
   initialWeight: number;
   initialReps: number;
   initialRir?: number;
@@ -850,6 +1024,8 @@ function SetRow({
               min={0.1}
               max={15}
               unit="mph"
+              touch
+              labels={fieldLabels(a11yBase, 'speed')}
             />
           </label>
           <label className="text-xs text-zinc-500 flex flex-col gap-1">
@@ -861,6 +1037,8 @@ function SetRow({
               min={0}
               max={30}
               unit="%"
+              touch
+              labels={fieldLabels(a11yBase, 'incline')}
             />
           </label>
         </div>
@@ -872,6 +1050,7 @@ function SetRow({
             <input
               type="number"
               inputMode="numeric"
+              aria-label={`${a11yBase} average heart rate`}
               value={avgHr === '' ? '' : avgHr}
               onChange={(e) => {
                 const v = e.target.value;
@@ -885,6 +1064,7 @@ function SetRow({
             <input
               type="number"
               inputMode="numeric"
+              aria-label={`${a11yBase} peak heart rate`}
               value={peakHr === '' ? '' : peakHr}
               onChange={(e) => {
                 const v = e.target.value;
@@ -895,7 +1075,7 @@ function SetRow({
           </label>
         </div>
       )}
-      <div className="flex flex-wrap items-center gap-3">
+      <div className="flex flex-col items-start gap-2">
         {showWeight && (
           <WeightStepper
             lift={lift}
@@ -904,14 +1084,20 @@ function SetRow({
             stepIncrement={prescription.increment}
             allowNegative={allowNegative}
             unit={lift.loadUnit === 'lb' ? 'lb' : ''}
+            labels={fieldLabels(a11yBase, 'weight')}
           />
         )}
-        <RepStepper value={r} onChange={setR} unit={repUnitLabel} />
+        <RepStepper
+          value={r}
+          onChange={setR}
+          unit={repUnitLabel}
+          labels={fieldLabels(a11yBase, repUnitLabel)}
+        />
         {trackRpe && !(isCardio && ct === 'liss') ? (
           <label className="text-xs text-zinc-500">
             RIR
             <div className="mt-1">
-              <RirStepper value={rir} onChange={setRir} />
+              <RirStepper value={rir} onChange={setRir} labels={fieldLabels(a11yBase, 'RIR')} />
             </div>
             <div className="mt-1 text-[10px] text-zinc-500">RPE {derivedRpe?.toFixed(1)}</div>
           </label>
@@ -942,25 +1128,20 @@ function SetRow({
           )}
         </p>
       )}
-      {lift.cue && !done && (
-        <div className="text-[11px] text-amber-400/80 leading-snug flex items-start gap-1 pb-1">
-          <span className="text-amber-600 shrink-0 select-none">▸</span>
-          {lift.cue}
-        </div>
-      )}
-      <div className="flex gap-2">
-        <button
-          onClick={() => onSave(w, r, trackRpe ? rir : undefined, 'completed', cardioMeta())}
-          className={`flex-1 h-11 rounded-xl font-medium ${done ? 'bg-emerald-700' : 'bg-emerald-600 active:bg-emerald-700'}`}
-        >
-          {done ? 'Update set' : (isCardio ? 'Log cardio' : 'Log set')}
-        </button>
-      </div>
       {prescription.liftId === 'pp' && (
         <div className="text-[11px] text-rose-300 font-semibold">
           BRACE YOUR GODDAMN CORE, or you&apos;ll hurt your back again
         </div>
       )}
+      <div className="flex gap-2">
+        <button
+          type="button"
+          onClick={() => onSave(w, r, trackRpe ? rir : undefined, 'completed', cardioMeta())}
+          className={`flex-1 h-12 rounded-xl font-medium ${done ? 'bg-emerald-700' : 'bg-emerald-600 active:bg-emerald-700'}`}
+        >
+          {done ? 'Update set' : (isCardio ? 'Log cardio' : 'Log set')}
+        </button>
+      </div>
     </div>
   );
 }

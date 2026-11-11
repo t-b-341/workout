@@ -25,6 +25,12 @@ function useBlurSyncedNumericText(
   return { setFocused, text, setText };
 }
 
+type StepperA11y = {
+  input?: string;
+  decrease?: string;
+  increase?: string;
+};
+
 type Props = {
   lift: SnapLiftRef & Pick<Lift, 'increment'>;
   value: number;
@@ -33,6 +39,7 @@ type Props = {
   stepIncrement?: number;
   allowNegative?: boolean;
   unit?: string;
+  labels?: StepperA11y;
 };
 
 export function WeightStepper({
@@ -42,6 +49,7 @@ export function WeightStepper({
   stepIncrement,
   allowNegative,
   unit = 'lb',
+  labels,
 }: Props) {
   const inc =
     stepIncrement ??
@@ -75,11 +83,12 @@ export function WeightStepper({
         type="button"
         onClick={dec}
         className="h-12 w-12 rounded-xl bg-zinc-800 active:bg-zinc-700 text-2xl font-medium"
-        aria-label="decrease"
+        aria-label={labels?.decrease ?? 'decrease'}
       >−</button>
       <input
         type="text"
         inputMode="decimal"
+        aria-label={labels?.input}
         value={text}
         onFocus={() => setFocused(true)}
         onBlur={() => {
@@ -113,7 +122,7 @@ export function WeightStepper({
         type="button"
         onClick={up}
         className="h-12 w-12 rounded-xl bg-zinc-800 active:bg-zinc-700 text-2xl font-medium"
-        aria-label="increase"
+        aria-label={labels?.increase ?? 'increase'}
       >+</button>
       <span className="text-zinc-500 text-sm ml-1">{unit}</span>
     </div>
@@ -124,9 +133,10 @@ type RepProps = {
   value: number;
   onChange: (n: number) => void;
   unit?: string;
+  labels?: StepperA11y;
 };
 
-export function RepStepper({ value, onChange, unit = 'reps' }: RepProps) {
+export function RepStepper({ value, onChange, unit = 'reps', labels }: RepProps) {
   const { setFocused, text, setText } = useBlurSyncedNumericText(value, String);
 
   function commit() {
@@ -144,11 +154,12 @@ export function RepStepper({ value, onChange, unit = 'reps' }: RepProps) {
         type="button"
         onClick={() => onChange(Math.max(0, value - 1))}
         className="h-12 w-12 rounded-xl bg-zinc-800 active:bg-zinc-700 text-2xl font-medium"
-        aria-label="decrease"
+        aria-label={labels?.decrease ?? 'decrease'}
       >−</button>
       <input
         type="text"
         inputMode="numeric"
+        aria-label={labels?.input}
         value={text}
         onFocus={() => setFocused(true)}
         onBlur={() => {
@@ -166,7 +177,7 @@ export function RepStepper({ value, onChange, unit = 'reps' }: RepProps) {
         type="button"
         onClick={() => onChange(value + 1)}
         className="h-12 w-12 rounded-xl bg-zinc-800 active:bg-zinc-700 text-2xl font-medium"
-        aria-label="increase"
+        aria-label={labels?.increase ?? 'increase'}
       >+</button>
       <span className="text-zinc-500 text-sm ml-1">{unit}</span>
     </div>
@@ -178,9 +189,10 @@ type RirProps = {
   onChange: (n: number) => void;
   /** Narrower controls for dense layouts (e.g. session edit sheet). */
   compact?: boolean;
+  labels?: StepperA11y;
 };
 
-export function RirStepper({ value, onChange, compact }: RirProps) {
+export function RirStepper({ value, onChange, compact, labels }: RirProps) {
   const snapped = clampHalfStepRir(value);
   const { setFocused, text, setText } = useBlurSyncedNumericText(value, (n) =>
     String(clampHalfStepRir(n)),
@@ -208,11 +220,12 @@ export function RirStepper({ value, onChange, compact }: RirProps) {
         type="button"
         onClick={dec}
         className={`rounded-xl bg-zinc-800 active:bg-zinc-700 font-medium ${btn}`}
-        aria-label="decrease RIR"
+        aria-label={labels?.decrease ?? 'decrease RIR'}
       >−</button>
       <input
         type="text"
         inputMode="decimal"
+        aria-label={labels?.input}
         value={text}
         onFocus={() => setFocused(true)}
         onBlur={() => {
@@ -233,7 +246,7 @@ export function RirStepper({ value, onChange, compact }: RirProps) {
         type="button"
         onClick={inc}
         className={`rounded-xl bg-zinc-800 active:bg-zinc-700 font-medium ${btn}`}
-        aria-label="increase RIR"
+        aria-label={labels?.increase ?? 'increase RIR'}
       >+</button>
     </div>
   );
@@ -246,12 +259,14 @@ export function LooseIntField({
   min = 0,
   max = 9999,
   className,
+  'aria-label': ariaLabel,
 }: {
   value: number;
   onCommit: (n: number) => void;
   min?: number;
   max?: number;
   className?: string;
+  'aria-label'?: string;
 }) {
   const { setFocused, text, setText } = useBlurSyncedNumericText(value, String);
 
@@ -267,6 +282,7 @@ export function LooseIntField({
       type="text"
       inputMode="numeric"
       value={text}
+      aria-label={ariaLabel}
       className={className}
       onFocus={() => setFocused(true)}
       onBlur={() => {
@@ -295,6 +311,8 @@ export function DecimalStepper({
   max,
   unit,
   inputClassName,
+  labels,
+  touch,
 }: {
   value: number;
   onChange: (n: number) => void;
@@ -303,6 +321,9 @@ export function DecimalStepper({
   max?: number;
   unit?: string;
   inputClassName?: string;
+  labels?: StepperA11y;
+  /** 48px controls for the in-session lift card. */
+  touch?: boolean;
 }) {
   function clamp(n: number): number {
     return clampStepped(n, step, min, max);
@@ -323,19 +344,28 @@ export function DecimalStepper({
     onChange(clamp(Number.isFinite(n) ? n : min));
   }
 
+  const btn = touch
+    ? 'h-12 w-12 shrink-0 rounded-xl bg-zinc-800 active:bg-zinc-700 text-2xl font-medium leading-none'
+    : 'h-10 w-10 shrink-0 rounded-lg bg-zinc-800 active:bg-zinc-700 text-lg font-medium leading-none';
+  const field = touch
+    ? 'flex-1 min-w-0 h-12 rounded-xl bg-zinc-950 border border-zinc-800 px-2 font-mono text-base text-center'
+    : inputClassName ??
+      'flex-1 min-w-0 h-10 rounded-lg bg-zinc-950 border border-zinc-800 px-2 font-mono text-sm text-center';
+
   return (
     <div className="flex items-center gap-1.5 w-full">
       <button
         type="button"
         onClick={dec}
-        className="h-10 w-10 shrink-0 rounded-lg bg-zinc-800 active:bg-zinc-700 text-lg font-medium leading-none"
-        aria-label="decrease"
+        className={btn}
+        aria-label={labels?.decrease ?? 'decrease'}
       >
         −
       </button>
       <input
         type="text"
         inputMode="decimal"
+        aria-label={labels?.input}
         value={text}
         onFocus={() => setFocused(true)}
         onBlur={() => {
@@ -351,16 +381,13 @@ export function DecimalStepper({
           }
           setText(v);
         }}
-        className={
-          inputClassName ??
-          'flex-1 min-w-0 h-10 rounded-lg bg-zinc-950 border border-zinc-800 px-2 font-mono text-sm text-center'
-        }
+        className={field}
       />
       <button
         type="button"
         onClick={inc}
-        className="h-10 w-10 shrink-0 rounded-lg bg-zinc-800 active:bg-zinc-700 text-lg font-medium leading-none"
-        aria-label="increase"
+        className={btn}
+        aria-label={labels?.increase ?? 'increase'}
       >
         +
       </button>
@@ -375,11 +402,13 @@ export function LooseDecimalField({
   onCommit,
   className,
   allowNegative,
+  'aria-label': ariaLabel,
 }: {
   value: number;
   onCommit: (n: number) => void;
   className?: string;
   allowNegative?: boolean;
+  'aria-label'?: string;
 }) {
   const { setFocused, text, setText } = useBlurSyncedNumericText(value, String);
 
@@ -398,6 +427,7 @@ export function LooseDecimalField({
       type="text"
       inputMode="decimal"
       value={text}
+      aria-label={ariaLabel}
       className={className}
       onFocus={() => setFocused(true)}
       onBlur={() => {

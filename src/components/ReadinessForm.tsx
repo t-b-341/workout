@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { recommendMode, type ReadinessRecommendation } from '@/lib/recommendMode';
-import { localUpsert } from '@/lib/sync';
+import { ensureSessionPersisted, localUpsert, persistSessionUpdate } from '@/lib/sync';
 import { isoWeekStringFromIsoDate } from '@/lib/time';
 import { useThisWeekBodyweight } from '@/lib/hooks';
 import type { ReadinessLog, SessionLog } from '@/lib/types';
@@ -68,6 +68,13 @@ export function ReadinessForm({
         delete row.napDurationMin;
         delete row.napTiming;
       }
+
+      const completedAt = new Date().toISOString();
+      const patch: Partial<SessionLog> = { readinessCompletedAt: completedAt };
+      if (applyMode && rec.mode !== session.mode) {
+        patch.mode = rec.mode;
+      }
+      await persistSessionUpdate(session, patch);
       await localUpsert('readiness_logs', row);
 
       if (showBwInput) {
@@ -78,16 +85,6 @@ export function ReadinessForm({
           bodyweight: bw,
         });
       }
-
-      const completedAt = new Date().toISOString();
-      let nextSession: SessionLog = {
-        ...session,
-        readinessCompletedAt: completedAt,
-      };
-      if (applyMode && rec.mode !== session.mode) {
-        nextSession = { ...nextSession, mode: rec.mode };
-      }
-      await localUpsert('session_logs', nextSession);
       onComplete();
     } finally {
       setBusy(false);
@@ -396,6 +393,11 @@ export function ReadinessEditForm({
         delete row.napDurationMin;
         delete row.napTiming;
       }
+      if (applyMode && rec.mode !== session.mode) {
+        await persistSessionUpdate(session, { mode: rec.mode });
+      } else {
+        await ensureSessionPersisted(session);
+      }
       await localUpsert('readiness_logs', row);
       if (hadBw) {
         await localUpsert('bodyweight_logs', {
@@ -404,9 +406,6 @@ export function ReadinessEditForm({
           isoWeek: isoWeekStringFromIsoDate(session.date),
           bodyweight: bw,
         });
-      }
-      if (applyMode && rec.mode !== session.mode) {
-        await localUpsert('session_logs', { ...session, mode: rec.mode });
       }
       onDone();
     } finally {
