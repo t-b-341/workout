@@ -1,5 +1,8 @@
 import type { Prescription, SetLog } from './types';
 
+/** LiftCard listens, expands the next unlogged set, and scrolls it into view. */
+export const JUMP_TO_SET_EVENT = 'workout:jump-set';
+
 export function expectedSetSlots(prescriptions: Prescription[]): number {
   let n = 0;
   for (const p of prescriptions) {

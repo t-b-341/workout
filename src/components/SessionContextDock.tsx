@@ -6,6 +6,7 @@ import { fmtDurationShort, sessionDurationMs, workoutWallClockElapsedMs } from '
 import {
   expectedSetSlots,
   firstOpenPrescriptionId,
+  JUMP_TO_SET_EVENT,
   lastLoggedAtInSession,
   sessionSetsForPrescriptions,
 } from '@/lib/todaySessionUi';
@@ -46,8 +47,9 @@ export function SessionContextDock({ session, prescriptions, allSets }: Props) {
 
   function jumpToCurrent() {
     if (!openPid) return;
-    const el = document.getElementById(`lift-${openPid}`);
-    el?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    window.dispatchEvent(
+      new CustomEvent(JUMP_TO_SET_EVENT, { detail: { prescriptionId: openPid } }),
+    );
   }
 
   if (session.completedAt) return null;

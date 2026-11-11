@@ -569,7 +569,7 @@ export function TodayView() {
                     onClick={() =>
                       setHiddenPrescriptionIds((prev) => new Set([...prev, p.id]))
                     }
-                    className="absolute top-3 right-3 z-10 h-6 w-6 rounded-full bg-zinc-800 border border-zinc-700 text-zinc-500 hover:text-rose-400 text-xs flex items-center justify-center transition-colors"
+                    className="absolute top-2 right-2 z-10 h-11 w-11 rounded-full bg-zinc-800 border border-zinc-700 text-zinc-400 hover:text-rose-400 text-xl leading-none flex items-center justify-center transition-colors"
                   >
                     ×
                   </button>

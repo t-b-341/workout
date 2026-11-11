@@ -112,15 +112,15 @@ test.describe('signed-in app (Pixel 5)', () => {
     // Reject set_logs writes only. Selects still succeed, which is the wipe case.
     await page.evaluate(() => localStorage.setItem('e2e:fail', 'set_logs'));
     await logSet.first().click();
-    await expect(page.getByText('Done', { exact: true })).toHaveCount(1);
+    await expectLoggedSetCount(page, 1);
     await logSet.first().click();
-    await expect(page.getByText('Done', { exact: true })).toHaveCount(2);
+    await expectLoggedSetCount(page, 2);
 
     await page.reload();
     const status = page.getByRole('status');
     await expect(status).toContainText('failed to upload');
     await expect(status).toContainText('e2e injected');
-    await expect(page.getByText('Done', { exact: true })).toHaveCount(2);
+    await expectLoggedSetCount(page, 2);
     await expect(page.getByRole('link', { name: 'Sync diagnostics' })).toHaveAttribute('href', '/program');
 
     await page.evaluate(() => localStorage.removeItem('e2e:fail'));
@@ -129,7 +129,7 @@ test.describe('signed-in app (Pixel 5)', () => {
     await page.getByRole('button', { name: 'Sync', exact: true }).click();
     await page.getByRole('navigation').getByRole('link', { name: 'Today' }).click();
     await expect(page.getByRole('status')).toContainText('Up to date', { timeout: 20_000 });
-    await expect(page.getByText('Done', { exact: true })).toHaveCount(2);
+    await expectLoggedSetCount(page, 2);
     expect(errors.pageErrors, errors.pageErrors.join('\n')).toEqual([]);
   });
 
@@ -442,6 +442,98 @@ test.describe('signed-in app (Pixel 5)', () => {
     expect(errors.pageErrors, errors.pageErrors.join('\n')).toEqual([]);
   });
 
+  test('collapses each lift to the current set on a seeded U1 session', async ({ page }) => {
+    test.setTimeout(120_000);
+    const errors = collectPageErrors(page);
+    await page.goto('/');
+    await page.getByRole('button', { name: 'U1', exact: true }).click();
+    await page.getByRole('button', { name: 'Skip readiness check' }).click();
+    await page.getByRole('button', { name: 'Start workout' }).click();
+    await page.getByRole('button', { name: '5', exact: true }).click();
+
+    const logButtons = page.getByRole('button', { name: 'Log set', exact: true });
+    const cards = page.locator('[id^="lift-"]');
+    await expect(logButtons.first()).toBeVisible();
+    await expect(logButtons).toHaveCount(await cards.count());
+
+    const metrics = await page.evaluate(() => {
+      const inputs = [...document.querySelectorAll('[id^="lift-"] input')];
+      const unnamed = inputs.flatMap((el) => {
+        const input = el as HTMLInputElement;
+        const name = input.getAttribute('aria-label')?.trim()
+          || [...(input.labels ?? [])].map((label) => label.textContent?.trim() ?? '').filter(Boolean).join(' ');
+        if (name && /set \d+/.test(name)) return [];
+        return [name || input.outerHTML.slice(0, 140)];
+      });
+      return {
+        scrollHeight: document.documentElement.scrollHeight,
+        controls: document.querySelectorAll('button, input, select, textarea, a[href]').length,
+        inputs: document.querySelectorAll('input').length,
+        unnamed,
+      };
+    });
+    console.log(`U1 collapsed session: ${metrics.scrollHeight}px, ${metrics.controls} controls, ${metrics.inputs} inputs`);
+    expect(metrics.scrollHeight).toBeLessThan(7000);
+    expect(metrics.unnamed, metrics.unnamed.join('\n')).toEqual([]);
+
+    const stepperButtons = await page.locator('[id^="lift-"] button[aria-label*="decrease"], [id^="lift-"] button[aria-label*="increase"]').evaluateAll((els) =>
+      els.map((el) => {
+        const rect = el.getBoundingClientRect();
+        return { name: el.getAttribute('aria-label'), width: rect.width, height: rect.height };
+      }),
+    );
+    expect(stepperButtons.length).toBeGreaterThan(0);
+    for (const button of stepperButtons) {
+      expect(button.width, button.name ?? 'stepper').toBeGreaterThanOrEqual(48);
+      expect(button.height, button.name ?? 'stepper').toBeGreaterThanOrEqual(48);
+    }
+
+    const remove = page.getByRole('button', { name: 'Remove Push Press from session' });
+    const removeBox = await remove.boundingBox();
+    expect(removeBox?.width ?? 0).toBeGreaterThanOrEqual(44);
+    expect(removeBox?.height ?? 0).toBeGreaterThanOrEqual(44);
+    await expectNoHorizontalOverflow(page);
+
+    const firstCard = cards.first();
+    await firstCard.locator('[data-set-index="1"][data-expanded="false"]').click();
+    await expect(
+      firstCard.locator('[data-set-index="1"][data-expanded="true"]').getByRole('button', { name: 'Log set', exact: true }),
+    ).toBeVisible();
+    await page.getByRole('button', { name: 'Jump' }).click();
+    await expect(
+      firstCard.locator('[data-set-index="0"][data-expanded="true"]').getByRole('button', { name: 'Log set', exact: true }),
+    ).toBeVisible();
+
+    await logButtons.first().click();
+    const set1 = firstCard.locator('[data-set-index="0"][data-expanded="false"]');
+    await expect(set1).toBeVisible();
+    await expect(set1).toContainText('Done');
+    const set1Height = await set1.evaluate((el) => el.getBoundingClientRect().height);
+    expect(set1Height).toBeGreaterThanOrEqual(48);
+    expect(set1Height).toBeLessThanOrEqual(64);
+    await expect(
+      firstCard.locator('[data-set-index="1"][data-expanded="true"]').getByRole('button', { name: 'Log set', exact: true }),
+    ).toBeVisible();
+
+    await set1.click();
+    const update = firstCard.getByRole('button', { name: 'Update set', exact: true });
+    await expect(update).toBeVisible();
+    await update.click();
+
+    for (let logged = 1; logged < 19; logged++) {
+      const button = logButtons.first();
+      await expect(button).toBeVisible();
+      await button.evaluate((el: HTMLButtonElement) => el.click());
+      await expectLoggedSetCount(page, logged + 1);
+    }
+    await expect(logButtons).toHaveCount(0);
+    await expectLoggedSetCount(page, 19);
+
+    await page.getByRole('button', { name: 'Finish session' }).click();
+    await expect(page.getByRole('heading', { name: 'Workout complete!' })).toBeVisible();
+    expect(errors.pageErrors, errors.pageErrors.join('\n')).toEqual([]);
+  });
+
   test('overwhelm trigger stays clear of the session Jump button', async ({ page }) => {
     const errors = collectPageErrors(page);
     await page.goto('/');
@@ -461,6 +553,23 @@ test.describe('signed-in app (Pixel 5)', () => {
     expect(errors.pageErrors, errors.pageErrors.join('\n')).toEqual([]);
   });
 });
+
+/** Done badges, plus sets folded into a finished lift's "N sets done" summary. */
+async function loggedSetCount(page: Page): Promise<number> {
+  const badges = await page.getByText('Done', { exact: true }).count();
+  let summarized = 0;
+  const summaries = page.locator('[data-set-summary]');
+  const summaryCount = await summaries.count();
+  for (let i = 0; i < summaryCount; i++) {
+    const match = /(\d+) sets? done/.exec(await summaries.nth(i).innerText());
+    if (match) summarized += Number(match[1]);
+  }
+  return badges + summarized;
+}
+
+async function expectLoggedSetCount(page: Page, n: number) {
+  await expect.poll(() => loggedSetCount(page)).toBe(n);
+}
 
 /** Document position of an element, plus the layout viewport height. */
 async function documentBox(locator: ReturnType<Page['locator']>) {
