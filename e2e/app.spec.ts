@@ -1,6 +1,13 @@
 import { expect, test, type Page } from '@playwright/test';
 import { E2E_USER_ID } from '../src/lib/supabase/e2eStub';
-import { collectPageErrors, countDexieRows, expectNoHorizontalOverflow, signIn } from './helpers';
+import {
+  collectPageErrors,
+  countDexieRows,
+  expectNoHorizontalOverflow,
+  fixedNowPlusDays,
+  installFixedClock,
+  signIn,
+} from './helpers';
 import { seedHistoryWeeks } from './seed';
 
 const ROUTES = ['/', '/recovery', '/history', '/cardio', '/program', '/program/meso-analysis', '/settings'] as const;
@@ -13,9 +20,10 @@ test('signed-out / redirects to /login', async ({ page }) => {
 test.describe('signed-in app (Pixel 5)', () => {
   test.describe.configure({ timeout: 90_000 });
 
-  test.beforeEach(async ({ context }, testInfo) => {
+  test.beforeEach(async ({ context, page }, testInfo) => {
     const userAgent = testInfo.project.use.userAgent ?? '';
     test.skip(!userAgent.includes('Pixel 5'), 'Signed-in coverage runs on the Pixel 5 project');
+    await installFixedClock(page);
     await signIn(context);
   });
 
@@ -440,6 +448,128 @@ test.describe('signed-in app (Pixel 5)', () => {
     await expect(page.getByRole('button', { name: /^Supplements\b/ })).toHaveAttribute('aria-expanded', 'true');
     await expect.poll(() => page.evaluate(() => localStorage.getItem('workout:todaySections:v1'))).toContain('"supplements":true');
 
+    expect(errors.pageErrors, errors.pageErrors.join('\n')).toEqual([]);
+  });
+
+  const TRAINING_DAYS = [
+    { label: 'Monday', offset: 0, heading: 'Monday — Upper (Full)' },
+    { label: 'Tuesday', offset: 1, heading: 'Tuesday — Lower (Full)' },
+    { label: 'Wednesday', offset: 2, heading: 'Wednesday — Upper (Full)' },
+    { label: 'Thursday', offset: 3, heading: 'Thursday — Lower (Mini)' },
+    { label: 'Friday', offset: 4, heading: 'Friday — Upper (Mini)' },
+    { label: 'Saturday', offset: 5, heading: 'Saturday — Lower (Mini)' },
+  ] as const;
+
+  for (const day of TRAINING_DAYS) {
+    test(`Start workout stays 16px above the fold on ${day.label}`, async ({ page }) => {
+      const errors = collectPageErrors(page);
+      await installFixedClock(page, fixedNowPlusDays(day.offset));
+      await page.goto('/');
+      await expect(page.getByRole('heading', { name: day.heading })).toBeVisible();
+      await expect(page.getByRole('status')).toBeVisible();
+      await page.evaluate(() => document.fonts.ready);
+      // The skip control sits under the readiness form, so a tap scrolls it
+      // into view. The fold check is the unscrolled page.
+      await page.getByRole('button', { name: 'Skip readiness check' }).click();
+      const start = page.getByRole('button', { name: 'Start workout' });
+      await expect(start).toBeVisible();
+      await expect(page.getByRole('status')).toBeVisible();
+      await page.evaluate(() => window.scrollTo(0, 0));
+      const startBox = await documentBox(start);
+      const headingHeight = await page.getByRole('heading', { name: day.heading }).evaluate((el) => {
+        return el.getBoundingClientRect().height;
+      });
+      console.log(
+        `${day.label} Start workout bottom=${startBox.bottom} scrollY=${startBox.scrollY} viewport=${startBox.viewportHeight} spare=${startBox.viewportHeight - startBox.bottom} heading=${headingHeight}`,
+      );
+      expect(startBox.scrollY).toBe(0);
+      expect(
+        startBox.bottom,
+        `${day.label} Start workout bottom ${startBox.bottom}px, viewport ${startBox.viewportHeight}px`,
+      ).toBeLessThanOrEqual(startBox.viewportHeight - 16);
+      await expectNoHorizontalOverflow(page);
+      expect(errors.pageErrors, errors.pageErrors.join('\n')).toEqual([]);
+    });
+  }
+
+  test('Sunday keeps Monday behind the gate', async ({ page }) => {
+    const errors = collectPageErrors(page);
+    await installFixedClock(page, fixedNowPlusDays(6));
+    await page.goto('/');
+    await expect(page.getByRole('heading', { name: 'Sunday — Optional' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Skip readiness check' })).toBeVisible();
+    await page.getByRole('button', { name: 'Skip readiness check' }).click();
+
+    await expect(page.getByText("Monday's workout", { exact: true })).toBeVisible();
+    await expect(
+      page.getByText(
+        "Your check-in is done for Sunday. Monday's session stays tucked away until you open it (or until Monday).",
+      ),
+    ).toBeVisible();
+    const openMonday = page.getByRole('button', { name: "Tap here to start Monday's workout" });
+    await expect(openMonday).toBeVisible();
+    const openBox = await openMonday.boundingBox();
+    expect(openBox?.height ?? 0).toBeGreaterThanOrEqual(44);
+    await expect(page.getByRole('button', { name: 'Start workout' })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: /Quick Session/ })).toHaveCount(0);
+    expect(errors.pageErrors, errors.pageErrors.join('\n')).toEqual([]);
+  });
+
+  test('session note saves on the session and rests as one row', async ({ page }) => {
+    const errors = collectPageErrors(page);
+    await page.goto('/');
+    await expect(page.getByRole('heading', { name: 'Monday — Upper (Full)' })).toBeVisible();
+    const add = page.getByRole('button', { name: 'Add session note', exact: true });
+    await expect(add).toBeVisible();
+    expect(await add.evaluate((el) => el.getBoundingClientRect().height)).toBeGreaterThanOrEqual(44);
+    await expect(page.getByRole('textbox', { name: /Session note/ })).toHaveCount(0);
+
+    await add.click();
+    const note = page.getByRole('textbox', { name: 'Session note (why this mode?)' });
+    await expect(note).toBeVisible();
+    await note.fill('Poor sleep\njoint tweak');
+    await note.blur();
+
+    const preview = page.getByRole('button', { name: 'Poor sleep', exact: true });
+    await expect(preview).toBeVisible();
+    expect(await preview.evaluate((el) => el.getBoundingClientRect().height)).toBeGreaterThanOrEqual(44);
+
+    await expect.poll(async () => {
+      return page.evaluate(async (userId: string) => {
+        const name = `workout-${userId}`;
+        const existing = await indexedDB.databases();
+        if (!existing.some((db) => db.name === name)) return '';
+        return await new Promise<string>((resolve, reject) => {
+          const req = indexedDB.open(name);
+          req.onerror = () => reject(req.error);
+          req.onsuccess = () => {
+            const db = req.result;
+            if (!db.objectStoreNames.contains('session_logs')) {
+              db.close();
+              resolve('');
+              return;
+            }
+            const getReq = db.transaction('session_logs', 'readonly').objectStore('session_logs').getAll();
+            getReq.onerror = () => {
+              db.close();
+              reject(getReq.error);
+            };
+            getReq.onsuccess = () => {
+              const rows = getReq.result as Array<{ reason?: string }>;
+              db.close();
+              resolve(rows.map((row) => row.reason ?? '').join('\n'));
+            };
+          };
+        });
+      }, E2E_USER_ID);
+    }).toContain('Poor sleep');
+
+    await page.reload();
+    await expect(page.getByRole('button', { name: 'Poor sleep', exact: true })).toBeVisible({ timeout: 20_000 });
+    await page.getByRole('button', { name: 'Poor sleep', exact: true }).click();
+    await expect(page.getByRole('textbox', { name: 'Session note (why this mode?)' })).toHaveValue(
+      'Poor sleep\njoint tweak',
+    );
     expect(errors.pageErrors, errors.pageErrors.join('\n')).toEqual([]);
   });
 

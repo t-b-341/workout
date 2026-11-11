@@ -12,6 +12,11 @@
  * A select with no `.range()` returns at most 1,000 rows, matching
  * PostgREST's default max-rows. `.range()` and `.order()` are honoured so a
  * paged pull can read past that cap.
+ *
+ * Upsert `updated_at` is `Date.now()` plus a per-page millisecond counter
+ * (`e2e:updated-at-seq` in localStorage). A frozen clock would otherwise
+ * stamp every write the same, and the incremental pull skips rows that are
+ * not strictly newer than the watermark.
  */
 
 export const E2E_USER_ID = '00000000-0000-4000-8000-000000000001';
@@ -19,6 +24,7 @@ export const E2E_USER_ID = '00000000-0000-4000-8000-000000000001';
 const DB_PREFIX = 'e2e:db:';
 const FAIL_KEY = 'e2e:fail';
 const AUTH_OFFLINE_KEY = 'e2e:auth-offline';
+const UPDATED_AT_SEQ_KEY = 'e2e:updated-at-seq';
 const COOKIE_NAME = 'e2e-user';
 /** PostgREST default max-rows. Selects without `.range()` must not exceed it. */
 const DEFAULT_MAX_ROWS = 1000;
@@ -143,6 +149,24 @@ function writeTable(table: string, rows: Row[]) {
   storage().setItem(`${DB_PREFIX}${table}`, JSON.stringify(rows));
 }
 
+/** Next `updated_at`, strictly after every earlier write on this page. */
+function nextUpdatedAt(): string {
+  let seq = 0;
+  try {
+    const parsed = Number(storage().getItem(UPDATED_AT_SEQ_KEY) ?? '0');
+    if (Number.isFinite(parsed) && parsed > 0) seq = parsed;
+  } catch {
+    seq = 0;
+  }
+  seq += 1;
+  try {
+    storage().setItem(UPDATED_AT_SEQ_KEY, String(seq));
+  } catch {
+    // The returned stamp is still later than Date.now() for this call.
+  }
+  return new Date(Date.now() + seq).toISOString();
+}
+
 function failingTables(): Set<string> {
   let raw = '';
   try {
@@ -258,8 +282,7 @@ function createQuery(table: string): E2eQuery {
     upsert(values: Row | Row[], options?: { onConflict?: string; ignoreDuplicates?: boolean }) {
       op = 'upsert';
       const list = Array.isArray(values) ? values : [values];
-      const now = new Date().toISOString();
-      upsertRows = list.map((row) => ({ ...row, updated_at: now }));
+      upsertRows = list.map((row) => ({ ...row, updated_at: nextUpdatedAt() }));
       onConflict = options?.onConflict ?? 'id';
       ignoreDuplicates = options?.ignoreDuplicates === true;
       return builder;

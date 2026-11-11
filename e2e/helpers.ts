@@ -1,6 +1,27 @@
 import { expect, type BrowserContext, type Page } from '@playwright/test';
 import { E2E_USER_ID } from '../src/lib/supabase/e2eStub';
 
+/**
+ * Monday 2026-11-09 10:00 in America/Chicago.
+ * That week is CST (UTC−6), so 10:00 local is 16:00 UTC. An absolute instant
+ * keeps the browser's calendar day stable when the runner itself is on UTC.
+ */
+export const FIXED_NOW = new Date('2026-11-09T16:00:00.000Z');
+
+/** Same Chicago morning, `days` after `FIXED_NOW`. Sunday of that week is +6. */
+export function fixedNowPlusDays(days: number): Date {
+  return new Date(FIXED_NOW.getTime() + days * 24 * 60 * 60 * 1000);
+}
+
+/**
+ * Freeze `Date.now()` and `new Date()` before the first navigation.
+ * `setFixedTime` leaves timers running. Call again to move the frozen instant;
+ * do not resume the wall clock.
+ */
+export async function installFixedClock(page: Page, at: Date = FIXED_NOW): Promise<void> {
+  await page.clock.setFixedTime(at);
+}
+
 /** Sets the cookie the E2E stub treats as a signed-in session. */
 export async function signIn(context: BrowserContext) {
   await context.addCookies([

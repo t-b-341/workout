@@ -5,6 +5,10 @@
  * The function is self-contained so it can run in the page. One session per
  * week, newest first in the loop. Server session ids are
  * `${userId}:${date}-${templateId}`. Rows use the stub's snake_case shape.
+ *
+ * The newest day is Monday 2026-11-02, seven days before the suite clock
+ * (Monday 2026-11-09 10:00 America/Chicago). Every seeded session stays in
+ * the past through Sunday 2026-11-15, including when the runner is on UTC.
  */
 export function seedHistoryWeeks(
   weeks: number,
