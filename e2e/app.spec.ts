@@ -607,7 +607,7 @@ test.describe('signed-in app (Pixel 5)', () => {
     await expect(page.getByText('Visible templates')).toHaveCount(0);
     await expect(page.getByRole('button', { name: 'Save sleep' })).toHaveCount(0);
     await expect(page.getByText('Daily recovery')).toBeVisible();
-    await expect(page.getByText("Today's recommendations")).toBeVisible();
+    await expect(page.getByText("Today's recommendations")).toHaveCount(0);
 
     const morning = page.getByRole('heading', { name: 'Morning', exact: true });
     const intake = page.getByRole('heading', { name: 'Intake', exact: true });
@@ -619,13 +619,11 @@ test.describe('signed-in app (Pixel 5)', () => {
     await expect(body).toBeVisible();
 
     const scoreBox = await documentBox(page.getByText('Daily recovery'));
-    const recBox = await documentBox(page.getByText("Today's recommendations"));
     const morningBox = await documentBox(morning);
     const intakeBox = await documentBox(intake);
     const mindBox = await documentBox(mind);
     const bodyBox = await documentBox(body);
-    expect(scoreBox.top).toBeLessThan(recBox.top);
-    expect(recBox.top).toBeLessThan(morningBox.top);
+    expect(scoreBox.top).toBeLessThan(morningBox.top);
     expect(morningBox.top).toBeLessThan(intakeBox.top);
     expect(intakeBox.top).toBeLessThan(mindBox.top);
     expect(mindBox.top).toBeLessThan(bodyBox.top);
@@ -638,6 +636,20 @@ test.describe('signed-in app (Pixel 5)', () => {
     console.log(`recovery-collapsed ${JSON.stringify(metrics)}`);
     expect(metrics.height).toBeLessThan(2500);
     await expectNoHorizontalOverflow(page);
+    expect(errors.pageErrors, errors.pageErrors.join('\n')).toEqual([]);
+  });
+
+  test('fresh /recovery does not invent a conservative score', async ({ page }) => {
+    const errors = collectPageErrors(page);
+    await page.goto('/recovery');
+    const score = page.getByTestId('daily-recovery-score');
+    await expect(score).toBeVisible();
+    await expect(score).toContainText(
+      'Not enough data. Log at least two of sleep, readiness, hydration, and nutrition.',
+    );
+    await expect(score.getByText('Not logged').first()).toBeVisible();
+    await expect(page.getByText(/conservative/i)).toHaveCount(0);
+    await expect(page.getByText(/at least 9 hours/i)).toHaveCount(0);
     expect(errors.pageErrors, errors.pageErrors.join('\n')).toEqual([]);
   });
 

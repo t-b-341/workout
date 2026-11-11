@@ -1,15 +1,17 @@
 import { kcalFromMacros } from './macros';
 import { effectiveMealCount } from './mealTiming';
+import { addDaysIso } from './time';
 import type {
   HydrationLog,
+  MindfulnessLog,
   NutritionLog,
   ReadinessLog,
   RecoveryBand,
+  RecoveryCoreComponent,
   RecoveryPlan,
   RecoveryScore,
   SleepLog,
   StressLog,
-  MindfulnessLog,
 } from './types';
 
 function clamp(value: number, min: number, max: number): number {
@@ -58,12 +60,19 @@ function sleepFragmentationScore(log: SleepLog): number {
   return parts.reduce((a, b) => a + b, 0) / parts.length;
 }
 
-export function sleepScore(log?: SleepLog): number {
-  if (!log) return 60;
+function scoreLoggedSleep(log: SleepLog): number {
   const durationScore = sleepDurationScore(log.sleepHours);
   const qualityScore = clamp((log.sleepQuality / 5) * 100, 0, 100);
   const fragScore = sleepFragmentationScore(log);
   return Math.round(durationScore * 0.62 + qualityScore * 0.28 + fragScore * 0.1);
+}
+
+/** Null when there is no sleep log. A logged night keeps the previous formula. */
+export function sleepScore(log: SleepLog): number;
+export function sleepScore(log?: SleepLog): number | null;
+export function sleepScore(log?: SleepLog): number | null {
+  if (!log) return null;
+  return scoreLoggedSleep(log);
 }
 
 /** 1 = clearest … 8 = darkest; unknown → no penalty. Monotonic penalty, capped. */
@@ -74,8 +83,11 @@ function urineColorPenalty(color?: HydrationLog['urineColor']): number {
   return (color - 2) * 2;
 }
 
-export function hydrationScore(log?: HydrationLog): number {
-  if (!log) return 60;
+/** Null when there is no hydration log. */
+export function hydrationScore(log: HydrationLog): number;
+export function hydrationScore(log?: HydrationLog): number | null;
+export function hydrationScore(log?: HydrationLog): number | null {
+  if (!log) return null;
   const water = pct(log.waterActualMl, log.waterTargetMl);
   const waterScore = clamp(water * 100, 0, 100);
   const electrolyteBonus = log.electrolytes ? 5 : 0;
@@ -83,8 +95,11 @@ export function hydrationScore(log?: HydrationLog): number {
   return Math.round(clamp(waterScore + electrolyteBonus - colorPenalty, 0, 100));
 }
 
-export function nutritionScore(log?: NutritionLog): number {
-  if (!log) return 60;
+/** Null when there is no nutrition log. */
+export function nutritionScore(log: NutritionLog): number;
+export function nutritionScore(log?: NutritionLog): number | null;
+export function nutritionScore(log?: NutritionLog): number | null {
+  if (!log) return null;
   const protein = pct(log.proteinActualG, log.proteinTargetG);
   const calActual = kcalFromMacros(log.proteinActualG, log.carbsActualG, log.fatActualG);
   const calTarget = kcalFromMacros(log.proteinTargetG, log.carbsTargetG, log.fatTargetG);
@@ -96,8 +111,11 @@ export function nutritionScore(log?: NutritionLog): number {
   return Math.round(clamp(score + mealsBonus, 0, 100));
 }
 
-export function readinessScore(log?: ReadinessLog): number {
-  if (!log) return 60;
+/** Null when there is no readiness log. */
+export function readinessScore(log: ReadinessLog): number;
+export function readinessScore(log?: ReadinessLog): number | null;
+export function readinessScore(log?: ReadinessLog): number | null {
+  if (!log) return null;
   const syntheticSleepLog: SleepLog = {
     id: `readiness-sleep-${log.id}`,
     date: log.date ?? '',
@@ -106,7 +124,7 @@ export function readinessScore(log?: ReadinessLog): number {
     wakeCount: log.sleepInterruptions ?? undefined,
     sleepOnsetLatencyMin: undefined,
   };
-  const sleep = sleepScore(syntheticSleepLog);
+  const sleep = scoreLoggedSleep(syntheticSleepLog);
   // Nap recovery bonus: adds to the sleep component.
   // A well-timed nap meaningfully improves next-day readiness;
   // a late nap partially offsets tonight's sleep quality.
@@ -130,14 +148,24 @@ export function readinessScore(log?: ReadinessLog): number {
   return Math.round(base * 0.8 + hrvScore * 0.2);
 }
 
-export function recoveryBand(compositeScore: number): RecoveryBand {
+/** Null composite → null band. Zero stays in the recovery band; it is a real low score. */
+export function recoveryBand(compositeScore: number | null): RecoveryBand | null {
+  if (compositeScore == null) return null;
   if (compositeScore >= 85) return 'push';
   if (compositeScore >= 70) return 'normal';
   if (compositeScore >= 50) return 'conservative';
   return 'recovery';
 }
 
-export function recoveryPlan(band: RecoveryBand): RecoveryPlan {
+export function recoveryPlan(band: RecoveryBand | null): RecoveryPlan {
+  if (band == null) {
+    return {
+      band: null,
+      intensityNote: 'Not enough data to adjust training.',
+      cardioNote: '',
+      nutritionNote: '',
+    };
+  }
   if (band === 'push') {
     return {
       band,
@@ -234,6 +262,20 @@ function laggedNapModifier(log?: ReadinessLog): number {
   return Math.max(-4, mod);
 }
 
+const CORE_ORDER: RecoveryCoreComponent[] = ['sleep', 'hydration', 'nutrition', 'readiness'];
+
+function splitCorePresence(
+  flags: Record<RecoveryCoreComponent, boolean>,
+): Pick<RecoveryScore, 'present' | 'missing'> {
+  const present: RecoveryCoreComponent[] = [];
+  const missing: RecoveryCoreComponent[] = [];
+  for (const key of CORE_ORDER) {
+    if (flags[key]) present.push(key);
+    else missing.push(key);
+  }
+  return { present, missing };
+}
+
 export function buildRecoveryScore(input: {
   date: string;
   sleep?: SleepLog;
@@ -249,7 +291,7 @@ export function buildRecoveryScore(input: {
 }): RecoveryScore {
   const s = sleepScore(input.sleep);
   const napLag = laggedNapModifier(input.yesterdayReadiness);
-  const sAdjusted = clamp(s + napLag, 0, 100);
+  const sAdjusted = s == null ? null : clamp(s + napLag, 0, 100);
   const h = hydrationScore(input.hydration);
   const n = nutritionScore(input.nutrition);
   const r = readinessScore(input.readiness);
@@ -267,14 +309,33 @@ export function buildRecoveryScore(input: {
   const hasMindfulness = mindLogs.length > 0 || input.readiness?.mindfulnessMinutes != null;
 
   const w = compositeWeightsForRecovery(hasStress, hasMindfulness);
-  const compositeScore = Math.round(
-    sAdjusted * w.sleep
-      + h * w.hydration
-      + n * w.nutrition
-      + r * w.readiness
-      + (w.stress != null && st != null ? st * w.stress : 0)
-      + (w.mindfulness != null && mind != null ? mind * w.mindfulness : 0),
-  );
+  const parts: Array<{ value: number; weight: number }> = [];
+  if (sAdjusted != null) parts.push({ value: sAdjusted, weight: w.sleep });
+  if (h != null) parts.push({ value: h, weight: w.hydration });
+  if (n != null) parts.push({ value: n, weight: w.nutrition });
+  if (r != null) parts.push({ value: r, weight: w.readiness });
+  if (w.stress != null && st != null) parts.push({ value: st, weight: w.stress });
+  if (w.mindfulness != null && mind != null) parts.push({ value: mind, weight: w.mindfulness });
+
+  const { present, missing } = splitCorePresence({
+    sleep: sAdjusted != null,
+    hydration: h != null,
+    nutrition: n != null,
+    readiness: r != null,
+  });
+
+  let compositeScore: number | null = null;
+  if (present.length >= 2) {
+    if (present.length === CORE_ORDER.length) {
+      // Every core pillar is logged, so the published weights already sum to 1.
+      compositeScore = Math.round(parts.reduce((sum, part) => sum + part.value * part.weight, 0));
+    } else {
+      const weightSum = parts.reduce((sum, part) => sum + part.weight, 0);
+      compositeScore = Math.round(
+        parts.reduce((sum, part) => sum + part.value * (part.weight / weightSum), 0),
+      );
+    }
+  }
 
   return {
     date: input.date,
@@ -286,5 +347,93 @@ export function buildRecoveryScore(input: {
     ...(mind != null ? { mindfulnessScore: mind } : {}),
     compositeScore,
     band: recoveryBand(compositeScore),
+    present,
+    missing,
   };
+}
+
+const CORE_LABEL: Record<RecoveryCoreComponent, string> = {
+  sleep: 'sleep',
+  hydration: 'hydration',
+  nutrition: 'nutrition',
+  readiness: 'readiness',
+};
+
+/** One line for a null composite. Empty when a composite exists. */
+export function recoveryInsufficientDataLine(
+  score: Pick<RecoveryScore, 'present' | 'missing' | 'compositeScore'>,
+): string {
+  if (score.compositeScore != null) return '';
+  if (score.present.length === 0) {
+    return 'Not enough data. Log at least two of sleep, readiness, hydration, and nutrition.';
+  }
+  const names = score.missing.map((key) => CORE_LABEL[key]);
+  const list = names.length <= 1
+    ? names[0] ?? 'sleep, readiness, hydration, and nutrition'
+    : names.length === 2
+      ? `${names[0]} or ${names[1]}`
+      : `${names.slice(0, -1).join(', ')}, or ${names[names.length - 1]}`;
+  return `Not enough data. Log ${list} to get a score.`;
+}
+
+function groupByDate<T extends { date: string }>(rows: T[]): Map<string, T[]> {
+  const map = new Map<string, T[]>();
+  for (const row of rows) {
+    const list = map.get(row.date);
+    if (list) list.push(row);
+    else map.set(row.date, [row]);
+  }
+  return map;
+}
+
+function firstById<T extends { id: string }>(rows: T[]): T | undefined {
+  if (rows.length === 0) return undefined;
+  return [...rows].sort((a, b) => a.id.localeCompare(b.id))[0];
+}
+
+function latestReadiness(rows: ReadinessLog[]): ReadinessLog | undefined {
+  if (rows.length === 0) return undefined;
+  return [...rows].sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0];
+}
+
+/**
+ * One score per day that has any core signal, using the same lag as the Recovery screen:
+ * hydration and nutrition come from the previous calendar day. Missing pillars are null.
+ */
+export function buildRecoveryScoreSeries(input: {
+  sleepLogs: SleepLog[];
+  hydrationLogs: HydrationLog[];
+  nutritionLogs: NutritionLog[];
+  readinessLogs: ReadinessLog[];
+  stressLogs?: StressLog[];
+  mindfulnessLogs?: MindfulnessLog[];
+}): RecoveryScore[] {
+  const sleepByDate = groupByDate(input.sleepLogs);
+  const hydrationByDate = groupByDate(input.hydrationLogs);
+  const nutritionByDate = groupByDate(input.nutritionLogs);
+  const readinessByDate = groupByDate(input.readinessLogs);
+  const stressByDate = groupByDate(input.stressLogs ?? []);
+  const mindByDate = groupByDate(input.mindfulnessLogs ?? []);
+
+  const dates = new Set<string>();
+  for (const date of sleepByDate.keys()) dates.add(date);
+  for (const date of readinessByDate.keys()) dates.add(date);
+  for (const date of stressByDate.keys()) dates.add(date);
+  for (const date of mindByDate.keys()) dates.add(date);
+  for (const date of hydrationByDate.keys()) dates.add(addDaysIso(date, 1));
+  for (const date of nutritionByDate.keys()) dates.add(addDaysIso(date, 1));
+
+  return [...dates].sort((a, b) => a.localeCompare(b)).map((date) => {
+    const yesterday = addDaysIso(date, -1);
+    return buildRecoveryScore({
+      date,
+      sleep: firstById(sleepByDate.get(date) ?? []),
+      hydration: firstById(hydrationByDate.get(yesterday) ?? []),
+      nutrition: firstById(nutritionByDate.get(yesterday) ?? []),
+      readiness: latestReadiness(readinessByDate.get(date) ?? []),
+      yesterdayReadiness: latestReadiness(readinessByDate.get(yesterday) ?? []),
+      stress: stressByDate.get(date) ?? [],
+      mindfulness: mindByDate.get(date) ?? [],
+    });
+  });
 }

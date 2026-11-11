@@ -26,12 +26,15 @@ describe('buildExportSchemaDocumentation', () => {
     expect(doc.supplement_logs?.fields.allTaken).toContain('boolean');
     expect(doc.user_goals?.fields.metric).toContain('working_set');
     expect(doc.user_goals?.fields.achievedAt).toContain('null');
+    expect(doc.recovery_scores?.fields.sleepScore).toContain('null');
+    expect(doc.recovery_scores?.fields.compositeScore).toContain('null');
+    expect(doc.recovery_scores?.fields.band).toContain('null');
   });
 });
 
 describe('EXPORT_SCHEMA_VERSION', () => {
   it('matches the current full local export payload schema', () => {
-    expect(EXPORT_SCHEMA_VERSION).toBe(28);
+    expect(EXPORT_SCHEMA_VERSION).toBe(29);
   });
 });
 

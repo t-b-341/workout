@@ -3,8 +3,14 @@ import type { DirtyRow } from './db';
 /**
  * JSON export top-level `schemaVersion` — bump when new top-level export fields or shapes ship
  * (independent of Dexie `SCHEMA_VERSION`).
+ *
+ * Changelog:
+ * - 29: `recovery_scores[]` records each day's recovery composite. A missing pillar is null,
+ *   not a placeholder 60. `compositeScore` and `band` are null when fewer than two of sleep,
+ *   readiness, hydration, and nutrition are logged. The dump's payload `schemaVersion`
+ *   (`FULL_LOCAL_EXPORT_SCHEMA_VERSION` in `exportLocalDump.ts`) is 39 for this shape.
  */
-export const EXPORT_SCHEMA_VERSION = 28;
+export const EXPORT_SCHEMA_VERSION = 29;
 import {
   NUTRITION_DAY_TYPES,
   SESSION_LABEL_TYPES,
@@ -400,6 +406,25 @@ function hydrationFields(): SchemaEntry {
   };
 }
 
+function recoveryScoreFields(): SchemaEntry {
+  return {
+    fields: {
+      date: 'YYYY-MM-DD',
+      sleepScore: 'number | null (null when that day has no sleep log)',
+      hydrationScore: 'number | null (null when the previous day has no hydration log)',
+      nutritionScore: 'number | null (null when the previous day has no nutrition log)',
+      readinessScore: 'number | null (null when that day has no readiness log)',
+      stressScore: 'number | omitted (included when that day has a stress check-in)',
+      mindfulnessScore: 'number | omitted (included when that day has mindfulness)',
+      compositeScore:
+        'number | null (null when fewer than two of sleep, readiness, hydration, nutrition are logged)',
+      band: '"push" | "normal" | "conservative" | "recovery" | null',
+      'present[]': '"sleep" | "hydration" | "nutrition" | "readiness"',
+      'missing[]': '"sleep" | "hydration" | "nutrition" | "readiness"',
+    },
+  };
+}
+
 function sleepFields(): SchemaEntry {
   return {
     fields: {
@@ -595,6 +620,7 @@ export function buildExportSchemaDocumentation(): Record<string, SchemaEntry> {
     nutrition_logs: nutritionFields(),
     hydration_logs: hydrationFields(),
     sleep_logs: sleepFields(),
+    recovery_scores: recoveryScoreFields(),
     stress_logs: stressFields(),
     cbt_thought_records: cbtThoughtRecordFields(),
     stoic_checkins: stoicCheckinFields(),

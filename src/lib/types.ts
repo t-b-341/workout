@@ -704,8 +704,12 @@ export type OverwhelmContact = {
 
 export type RecoveryBand = 'push' | 'normal' | 'conservative' | 'recovery';
 
+/** Core pillars that can form a composite. Stress and mindfulness stay optional add-ons. */
+export type RecoveryCoreComponent = 'sleep' | 'hydration' | 'nutrition' | 'readiness';
+
 export type RecoveryPlan = {
-  band: RecoveryBand;
+  /** Null when there is not enough logged data to change training. */
+  band: RecoveryBand | null;
   intensityNote: string;
   cardioNote: string;
   nutritionNote: string;
@@ -713,14 +717,24 @@ export type RecoveryPlan = {
 
 export type RecoveryScore = {
   date: string;
-  sleepScore: number;
-  hydrationScore: number;
-  nutritionScore: number;
-  readinessScore: number;
+  /** Null when that day has no sleep log. */
+  sleepScore: number | null;
+  /** Null when the previous day has no hydration log. */
+  hydrationScore: number | null;
+  /** Null when the previous day has no nutrition log. */
+  nutritionScore: number | null;
+  /** Null when that day has no readiness log. */
+  readinessScore: number | null;
   /** Included when `buildRecoveryScore` was called with ≥1 stress check-in for that day. */
   stressScore?: number;
   /** Included when `buildRecoveryScore` was called with ≥1 mindfulness log for that day. */
   mindfulnessScore?: number;
-  compositeScore: number;
-  band: RecoveryBand;
+  /** Null when fewer than two core pillars are logged. */
+  compositeScore: number | null;
+  /** Null when `compositeScore` is null. */
+  band: RecoveryBand | null;
+  /** Core pillars that had a log. */
+  present: RecoveryCoreComponent[];
+  /** Core pillars with no log. */
+  missing: RecoveryCoreComponent[];
 };

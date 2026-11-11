@@ -29,6 +29,7 @@ import {
   averageStressRating,
   buildRecoveryScore,
   compositeWeightsForRecovery,
+  recoveryInsufficientDataLine,
   recoveryPlan,
 } from '@/lib/recovery';
 import {
@@ -133,7 +134,7 @@ function buildTodayPerformanceRecommendations(input: {
 }): string[] {
   const out: string[] = [];
 
-  if ((input.sleepHours ?? 0) < 9) {
+  if (input.sleepHours != null && input.sleepHours < 9) {
     out.push('Sleep earlier tonight so total sleep is at least 9 hours.');
   }
 
@@ -149,17 +150,13 @@ function buildTodayPerformanceRecommendations(input: {
     if (low.length > 0) {
       out.push(`Yesterday was below target on ${low.join(', ')} — prioritize those today.`);
     }
-  } else {
-    out.push('No nutrition log for yesterday yet; the recovery score uses yesterday as a lagging fueling signal.');
   }
 
-  const stressHigh =
-    (input.stress?.some((x) => x.rating >= 4) ?? false)
-    || (averageStressRating(input.stress ?? []) ?? 0) >= 4;
-  if (stressHigh) {
+  const loggedStress = input.stress ?? [];
+  const stressAverage = loggedStress.length > 0 ? averageStressRating(loggedStress) : null;
+  const stressHigh = loggedStress.some((x) => x.rating >= 4) || (stressAverage != null && stressAverage >= 4);
+  if (loggedStress.length > 0 && stressHigh) {
     out.push('Focus on stress reduction now: 10-minute walk + slow exhale breathing, then lower training-day friction.');
-  } else {
-    out.push('Focus on stress reduction anyway: keep a short walk and 2 minutes of slow breathing in your day.');
   }
 
   return out;
@@ -325,7 +322,8 @@ function DailyRecoveryExplainSheet({
             <p className="text-xs text-zinc-500">
               Stress only gets a slot after at least one stress check-in today. Mindfulness only counts after at least one
               mindfulness entry today (timed or time-only). Otherwise those weights shift into the other pillars (see row
-              above).
+              above). If sleep, hydration, nutrition, or readiness has no log, that pillar is left out and the remaining
+              weights are rescaled so they still sum to 100%.
             </p>
           </section>
 
@@ -351,10 +349,9 @@ function DailyRecoveryExplainSheet({
           <section className="space-y-2">
             <h3 className="text-xs uppercase tracking-wider text-zinc-500">Missing logs</h3>
             <p className="text-zinc-400">
-              If a pillar has no usable data yet, its pillar score defaults to{' '}
-              <span className="font-mono text-zinc-200">60</span> so the composite can still compute. Log the section below
-              to replace that placeholder with a real signal. Hydration and nutrition both use{' '}
-              <span className="text-zinc-200">yesterday&apos;s</span> logs as lagging signals for a non-placeholder score.
+              A pillar with no log is left blank. It is not filled in. The composite appears once at least two of sleep,
+              readiness, hydration, and nutrition are logged. Hydration and nutrition both use{' '}
+              <span className="text-zinc-200">yesterday&apos;s</span> logs.
             </p>
           </section>
 
@@ -615,7 +612,7 @@ export function RecoveryView() {
     <PageShell className="p-4 space-y-4">
       <PageHeader title="Daily Check-In" />
 
-      <div className="rounded-2xl bg-zinc-900 border border-zinc-800 p-4">
+      <div data-testid="daily-recovery-score" className="rounded-2xl bg-zinc-900 border border-zinc-800 p-4">
         <div className="flex items-start justify-between gap-2">
           <div className="text-xs uppercase tracking-wider text-zinc-500 shrink-0">Daily recovery</div>
           <button
@@ -626,10 +623,14 @@ export function RecoveryView() {
             More
           </button>
         </div>
-        <div className="text-3xl font-semibold mt-1">{score.compositeScore}</div>
-        <div className="text-sm text-zinc-400 mt-1">
-          Band: <span className="text-zinc-200 capitalize">{score.band}</span>
-        </div>
+        <div className="text-3xl font-semibold mt-1">{score.compositeScore == null ? '—' : score.compositeScore}</div>
+        {score.band == null ? (
+          <div className="text-sm text-zinc-400 mt-1">{recoveryInsufficientDataLine(score)}</div>
+        ) : (
+          <div className="text-sm text-zinc-400 mt-1">
+            Band: <span className="text-zinc-200 capitalize">{score.band}</span>
+          </div>
+        )}
         <div className="mt-3 grid grid-cols-2 gap-2 text-sm">
           <Stat
             label={
@@ -642,8 +643,8 @@ export function RecoveryView() {
           <Stat label="Hydration (yesterday)" value={score.hydrationScore} />
           <Stat label="Nutrition (yesterday)" value={score.nutritionScore} />
           <Stat label="Readiness" value={score.readinessScore} />
-          <Stat label="Stress" value={score.stressScore ?? '—'} />
-          <Stat label="Mindfulness" value={score.mindfulnessScore ?? '—'} />
+          <Stat label="Stress" value={score.stressScore} />
+          <Stat label="Mindfulness" value={score.mindfulnessScore} />
         </div>
       </div>
 
@@ -653,18 +654,26 @@ export function RecoveryView() {
         weights={compositeExplainWeights}
       />
 
-      <div className="rounded-2xl bg-zinc-900 border border-zinc-800 p-4 space-y-2">
-        <div className="text-sm font-medium">Today&apos;s recommendations</div>
-        <div className="space-y-1.5 text-sm text-zinc-300">
-          {performanceRecommendations.map((line) => (
-            <div key={line}>• {line}</div>
-          ))}
+      {(performanceRecommendations.length > 0 || plan.band != null) && (
+        <div className="rounded-2xl bg-zinc-900 border border-zinc-800 p-4 space-y-2">
+          <div className="text-sm font-medium">Today&apos;s recommendations</div>
+          {performanceRecommendations.length > 0 && (
+            <div className="space-y-1.5 text-sm text-zinc-300">
+              {performanceRecommendations.map((line) => (
+                <div key={line}>• {line}</div>
+              ))}
+            </div>
+          )}
+          {plan.band != null && (
+            <>
+              {performanceRecommendations.length > 0 && <div className="border-t border-zinc-800 pt-2" />}
+              <div className="text-sm text-zinc-300">{plan.intensityNote}</div>
+              <div className="text-sm text-zinc-300">{plan.cardioNote}</div>
+              <div className="text-sm text-zinc-300">{plan.nutritionNote}</div>
+            </>
+          )}
         </div>
-        <div className="border-t border-zinc-800 pt-2" />
-        <div className="text-sm text-zinc-300">{plan.intensityNote}</div>
-        <div className="text-sm text-zinc-300">{plan.cardioNote}</div>
-        <div className="text-sm text-zinc-300">{plan.nutritionNote}</div>
-      </div>
+      )}
 
       <MacroTrendCallout advice={macroTrend} title="Fueling trend (days before today)" />
 
@@ -2160,11 +2169,13 @@ function StressSection({
   );
 }
 
-function Stat({ label, value }: { label: string; value: number | string }) {
+function Stat({ label, value }: { label: string; value: number | null | undefined }) {
+  const missing = value == null;
   return (
     <div className="rounded-lg bg-zinc-950 border border-zinc-800 p-2">
       <div className="text-xs text-zinc-500">{label}</div>
-      <div className="font-semibold">{value}</div>
+      <div className="font-semibold">{missing ? '—' : value}</div>
+      {missing && <div className="text-xs text-zinc-500">Not logged</div>}
     </div>
   );
 }
