@@ -16,6 +16,8 @@ export default defineConfig({
   use: {
     baseURL: 'http://127.0.0.1:3100',
     trace: 'on-first-retry',
+    // Gym-local calendar. CI is UTC; without this, Wednesday/Sunday differ from a phone in Chicago.
+    timezoneId: 'America/Chicago',
   },
   projects: [
     { name: 'Mobile Chrome', use: { ...devices['Pixel 5'] } },

@@ -91,6 +91,44 @@ describe('e2e supabase stub', () => {
     expect(localStorage.getItem('e2e:db:lifts')).toBeNull();
   });
 
+  it('stamps a strictly later updated_at on every write when the clock is frozen', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-11-09T16:00:00.000Z'));
+    try {
+      const client = createE2eStubClient();
+      await client.from('session_logs').upsert({ id: 'a' });
+      await client.from('session_logs').upsert({ id: 'b' });
+      await client.from('set_logs').upsert([{ id: 'c' }, { id: 'd' }]);
+
+      const sessions = JSON.parse(localStorage.getItem('e2e:db:session_logs') ?? '[]') as Array<{
+        id: string;
+        updated_at: string;
+      }>;
+      const sets = JSON.parse(localStorage.getItem('e2e:db:set_logs') ?? '[]') as Array<{
+        id: string;
+        updated_at: string;
+      }>;
+      const stamps = ['a', 'b'].map((id) => sessions.find((row) => row.id === id)!.updated_at);
+      for (const id of ['c', 'd']) stamps.push(sets.find((row) => row.id === id)!.updated_at);
+      expect(stamps).toEqual([
+        '2026-11-09T16:00:00.001Z',
+        '2026-11-09T16:00:00.002Z',
+        '2026-11-09T16:00:00.003Z',
+        '2026-11-09T16:00:00.004Z',
+      ]);
+
+      localStorage.setItem('e2e:updated-at-seq', '4');
+      await client.from('session_logs').upsert({ id: 'e' });
+      const again = JSON.parse(localStorage.getItem('e2e:db:session_logs') ?? '[]') as Array<{
+        id: string;
+        updated_at: string;
+      }>;
+      expect(again.find((row) => row.id === 'e')?.updated_at).toBe('2026-11-09T16:00:00.005Z');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('upserts with updated_at, filters, and honours inclusive range', async () => {
     const client = createE2eStubClient();
     const { error } = await client.from('set_logs').upsert([
