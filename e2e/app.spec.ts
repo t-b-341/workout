@@ -1,6 +1,7 @@
 import { expect, test, type Page } from '@playwright/test';
 import { E2E_USER_ID } from '../src/lib/supabase/e2eStub';
 import { collectPageErrors, countDexieRows, expectNoHorizontalOverflow, signIn } from './helpers';
+import { seedHistoryWeeks } from './seed';
 
 const ROUTES = ['/', '/recovery', '/history', '/cardio', '/program', '/program/meso-analysis', '/settings'] as const;
 
@@ -669,6 +670,116 @@ test.describe('signed-in app (Pixel 5)', () => {
     await gear.click();
     await expect(page).toHaveURL(/\/settings$/);
     await expect(page.getByRole('heading', { name: 'Settings' })).toBeVisible();
+    expect(errors.pageErrors, errors.pageErrors.join('\n')).toEqual([]);
+  });
+
+  test('history tabs page sessions and delete from the edit sheet', async ({ page }) => {
+    const errors = collectPageErrors(page);
+    await page.addInitScript(seedHistoryWeeks, 52);
+    await page.goto('/history');
+
+    const tablist = page.getByRole('tablist', { name: 'History' });
+    await expect(tablist).toBeVisible();
+    await expect(page.getByTestId('session-card')).toHaveCount(20, { timeout: 20_000 });
+    // The shell's full pull can still be writing these rows. Wait until the
+    // last table's watermark exists so a later delete is not put back.
+    await expect.poll(async () => {
+      return page.evaluate(async (userId: string) => {
+        const name = `workout-${userId}`;
+        const existing = await indexedDB.databases();
+        if (!existing.some((db) => db.name === name)) return false;
+        return await new Promise<boolean>((resolve, reject) => {
+          const req = indexedDB.open(name);
+          req.onerror = () => reject(req.error);
+          req.onsuccess = () => {
+            const db = req.result;
+            if (!db.objectStoreNames.contains('meta')) {
+              db.close();
+              resolve(false);
+              return;
+            }
+            const getReq = db.transaction('meta', 'readonly').objectStore('meta').get('sync:watermark:overwhelm_episodes');
+            getReq.onerror = () => {
+              db.close();
+              reject(getReq.error);
+            };
+            getReq.onsuccess = () => {
+              const found = getReq.result != null;
+              db.close();
+              resolve(found);
+            };
+          };
+        });
+      }, E2E_USER_ID);
+    }, { timeout: 20_000 }).toBe(true);
+
+    const bar = await tablist.boundingBox();
+    expect(bar?.height ?? 999).toBeLessThanOrEqual(64);
+    const tabHeights = await tablist.getByRole('tab').evaluateAll((els) =>
+      els.map((el) => Math.round(el.getBoundingClientRect().height)),
+    );
+    expect(tabHeights).toHaveLength(16);
+    for (const height of tabHeights) expect(height).toBeGreaterThanOrEqual(44);
+
+    const scrolled = await tablist.evaluate((el) => {
+      el.scrollLeft = el.scrollWidth;
+      return { scrollWidth: el.scrollWidth, clientWidth: el.clientWidth, scrollLeft: el.scrollLeft };
+    });
+    expect(scrolled.scrollWidth).toBeGreaterThan(scrolled.clientWidth);
+    expect(scrolled.scrollLeft).toBeGreaterThan(0);
+    await expectNoHorizontalOverflow(page);
+
+    const edit = page.getByRole('button', { name: 'Edit' }).first();
+    const editBox = await edit.boundingBox();
+    expect(editBox?.height ?? 0).toBeGreaterThanOrEqual(44);
+    await expect(page.getByRole('button', { name: /delete/i })).toHaveCount(0);
+    await expect(page.getByText('Showing 20 of 52')).toBeVisible();
+
+    const firstLoad = await page.evaluate(() => ({
+      height: document.documentElement.scrollHeight,
+      viewport: `${window.innerWidth}x${window.innerHeight}`,
+      controls: document.querySelectorAll('button, input, select, textarea, a[href]').length,
+    }));
+    console.log(`history-after-pixel5 ${JSON.stringify(firstLoad)}`);
+    await page.setViewportSize({ width: 412, height: 915 });
+    const wide = await page.evaluate(() => ({
+      height: document.documentElement.scrollHeight,
+      viewport: `${window.innerWidth}x${window.innerHeight}`,
+      controls: document.querySelectorAll('button, input, select, textarea, a[href]').length,
+    }));
+    console.log(`history-after-412 ${JSON.stringify(wide)}`);
+    await expectNoHorizontalOverflow(page);
+
+    await page.getByRole('button', { name: 'Show 20 more' }).click();
+    await expect(page.getByTestId('session-card')).toHaveCount(40);
+    await expect(page.getByText('Showing 40 of 52')).toBeVisible();
+
+    const removedId = await page.getByTestId('session-card').first().getAttribute('data-session-id');
+    expect(removedId).toBeTruthy();
+    await page.getByRole('button', { name: 'Edit' }).first().click();
+    const sheet = page.getByRole('dialog', { name: 'Edit session' });
+    await expect(sheet).toBeVisible();
+    let confirmMessage = '';
+    page.once('dialog', async (dialog) => {
+      confirmMessage = dialog.message();
+      await dialog.accept();
+    });
+    await sheet.getByRole('button', { name: 'Delete session' }).click();
+    expect(confirmMessage).toContain('Undo');
+    await expect(page.getByRole('button', { name: 'Undo' })).toBeVisible();
+    await expect(page.getByRole('status')).toContainText('Removed');
+    await expect(page.locator(`[data-session-id="${removedId}"]`)).toHaveCount(0);
+    await expect(sheet).toBeHidden();
+    await expect(page.getByRole('button', { name: 'Delete session' })).toHaveCount(0);
+
+    await page.goto('/history?tab=prs');
+    await expect(page.getByRole('tab', { name: 'PRs' })).toHaveAttribute('aria-selected', 'true');
+    await expect(page.getByText('Opening PR baseline')).toBeVisible();
+    await expect(page.getByTestId('session-card')).toHaveCount(0);
+    await page.reload();
+    await expect(page.getByRole('tab', { name: 'PRs' })).toHaveAttribute('aria-selected', 'true');
+    await expect(page).toHaveURL(/[?&]tab=prs(?:&|$)/);
+    await expect(page.getByText('Opening PR baseline')).toBeVisible();
     expect(errors.pageErrors, errors.pageErrors.join('\n')).toEqual([]);
   });
 });

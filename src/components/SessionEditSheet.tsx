@@ -3,7 +3,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useLifts, usePrescriptions } from '@/lib/hooks';
 import { getDb } from '@/lib/db';
-import { flushDirty, localDelete, localUpsert } from '@/lib/sync';
+import { cancelPendingDirtyDelete, flushDirty, localDelete, localUpsert } from '@/lib/sync';
+import { offerDeleteUndo } from '@/lib/deleteUndoCoordinator';
 import { fmtDate } from '@/lib/time';
 import { snapWorkingWeight } from '@/lib/progression';
 import { rpeFromRir, shouldTrackRpeForReps } from '@/lib/rpe';
@@ -80,10 +81,15 @@ async function mirrorCardioFromSet(
 type Props = {
   session: SessionLog;
   initialSets: SetLog[];
+  hasReadiness?: boolean;
   onClose: () => void;
 };
 
-export function SessionEditSheet({ session, initialSets, onClose }: Props) {
+function cloneJsonForUndo<T>(x: T): T {
+  return JSON.parse(JSON.stringify(x)) as T;
+}
+
+export function SessionEditSheet({ session, initialSets, hasReadiness = false, onClose }: Props) {
   const prescriptions = usePrescriptions(session.templateId);
   const lifts = useLifts();
   const [notes, setNotes] = useState(session.notes ?? '');
@@ -109,6 +115,67 @@ export function SessionEditSheet({ session, initialSets, onClose }: Props) {
   const rxMap = useMemo(() => new Map(rxList.map((p) => [p.id, p])), [rxList]);
 
   const [busy, setBusy] = useState(false);
+  const setCount = initialSets.length;
+  const isEmpty = setCount === 0 && !hasReadiness;
+
+  async function handleDelete() {
+    if (!isEmpty) {
+      const childParts = [
+        setCount > 0 ? `${setCount} set${setCount === 1 ? '' : 's'}` : null,
+        hasReadiness ? 'readiness check' : null,
+      ].filter(Boolean).join(' + ');
+      const ok = window.confirm(
+        `Delete ${fmtDate(session.date, 'EEE, MMM d')} · ${session.templateId}?\n\n` +
+        `This removes ${childParts}.\n\n` +
+        `You'll have ~15 seconds to Undo from the bar at the bottom if this was a mistake.`,
+      );
+      if (!ok) return;
+    }
+    setBusy(true);
+    try {
+      const db = getDb();
+      const childSets = await db.set_logs.where('sessionLogId').equals(session.id).toArray();
+      const childReadiness = await db.readiness_logs.where('sessionLogId').equals(session.id).toArray();
+      const childCardio = await db.cardio_logs.where('sessionLogId').equals(session.id).toArray();
+
+      const undoSnapshot = {
+        session: cloneJsonForUndo(session),
+        sets: childSets.map(cloneJsonForUndo),
+        readiness: childReadiness.map(cloneJsonForUndo),
+        cardios: childCardio.map(cloneJsonForUndo),
+      };
+
+      // Mirror the server's ON DELETE CASCADE locally so Dexie doesn't keep
+      // orphan rows. set_logs and readiness_logs cascade, cardio_logs sets
+      // session_log_id to null on the server — we replicate that by clearing
+      // the field locally.
+      for (const x of childSets) {
+        await localDelete('set_logs', x.id, { skipDirty: true });
+      }
+      for (const x of childReadiness) {
+        await localDelete('readiness_logs', x.id, { skipDirty: true });
+      }
+      for (const x of childCardio) {
+        await localUpsert('cardio_logs', { ...x, sessionLogId: undefined }, { skipDirty: true });
+      }
+      await localDelete('session_logs', session.id);
+
+      offerDeleteUndo({
+        kind: 'batch',
+        label: `Workout · ${fmtDate(session.date, 'EEE, MMM d')}`,
+        restore: async () => {
+          await cancelPendingDirtyDelete('session_logs', undoSnapshot.session.id);
+          await localUpsert('session_logs', undoSnapshot.session);
+          for (const s of undoSnapshot.sets) await localUpsert('set_logs', s);
+          for (const r of undoSnapshot.readiness) await localUpsert('readiness_logs', r);
+          for (const c of undoSnapshot.cardios) await localUpsert('cardio_logs', c);
+        },
+      });
+      onClose();
+    } finally {
+      setBusy(false);
+    }
+  }
 
   async function handleSave() {
     if (!lifts?.length) return;
@@ -380,22 +447,39 @@ export function SessionEditSheet({ session, initialSets, onClose }: Props) {
           )}
         </div>
 
-        <div className="p-4 border-t border-zinc-800 shrink-0 flex gap-2 supports-[padding:max(0px)]:pb-[max(1rem,env(safe-area-inset-bottom))]">
-          <button
-            type="button"
-            onClick={onClose}
-            className="flex-1 h-12 rounded-2xl border border-zinc-700 text-zinc-300 font-medium"
-          >
-            Cancel
-          </button>
-          <button
-            type="button"
-            onClick={() => void handleSave()}
-            disabled={busy}
-            className="flex-1 h-12 rounded-2xl bg-amber-500 text-zinc-950 font-semibold disabled:opacity-50"
-          >
-            {busy ? 'Saving…' : 'Save'}
-          </button>
+        <div className="shrink-0 border-t border-zinc-800 supports-[padding:max(0px)]:pb-[max(0px,env(safe-area-inset-bottom))]">
+          <div className="p-4 flex gap-2">
+            <button
+              type="button"
+              onClick={onClose}
+              className="flex-1 h-12 rounded-2xl border border-zinc-700 text-zinc-300 font-medium"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={() => void handleSave()}
+              disabled={busy}
+              className="flex-1 h-12 rounded-2xl bg-amber-500 text-zinc-950 font-semibold disabled:opacity-50"
+            >
+              {busy ? 'Saving…' : 'Save'}
+            </button>
+          </div>
+          <div className="px-4 pb-4 border-t border-rose-900/70 bg-rose-950/25">
+            <button
+              type="button"
+              onClick={() => void handleDelete()}
+              disabled={busy}
+              className={`mt-3 w-full h-11 rounded-xl border text-sm font-medium disabled:opacity-50 ${
+                isEmpty
+                  ? 'border-zinc-700 text-zinc-400 hover:text-zinc-200 hover:border-zinc-500'
+                  : 'border-rose-800 text-rose-300 hover:bg-rose-950/60'
+              }`}
+              aria-label={isEmpty ? 'Remove empty session' : 'Delete session'}
+            >
+              {busy ? '…' : isEmpty ? 'Remove' : 'Delete'}
+            </button>
+          </div>
         </div>
       </div>
     </div>

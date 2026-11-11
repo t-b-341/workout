@@ -1,9 +1,10 @@
 'use client';
 
 import Link from 'next/link';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { format } from 'date-fns';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import {
   useActiveUserGoals,
   useAllBodyweight,
@@ -29,7 +30,8 @@ import { getDb } from '@/lib/db';
 import { useComplexesById } from '@/lib/complexes';
 import { currentValueForGoal } from '@/lib/liftingGoals';
 import { sortSetLogsForSession } from '@/lib/sessionFilters';
-import { cancelPendingDirtyDelete, localDelete, localUpsert } from '@/lib/sync';
+import { localDelete, localUpsert } from '@/lib/sync';
+import { usePagedList } from '@/lib/usePagedList';
 import { offerDeleteUndo } from '@/lib/deleteUndoCoordinator';
 import { daysBetweenIso, fmtDate, todayIso } from '@/lib/time';
 import {
@@ -130,10 +132,60 @@ const TABS: Array<{ id: Tab; label: string }> = [
   { id: 'balance', label: 'Strength Balance' },
 ];
 
+const TAB_IDS = new Set<string>(TABS.map((t) => t.id));
+
+function tabFromSearch(raw: string | null): Tab {
+  if (raw && TAB_IDS.has(raw)) return raw as Tab;
+  return 'sessions';
+}
+
+function PagedFooter({
+  shown,
+  total,
+  nextCount,
+  onShowMore,
+}: {
+  shown: number;
+  total: number;
+  nextCount: number;
+  onShowMore: () => void;
+}) {
+  if (total === 0) return null;
+  return (
+    <div className="flex items-center gap-3">
+      <p className="shrink-0 text-sm text-zinc-400 tabular-nums">
+        Showing {shown} of {total}
+      </p>
+      {nextCount > 0 && (
+        <button
+          type="button"
+          onClick={onShowMore}
+          className="h-11 min-h-11 min-w-0 flex-1 rounded-xl border border-zinc-700 bg-zinc-900 text-sm font-medium text-zinc-100"
+        >
+          Show {nextCount} more
+        </button>
+      )}
+    </div>
+  );
+}
+
 export function HistoryView() {
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const tab = tabFromSearch(searchParams.get('tab'));
+  const scrollActiveTab = useCallback((node: HTMLButtonElement | null) => {
+    node?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+  }, []);
   const templates = useTemplates();
-  const [tab, setTab] = useState<Tab>('sessions');
   const [showNewGoal, setShowNewGoal] = useState(false);
+
+  function selectTab(next: Tab) {
+    const params = new URLSearchParams(searchParams.toString());
+    params.set('tab', next);
+    const qs = params.toString();
+    router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+  }
   const lifts = useLifts();
   const userGoals = useActiveUserGoals();
   const sessions = useSessionsAfterReadiness();
@@ -178,15 +230,25 @@ export function HistoryView() {
   }
 
   return (
-    <PageShell className="p-4 space-y-4">
+    <PageShell className="p-4 space-y-4 min-w-0">
       <h1 className="text-2xl font-semibold">History</h1>
 
-      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 lg:grid-cols-6 gap-1 rounded-xl bg-zinc-900 border border-zinc-800 p-1">
+      <div
+        role="tablist"
+        aria-label="History"
+        aria-orientation="horizontal"
+        className="flex items-center gap-1 max-w-full min-w-0 overflow-x-auto rounded-xl bg-zinc-900 border border-zinc-800 p-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+      >
         {TABS.map((t) => (
           <button
             key={t.id}
-            onClick={() => setTab(t.id)}
-            className={`h-10 rounded-lg text-sm ${tab === t.id ? 'bg-amber-500 text-zinc-950 font-medium' : 'text-zinc-400'}`}
+            type="button"
+            role="tab"
+            id={`history-tab-${t.id}`}
+            aria-selected={tab === t.id}
+            ref={tab === t.id ? scrollActiveTab : undefined}
+            onClick={() => selectTab(t.id)}
+            className={`shrink-0 inline-flex items-center justify-center h-11 max-h-11 px-3 py-0 rounded-lg text-sm whitespace-nowrap leading-none ${tab === t.id ? 'bg-amber-500 text-zinc-950 font-medium' : 'text-zinc-400'}`}
           >{t.label}</button>
         ))}
       </div>
@@ -272,17 +334,29 @@ function SessionsList({
   lifts: Lift[];
   readiness: ReadinessLog[];
 }) {
-  const [editing, setEditing] = useState<{ session: SessionLog; sets: SetLog[] } | null>(null);
+  const [editing, setEditing] = useState<{
+    session: SessionLog;
+    sets: SetLog[];
+    hasReadiness: boolean;
+  } | null>(null);
   const complexesById = useComplexesById();
   const liftName = (id: string) => lifts.find((l) => l.id === id)?.name ?? id;
+  const newestFirst = useMemo(
+    () => [...sessions].sort((a, b) => {
+      if (a.date !== b.date) return a.date < b.date ? 1 : -1;
+      return a.id < b.id ? 1 : -1;
+    }),
+    [sessions],
+  );
+  const paged = usePagedList(newestFirst, 20);
   if (sessions.length === 0) return <div className="text-zinc-500 text-sm">No sessions logged yet.</div>;
 
-  async function beginEditSession(s: SessionLog, rawSets: SetLog[]) {
+  async function beginEditSession(s: SessionLog, rawSets: SetLog[], hasReadiness: boolean) {
     const db = getDb();
     const rx = await db.prescriptions.where('templateId').equals(s.templateId).toArray();
     rx.sort((a, b) => a.order - b.order);
     const sorted = sortSetLogsForSession([...rawSets], rx);
-    setEditing({ session: s, sets: sorted });
+    setEditing({ session: s, sets: sorted, hasReadiness });
   }
 
   const setsBySession = new Map<string, SetLog[]>();
@@ -306,11 +380,12 @@ function SessionsList({
           key={editing.session.id}
           session={editing.session}
           initialSets={editing.sets}
+          hasReadiness={editing.hasReadiness}
           onClose={() => setEditing(null)}
         />
       )}
       <div className="space-y-3">
-      {sessions.map((s) => {
+      {paged.visible.map((s) => {
         const ss = (setsBySession.get(s.id) ?? []).sort((a, b) => a.setIndex - b.setIndex);
         const complexGroups = new Map<string, SetLog[]>();
         const regularSets: SetLog[] = [];
@@ -330,10 +405,9 @@ function SessionsList({
           grouped.set(x.liftId, arr);
         }
         const r = readinessBySession.get(s.id);
-        const isEmpty = ss.length === 0 && !r;
         const restMs = s.completedAt ? sessionTotalRestBetweenSetsMs(s.id, sets, lifts) : 0;
         return (
-          <div key={s.id} className="rounded-2xl bg-zinc-900 border border-zinc-800 p-4">
+          <div key={s.id} data-testid="session-card" data-session-id={s.id} className="rounded-2xl bg-zinc-900 border border-zinc-800 p-4">
             <div className="flex items-baseline justify-between gap-2">
               <div className="min-w-0">
                 <div className="text-sm font-medium">{fmtDate(s.date, 'EEE, MMM d')} · {s.templateId}</div>
@@ -354,12 +428,11 @@ function SessionsList({
               <div className="flex items-center gap-1 shrink-0">
                 <button
                   type="button"
-                  onClick={() => void beginEditSession(s, ss)}
-                  className="text-xs px-2 h-7 rounded-md border border-zinc-700 text-zinc-400 hover:text-amber-400 hover:border-zinc-600"
+                  onClick={() => void beginEditSession(s, ss, !!r)}
+                  className="text-xs px-3 h-11 rounded-md border border-zinc-700 text-zinc-400 hover:text-amber-400 hover:border-zinc-600"
                 >
                   Edit
                 </button>
-                <DeleteSessionButton session={s} setCount={ss.length} hasReadiness={!!r} isEmpty={isEmpty} />
               </div>
             </div>
             {s.notes && (
@@ -410,6 +483,12 @@ function SessionsList({
         );
       })}
       </div>
+      <PagedFooter
+        shown={paged.shown}
+        total={paged.total}
+        nextCount={paged.nextCount}
+        onShowMore={paged.showMore}
+      />
     </>
   );
 }
@@ -723,6 +802,7 @@ function WeeksList({
       ),
     [rollingEndDate, sessions, sets, lifts, bodyweights, readiness],
   );
+  const pagedWeeks = usePagedList(weeks, 8);
   if (weeks.length === 0) return <div className="text-zinc-500 text-sm">No data yet.</div>;
 
   // Most recent 12, chronological for the trend card.
@@ -820,7 +900,7 @@ function WeeksList({
           </div>
         ) : null}
       </div>
-      {weeks.map((w) => {
+      {pagedWeeks.visible.map((w) => {
         const cardioPct = Math.min(
           100,
           Math.round((w.cardioMin / wellnessTargets.cardioWeeklyMin) * 100),
@@ -928,6 +1008,12 @@ function WeeksList({
           </div>
         );
       })}
+      <PagedFooter
+        shown={pagedWeeks.shown}
+        total={pagedWeeks.total}
+        nextCount={pagedWeeks.nextCount}
+        onShowMore={pagedWeeks.showMore}
+      />
     </div>
   );
 }
@@ -1036,18 +1122,19 @@ function PRsList({ sessions, sets, lifts }: { sessions: SessionLog[]; sets: SetL
     [],
   );
   const [baselineBusy, setBaselineBusy] = useState(false);
+  const paged = usePagedList(feed, 30);
 
-  // Group by month for legibility
+  // Group the visible page by month for legibility. prFeed order is unchanged.
   const groups = useMemo(() => {
     const next = new Map<string, typeof feed>();
-    for (const item of feed) {
+    for (const item of paged.visible) {
       const ym = item.date.slice(0, 7);
       const arr = next.get(ym) ?? [];
       arr.push(item);
       next.set(ym, arr);
     }
     return next;
-  }, [feed]);
+  }, [paged.visible]);
 
   return (
     <div className="space-y-4">
@@ -1119,6 +1206,12 @@ function PRsList({ sessions, sets, lifts }: { sessions: SessionLog[]; sets: SetL
           </div>
         ))
       )}
+      <PagedFooter
+        shown={paged.shown}
+        total={paged.total}
+        nextCount={paged.nextCount}
+        onShowMore={paged.showMore}
+      />
     </div>
   );
 }
@@ -2765,97 +2858,6 @@ function BodyweightList({ logs }: { logs: BodyweightLog[] }) {
         })}
       </div>
     </div>
-  );
-}
-
-function cloneJsonForUndo<T>(x: T): T {
-  return JSON.parse(JSON.stringify(x)) as T;
-}
-
-function DeleteSessionButton({
-  session,
-  setCount,
-  hasReadiness,
-  isEmpty,
-}: {
-  session: SessionLog;
-  setCount: number;
-  hasReadiness: boolean;
-  isEmpty: boolean;
-}) {
-  const [busy, setBusy] = useState(false);
-
-  async function handleDelete() {
-    if (!isEmpty) {
-      const childParts = [
-        setCount > 0 ? `${setCount} set${setCount === 1 ? '' : 's'}` : null,
-        hasReadiness ? 'readiness check' : null,
-      ].filter(Boolean).join(' + ');
-      const ok = window.confirm(
-        `Delete ${fmtDate(session.date, 'EEE, MMM d')} · ${session.templateId}?\n\n` +
-        `This removes ${childParts}.\n\n` +
-        `You'll have ~15 seconds to Undo from the bar at the bottom if this was a mistake.`,
-      );
-      if (!ok) return;
-    }
-    setBusy(true);
-    try {
-      const db = getDb();
-      const childSets = await db.set_logs.where('sessionLogId').equals(session.id).toArray();
-      const childReadiness = await db.readiness_logs.where('sessionLogId').equals(session.id).toArray();
-      const childCardio = await db.cardio_logs.where('sessionLogId').equals(session.id).toArray();
-
-      const undoSnapshot = {
-        session: cloneJsonForUndo(session),
-        sets: childSets.map(cloneJsonForUndo),
-        readiness: childReadiness.map(cloneJsonForUndo),
-        cardios: childCardio.map(cloneJsonForUndo),
-      };
-
-      // Mirror the server's ON DELETE CASCADE locally so Dexie doesn't keep
-      // orphan rows. set_logs and readiness_logs cascade, cardio_logs sets
-      // session_log_id to null on the server — we replicate that by clearing
-      // the field locally.
-      for (const x of childSets) {
-        await localDelete('set_logs', x.id, { skipDirty: true });
-      }
-      for (const x of childReadiness) {
-        await localDelete('readiness_logs', x.id, { skipDirty: true });
-      }
-      for (const x of childCardio) {
-        await localUpsert('cardio_logs', { ...x, sessionLogId: undefined }, { skipDirty: true });
-      }
-      await localDelete('session_logs', session.id);
-
-      offerDeleteUndo({
-        kind: 'batch',
-        label: `Workout · ${fmtDate(session.date, 'EEE, MMM d')}`,
-        restore: async () => {
-          await cancelPendingDirtyDelete('session_logs', undoSnapshot.session.id);
-          await localUpsert('session_logs', undoSnapshot.session);
-          for (const s of undoSnapshot.sets) await localUpsert('set_logs', s);
-          for (const r of undoSnapshot.readiness) await localUpsert('readiness_logs', r);
-          for (const c of undoSnapshot.cardios) await localUpsert('cardio_logs', c);
-        },
-      });
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  return (
-    <button
-      onClick={handleDelete}
-      disabled={busy}
-      className={`shrink-0 text-xs px-2 h-7 rounded-md border ${
-        isEmpty
-          ? 'border-zinc-800 text-zinc-500 hover:text-zinc-300 hover:border-zinc-700'
-          : 'border-rose-900/60 text-rose-400 hover:bg-rose-950/30'
-      } disabled:opacity-50`}
-      aria-label={isEmpty ? 'Remove empty session' : 'Delete session'}
-    >
-      {busy ? '…' : isEmpty ? 'Remove' : 'Delete'}
-    </button>
   );
 }
 
